@@ -1,8 +1,6 @@
 import * as React from "react"
-import { Copy } from "lucide-react"
-import { IconButton } from "@/components/ui/button"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Dialog, DialogBody, DialogContent, DialogHeader } from "@/components/ui/dialog"
-import { notify } from "@/components/ui/toast"
 import { turnery } from "../bridge"
 import type { AgentSetup } from "../core/protocol"
 
@@ -60,14 +58,7 @@ export function Command({ text }: { text: string }) {
   return (
     <div className="group relative rounded-md border bg-sunken">
       <pre className="overflow-x-auto py-2 pr-10 pl-3 font-mono text-small leading-relaxed whitespace-pre-wrap break-all">{text}</pre>
-      <IconButton
-        label="复制"
-        size="icon-sm"
-        className="absolute top-1 right-1"
-        onClick={() => void turnery.copy(text).then(() => notify.success("已复制"))}
-      >
-        <Copy />
-      </IconButton>
+      <CopyButton value={text} iconOnly className="absolute top-1 right-1" />
     </div>
   )
 }
