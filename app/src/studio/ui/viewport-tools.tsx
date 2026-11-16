@@ -1,7 +1,8 @@
 import * as React from "react"
-import { ArrowLeftRight, BoxSelect, Cuboid, Expand, GitCompareArrows, Keyboard, MessageSquarePlus, MousePointer2, Palette, PenLine, Ruler, RulerDimensionLine, ScissorsLineDashed, X } from "lucide-react"
+import { ArrowLeftRight, BoxSelect, Cuboid, Expand, GitCompareArrows, ImageDown, Keyboard, MessageSquarePlus, MousePointer2, Palette, PenLine, Ruler, RulerDimensionLine, ScissorsLineDashed, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { IconButton } from "@/components/ui/button"
+import { Button, IconButton } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Kbd } from "@/components/ui/kbd"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Segmented } from "@/components/ui/segmented"
@@ -12,6 +13,9 @@ import { AXIS_INDEX, newSection, round, type Section } from "../section"
 import type { KeyRow, ViewTool } from "../view-keys"
 
 type V3 = [number, number, number]
+
+/** What 「导出视图」 makes: a picture of the view, or a black-and-white line drawing. */
+export type ExportViewOptions = { format: "png"; background: "white" | "transparent" } | { format: "svg"; labels: "none" | "numbers" | "names"; hidden: boolean }
 
 const STYLE_WORDS: Record<ViewStyle, string> = { shaded: "着色", lines: "线描", xray: "半透明" }
 const PROJECTION_WORDS: Record<Projection, string> = { perspective: "透视", orthographic: "正交" }
@@ -41,6 +45,8 @@ export function ViewTools({
   onLooks,
   display,
   onDisplay,
+  onExportView,
+  numbered = false,
   changes,
   onChanges,
   keysOpen,
@@ -72,6 +78,10 @@ export function ViewTools({
   /** How the model is drawn (shaded, a line drawing, see-through) and projected (perspective, orthographic). */
   display?: { style: ViewStyle; projection: Projection }
   onDisplay?: (d: { style?: ViewStyle; projection?: Projection }) => void
+  /** Save the view as a picture or a line drawing; resolves when it's saved (or the save was cancelled). */
+  onExportView?: (o: ExportViewOptions) => Promise<void>
+  /** The model has parts: the line drawing can number them. */
+  numbered?: boolean
   /** 「查看变更」: faces coloured by what the last change did to them. */
   changes: boolean
   onChanges: (on: boolean) => void
@@ -124,6 +134,7 @@ export function ViewTools({
         </IconButton>
         {rule}
         {display && onDisplay && <DisplayButton display={display} onDisplay={onDisplay} />}
+        {onExportView && <ExportButton onExport={onExportView} numbered={numbered} />}
         <IconButton
           label="爆炸"
           tooltip={explode === null ? "爆炸：拆件以后可以把零件分开看" : "爆炸：把零件分开看（E）"}
@@ -257,6 +268,79 @@ function DisplayButton({ display, onDisplay }: { display: { style: ViewStyle; pr
           options={(["perspective", "orthographic"] as const).map((v) => ({ value: v, label: PROJECTION_WORDS[v] }))}
         />
         <Kbd>O</Kbd>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * 「导出视图」: the view as it is (angle, projection, explode, parts moved or hidden, section), as a
+ * PNG in its style, or as a line drawing in SVG for patent figures and manuals.
+ */
+function ExportButton({ onExport, numbered }: { onExport: (o: ExportViewOptions) => Promise<void>; numbered: boolean }) {
+  const [open, setOpen] = React.useState(false)
+  const [format, setFormat] = React.useState<"png" | "svg">("png")
+  const [background, setBackground] = React.useState<"white" | "transparent">("white")
+  const [labels, setLabels] = React.useState<"none" | "numbers" | "names">("none")
+  const [hidden, setHidden] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  const run = async () => {
+    setBusy(true)
+    try {
+      await onExport(format === "png" ? { format, background } : { format, labels: numbered ? labels : "none", hidden })
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <IconButton label="导出视图" tooltip="导出视图：存成图片，或黑白线稿（专利附图、说明书）" tooltipSide="right" size="icon-sm" aria-pressed={open}>
+          <ImageDown />
+        </IconButton>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="w-72 space-y-3 p-2.5 text-small" aria-label="导出视图">
+        <Segmented
+          size="sm"
+          aria-label="导出成"
+          className="w-full [&>*]:flex-1"
+          value={format}
+          onValueChange={setFormat}
+          options={[
+            { value: "png", label: "图片 PNG" },
+            { value: "svg", label: "线稿 SVG" },
+          ]}
+        />
+        {format === "png" ? (
+          <>
+            <p className="text-muted-foreground">按现在的样式、视角、爆炸和挪开的位置出图，裁到零件周围；选中高亮、网格和箭头不画。</p>
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground">背景</span>
+              <Segmented size="sm" aria-label="背景" value={background} onValueChange={setBackground} options={[{ value: "white", label: "白底" }, { value: "transparent", label: "透明" }]} />
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground">黑白线稿：看得见的边和轮廓，挡住的线去掉，剖开的地方画剖面线。视角、爆炸、挪开和隐藏的零件照现在的样子。</p>
+            {numbered && (
+              <div className="flex items-center gap-3">
+                <span className="text-muted-foreground">标号</span>
+                <Segmented size="sm" aria-label="标号" value={labels} onValueChange={setLabels} options={[{ value: "none", label: "不标" }, { value: "numbers", label: "10、20…" }, { value: "names", label: "零件名" }]} />
+              </div>
+            )}
+            {numbered && labels !== "none" && <p className="text-caption text-muted-foreground">选中了零件时只给选中的标号。</p>}
+            <label className="flex items-center gap-2">
+              <Checkbox checked={hidden} onCheckedChange={(v) => setHidden(v === true)} />
+              挡住的线画成虚线
+            </label>
+          </>
+        )}
+        <div className="flex justify-end">
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void run()}>
+            {busy ? "正在导出…" : "导出…"}
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   )

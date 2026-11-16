@@ -180,7 +180,7 @@ test.describe("工作台", () => {
     await expect(page.getByRole("group", { name: "爆炸" }).getByText("100%")).toBeVisible()
     await expectRendered(page.locator("canvas").first(), "/studio exploded")
     // Export offers one STEP with both parts, and a zip of STLs.
-    await page.getByRole("button", { name: "导出" }).click()
+    await page.getByRole("button", { name: "导出", exact: true }).click()
     await expect(page.getByRole("menuitem", { name: "导出 STEP（2 个零件）" })).toBeVisible()
     await expect(page.getByRole("menuitem", { name: "导出 STL（zip，每个零件一个文件）" })).toBeVisible()
   })

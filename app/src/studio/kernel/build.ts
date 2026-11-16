@@ -44,7 +44,7 @@ import { dimensionsOf, type Dim, type Frame, type StepGeom } from "./dims"
 import { cylinderAxis, runChecks, type CheckBodies, type CheckResult } from "./check"
 import { pathPoints, planeFace, ribTool, tapered, thinProfile, untilNext } from "./features2"
 import { stepAscii, zipStore } from "../zip"
-import { makeDrawing, type DrawingData } from "./drawing"
+import { makeDrawing, MESH_DRAWING_TRIANGLES, type DrawingData } from "./drawing"
 import { METRIC, standardHole } from "../holes"
 import { cutThreads, DEPTH, type ThreadJob } from "./thread"
 import { applyMate, applyRigid, axisAngle, FREE, IDENTITY, rotation, type Freedom, type MateGeo, type Rigid } from "./mates"
@@ -674,7 +674,7 @@ export class Kernel {
     const out: DisplayData = { ...empty, sketch: step.sketch ? step.sketch.lines.slice() : null }
     // Assemblies only place existing solids. Mesh the requested view once, rather
     // than re-triangulating every growing prefix of the assembly during rebuild.
-    if (body?.body && !body.mesh) Object.assign(body, (body.feature.op === "component" && body.parts ? assemblyDisplay(body.parts.map((p) => p.body)) : null) ?? meshBody(body.body))
+    if (body) this.meshed(body)
     if (body?.body && body.mesh) {
       const faces = facesOf(body.body)
       const indexByHash = new Map(faces.map((f, k) => [f.hashCode, k]))
@@ -1060,7 +1060,15 @@ export class Kernel {
     if (!step?.body) return null
     const before = new Set(this.tree.features.slice(0, until).map((f) => f.id))
     const dims = this.dimensions().filter((d) => before.has(d.feature))
-    return makeDrawing(step.body, step.origins, dims, withIso, cut >= 0 ? "文字见模型" : undefined)
+    // A big model (an assembly of many parts): the views come from its mesh, in seconds rather than minutes.
+    this.meshed(step)
+    const big = step.mesh && step.mesh.triangles.length / 3 > MESH_DRAWING_TRIANGLES
+    return makeDrawing(step.body, step.origins, dims, withIso, cut >= 0 ? "文字见模型" : undefined, big ? { mesh: step.mesh!, edges: step.edges } : undefined)
+  }
+
+  /** A step's body meshed, once: assemblies place their parts' meshes rather than meshing the whole again. */
+  private meshed(step: Step) {
+    if (step.body && !step.mesh) Object.assign(step, (step.feature.op === "component" && step.parts ? assemblyDisplay(step.parts.map((p) => p.body)) : null) ?? meshBody(step.body))
   }
 
   /** Dimensions of every feature that built (kernel/dims.ts). */

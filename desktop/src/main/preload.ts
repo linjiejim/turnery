@@ -24,6 +24,7 @@ const bridge: TurneryBridge = {
     ipcRenderer.send("turnery:renderer-ready")
     return off
   },
+  saveFigure: (figure) => ipcRenderer.invoke("turnery:save-figure", figure),
   answerPick: (id, answer) => ipcRenderer.invoke("turnery:answer-pick", id, answer),
   openPart: () => ipcRenderer.invoke("turnery:open-part"),
   newPart: () => ipcRenderer.invoke("turnery:new-part"),

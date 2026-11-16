@@ -20,6 +20,7 @@ export const turnery: TurneryBridge =
     call: missing,
     kernel: missing,
     onLook: () => () => {},
+    saveFigure: missing,
     answerPick: missing,
     openPart: missing,
     newPart: missing,

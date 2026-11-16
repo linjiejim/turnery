@@ -6,6 +6,9 @@ import type { PickInfo } from "../../studio/annotations"
 import { executeTool, moveFeature, treeText, type KernelPort } from "../../studio/apply"
 import { applyLook, changeText, colorName, colorWord, isSet, lookText, mergeLook, ownLook, sameGeometry, setPartLook, SOURCE_DEFAULT, type Appearance, type Finish, type Look, type LookChange } from "../../studio/appearance"
 import { toBuild123d } from "../../studio/codegen"
+import * as THREE from "three"
+import { drawnBox, fitCamera, lineFigure, type FigureLabels } from "../../studio/figure-lines"
+import type { PartsView } from "../../studio/scene"
 import { EMPTY_TREE, Feature, Tree, componentName, displayName } from "../../studio/dsl"
 import { designation } from "../../studio/fasteners"
 import type { BuildReport, BuildProgress, ComponentSource, ContextSource, DisplayData } from "../../studio/kernel/build"
@@ -51,6 +54,7 @@ import {
   type CommandResult,
   type DocState,
   type EngineEvent,
+  type FigureFormat,
   type KernelCall,
   type KernelPhase,
   type LookRequest,
@@ -65,6 +69,20 @@ import {
 import { describeTreeChange } from "./tree-diff"
 
 type V3 = [number, number, number]
+/** `export`'s input: where, what format, and for pictures how to look. */
+type ExportInput = {
+  path: string
+  format?: "step" | "stl" | "3mf" | "py" | "json" | "bom" | FigureFormat
+  view?: string
+  dir?: number[]
+  projection?: "perspective" | "orthographic"
+  style?: "shaded" | "lines" | "xray"
+  explode?: number
+  hide?: string[]
+  labels?: FigureLabels
+  hidden_lines?: boolean
+  background?: "white" | "transparent"
+}
 /** One face or one edge, by selector (measure). */
 type Target = { face?: Record<string, unknown>; edge?: Record<string, unknown>; feature?: string; part?: string }
 
@@ -542,7 +560,7 @@ export class Engine {
         return { ok: true, text: measureText(res) }
       }
       case "export":
-        return this.exportPart(doc, input as { path: string; format?: "step" | "stl" | "3mf" | "py" | "json" | "bom" }, ctx)
+        return this.exportPart(doc, input as ExportInput, ctx)
       case "get_notes": {
         const who = readerOf(ctx.actor)
         if (who) doc.seen[who].note = Math.max(doc.seen[who].note, ...doc.notes.notes.map((n) => n.n))
@@ -1978,13 +1996,14 @@ export class Engine {
     return { ok: true, text: `已在窗口里高亮 ${hashes.length} ${kind === "face" ? "个面" : "条边"}。` }
   }
 
-  private async exportPart(doc: Doc, input: { path: string; format?: "step" | "stl" | "3mf" | "py" | "json" | "bom" }, ctx: CallContext): Promise<CommandResult> {
+  private async exportPart(doc: Doc, input: ExportInput, ctx: CallContext): Promise<CommandResult> {
     let path = input.path.trim()
     if (!/^([A-Za-z]:)?[\\/]/.test(path) && ctx.cwd) path = `${ctx.cwd.replace(/[\\/]+$/, "")}/${path}`
     const ext = path.split(".").pop()?.toLowerCase()
     const format = input.format ?? (ext === "stp" ? "step" : ext === "md" ? "bom" : ext)
+    if (format === "png" || format === "svg") return this.exportFigure(doc, input, path, format)
     if (format !== "step" && format !== "stl" && format !== "3mf" && format !== "py" && format !== "json" && format !== "bom")
-      return fail("不知道导出成什么：扩展名用 .step / .stl / .3mf / .py / .json / .md（零件清单），或者写 format。")
+      return fail("不知道导出成什么：扩展名用 .step / .stl / .3mf / .py / .json / .md（零件清单）/ .png / .svg，或者写 format。")
     let data: string | Uint8Array | null
     if (format === "py") {
       if (isAssembly(doc.path)) return fail("装配不能导出成 build123d 代码：请分别打开每个零件导出")
@@ -2004,6 +2023,56 @@ export class Engine {
     const bytes = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength
     const failed = format === "step" || format === "stl" || format === "3mf" ? doc.report?.features.filter((f) => f.state === "error").length : 0
     return { ok: true, text: `已导出 ${format.toUpperCase()} 到 ${path}（${(bytes / 1024).toFixed(1)} KB）${failed ? `。注意：有 ${failed} 个特征失败，导出的是最后一个成功的步骤` : ""}` }
+  }
+
+  /**
+   * A picture of the model to keep: a PNG drawn by the window (as `look` is), or an SVG line drawing
+   * made here (kernel/hlr.ts on the mesh: no window needed, a second or two for a big assembly).
+   */
+  private async exportFigure(doc: Doc, input: ExportInput, path: string, format: FigureFormat): Promise<CommandResult> {
+    await this.ensureKernel(doc)
+    const display = await this.opts.kernel.display()
+    if (!display.mesh) return fail("还没有实体可以出图。")
+    const names = (display.parts ?? []).map((p) => p.name)
+    const hide = input.hide ?? []
+    const unknown = hide.filter((n) => !names.includes(n))
+    if (unknown.length) return fail(`hide 里的「${unknown.join("、")}」不是零件的名字${names.length ? `：现在有 ${names.join("、")}` : "：现在只有一个没名字的实体"}`)
+    let dir: V3 = VIEW_DIR[input.view ?? "iso"] ?? VIEW_DIR.iso
+    if (input.dir) {
+      const l = Math.hypot(...input.dir)
+      if (!l) return fail("dir 不能是 [0, 0, 0]")
+      dir = input.dir.map((x) => x / l) as V3
+    }
+    const explode = Math.min(1, Math.max(0, input.explode ?? 0))
+    const label = input.dir ? `从 (${input.dir.join(", ")}) 方向看` : (VIEW_LABEL[input.view ?? "iso"] ?? input.view ?? "等轴测")
+    if (format === "png") {
+      const screen = this.opts.screen?.()
+      if (!screen) return fail("png 要在 Turnery 窗口里画：先打开 Turnery App（命令行 turnery open <零件>）。svg 线稿不需要窗口。")
+      const style = input.style ?? "shaded"
+      const [image] = await screen.look({ display, views: [], pins: [], figure: { dir, projection: input.projection ?? "perspective", style, explode, hide, background: input.background ?? "white", looks: true } })
+      if (!image?.startsWith("data:image/png;base64,")) return fail("窗口没画出图片。")
+      const bytes = Uint8Array.from(atob(image.slice("data:image/png;base64,".length)), (c) => c.charCodeAt(0))
+      await this.opts.files.write(path, bytes)
+      return { ok: true, text: `已导出图片到 ${path}（${label}，${{ shaded: "着色", lines: "线描", xray: "半透明" }[style]}${explode ? `，爆炸 ${Math.round(explode * 100)}%` : ""}，${(bytes.byteLength / 1024).toFixed(1)} KB）` }
+    }
+    const hidden = new Set(names.flatMap((n, i) => (hide.includes(n) ? [i] : [])))
+    const view: PartsView = { explode, hidden }
+    const box = drawnBox(display, view)
+    if (!box) return fail("hide 把零件都去掉了，没有可画的。")
+    const W = 1600
+    const H = 1200
+    const camera = fitCamera(box, new THREE.Vector3(...dir), input.projection ?? "orthographic", W, H)
+    const labels: FigureLabels = input.labels ?? "none"
+    if (typeof labels === "object") {
+      const wrong = Object.keys(labels).filter((n) => !names.includes(n) && !names.some((x) => x.split("/").pop() === n))
+      if (wrong.length) return fail(`labels 里的「${wrong.join("、")}」不是零件的名字：现在有 ${names.join("、")}`)
+    }
+    const figure = lineFigure(display, { camera, width: W, height: H, view, section: null, hidden: input.hidden_lines, labels })
+    if (!figure) return fail("这个视角下没有可画的线。")
+    await this.opts.files.write(path, figure.svg)
+    const numbered = labels === "none" ? "" : `，${labels === "numbers" ? "按 10、20、30… 标号" : labels === "names" ? "标了零件名" : "按 labels 标号"}（${figure.labels} 个）`
+    const crowded = figure.labels > 40 ? `\n⚠ 标了 ${figure.labels} 个零件，两边的标号排得很长，引线会斜着拉很远：用 labels 写 { "零件名": "标号" } 只标要说明的几个零件更清楚。` : ""
+    return { ok: true, text: `已导出线稿到 ${path}（${label}，${input.projection === "perspective" ? "透视" : "正交"}${explode ? `，爆炸 ${Math.round(explode * 100)}%` : ""}${numbered}${input.hidden_lines ? "，挡住的线画成虚线" : ""}，${figure.lines} 段线）${crowded}` }
   }
 
   // ------------------------------------------------------------------ picks

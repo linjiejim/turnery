@@ -151,10 +151,20 @@ const own: CommandSpec[] = [
     name: "export",
     audience: "both",
     description:
-      "导出当前零件或装配：step（实体；多个零件时一个文件里多个带名字的零件）/ stl（多个零件时打包成 zip，每个零件一个文件）/ 3mf（给切片软件：一个文件，每个零件一个对象，单位毫米）、py（等价的 build123d 代码，装配不能导出）、json（特征树）、bom（零件清单 Markdown：名称、文件、数量、体积、外形）。",
+      "导出当前零件或装配：step（实体；多个零件时一个文件里多个带名字的零件）/ stl（多个零件时打包成 zip，每个零件一个文件）/ 3mf（给切片软件：一个文件，每个零件一个对象，单位毫米）、py（等价的 build123d 代码，装配不能导出）、json（特征树）、bom（零件清单 Markdown：名称、文件、数量、体积、外形）。" +
+      "出图：png（图片，要开着窗口）/ svg（黑白线稿，消隐，可标号，专利附图用）。",
     input: z.object({
       path: z.string().describe("输出文件路径，相对当前目录；扩展名决定格式，除非写了 format"),
-      format: z.enum(["step", "stl", "3mf", "py", "json", "bom"]).optional(),
+      format: z.enum(["step", "stl", "3mf", "py", "json", "bom", "png", "svg"]).optional(),
+      view: z.enum(["iso", "front", "back", "left", "right", "top", "bottom"]).optional().describe("出图视角"),
+      dir: z.array(z.number()).length(3).optional().describe("出图方向（零件→眼睛），代替 view"),
+      projection: z.enum(["perspective", "orthographic"]).optional(),
+      style: z.enum(["shaded", "lines", "xray"]).optional().describe("png 样式"),
+      explode: z.number().min(0).max(1).optional(),
+      hide: z.array(z.string()).optional().describe("去掉的零件"),
+      labels: z.union([z.enum(["none", "numbers", "names"]), z.record(z.string(), z.string())]).optional().describe('svg 标号：10、20…；零件名；或 { "零件名": "12" }'),
+      hidden_lines: z.boolean().optional().describe("svg 虚线画挡住的线"),
+      background: z.enum(["white", "transparent"]).optional(),
     }),
   },
   {
@@ -468,7 +478,7 @@ export const AGENT_GUIDE = `# Turnery：用工具建参数化零件
    - of 选不到时，报错会说满足其余条件的面记在哪个特征名下：共面的面合并后记在先生成它的特征名下，去掉 of 改用 normal、extreme、near。
 6. 用户在窗口里留的备注用 get_notes 读，处理完用 resolve_note 写一句回复。说不清用户指的是哪个面时，用 request_pick 请用户在窗口里点一下；要指给用户看时用 show。
 7. 结果开头写着「自你上次调用以来……」时，说明用户或文件改过模型：以最新状态为准，不要把用户的改动改回去。
-8. 交付用 export（step / stl / 3mf / py / json）。特征树文件也可以直接读写，保存后窗口会自动重建；改完文件用 get_state 看重建结果。
+8. 交付用 export（step / stl / 3mf / py / json）；要图就导出 png（图片）或 svg（黑白线稿，可标号，专利附图用）。特征树文件也可以直接读写，保存后窗口会自动重建；改完文件用 get_state 看重建结果。
 
 ${promptSections(["数值", "坐标与基准面", "扫掠、放样、拔模", "建模习惯", "文字", "选择器"])}
 

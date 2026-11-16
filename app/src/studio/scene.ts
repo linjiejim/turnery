@@ -58,6 +58,17 @@ type Sorted = {
 }
 const SORTED = new WeakMap<DisplayData, Sorted>()
 
+/**
+ * A display's triangles and edge points per part (a body that isn't split is one part, index -1),
+ * as the view draws them: for drawings made from what is shown (figure.ts).
+ */
+export function partGeometry(d: DisplayData): { part: number; index: Uint32Array; edges: Float32Array }[] {
+  const sorted = sortedOf(d)
+  if (!sorted || !d.mesh) return []
+  if (sorted.parts) return sorted.parts.map((p, part) => ({ part, index: p.index, edges: p.edges }))
+  return [{ part: -1, index: d.mesh.triangles, edges: d.edges ?? new Float32Array() }]
+}
+
 function sortedOf(d: DisplayData): Sorted | null {
   const m = d.mesh
   if (!m) return null

@@ -4,6 +4,7 @@ import { Button, IconButton } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { notify } from "@/components/ui/toast"
 import { renderShots, renderViews } from "@/studio/look"
+import { figurePicture } from "@/studio/figure"
 import { selectGroup, wholeNames, wholeOf } from "@/studio/part-selection"
 import { NO_PARTS_VIEW, type Hover, type PartsView } from "@/studio/scene"
 import { CodePanel, ParamsPanel } from "@/studio/ui/side-panels"
@@ -69,7 +70,7 @@ export function DesktopApp() {
   React.useEffect(
     () =>
       turnery.onLook(async (req) =>
-        req.shots ? renderShots(req.display, req.shots, { highlight: req.highlight, pins: req.pins, section: req.section, hide: req.hide, size: req.size, plain: req.plain }) : renderViews(req.display, req.views, req.highlight, { pins: req.pins }),
+        req.figure ? [figurePicture(req.display, req.figure) ?? ""] : req.shots ? renderShots(req.display, req.shots, { highlight: req.highlight, pins: req.pins, section: req.section, hide: req.hide, size: req.size, plain: req.plain }) : renderViews(req.display, req.views, req.highlight, { pins: req.pins }),
       ),
     [],
   )
@@ -375,6 +376,7 @@ export function DesktopApp() {
                 sketch={sketchHost}
                 onNoteSelection={() => noteOnParts(selectedNames)}
                 pinNotes={notes.pinNotes}
+                onSaveFigure={async (figure) => void (await turnery.saveFigure(figure))}
                 onOpenPart={assembly ? openPartAt : undefined}
                 keys={DESKTOP_KEYS}
                 active={!sheet}

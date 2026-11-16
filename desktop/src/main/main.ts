@@ -2,7 +2,7 @@
 // thread, so projects in different windows never wait on each other), the local
 // endpoint the MCP server and CLI talk to, and the windows that show it all.
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type OpenDialogOptions, type SaveDialogOptions } from "electron"
-import { copyFileSync, existsSync, mkdirSync, realpathSync, statSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -476,6 +476,22 @@ async function exportDialog(ws: Workspace | null, format: ExportFormat) {
   else shell.showItemInFolder(res.filePath)
 }
 
+/** A picture or line drawing of the view (「导出视图」): saved where the person says, next to the open file by default. */
+async function saveFigureDialog(ws: Workspace | null, figure: { format: "png" | "svg"; data: string }) {
+  const doc = ws?.engine.docState()
+  const png = figure.format === "png"
+  const res = await saveDialog(ws, {
+    title: png ? "导出视图图片" : "导出线稿",
+    defaultPath: path.join(doc ? path.dirname(doc.path) : app.getPath("documents"), `${doc?.name ?? PRODUCT}-${png ? "视图" : "线稿"}.${figure.format}`),
+    filters: [{ name: png ? "PNG 图片" : "SVG 线稿", extensions: [figure.format] }],
+    properties: ["createDirectory", "showOverwriteConfirmation"],
+  })
+  if (res.canceled || !res.filePath) return null
+  writeFileSync(res.filePath, png ? Buffer.from(figure.data.replace(/^data:image\/png;base64,/, ""), "base64") : figure.data)
+  shell.showItemInFolder(res.filePath)
+  return res.filePath
+}
+
 /** The start page's list: project folders opened lately that are still there. */
 function recentProjects(): RecentProject[] {
   // Scratch folders (tests, an agent's throwaway work) aren't worth listing.
@@ -652,6 +668,7 @@ function wireIpc() {
   ipcMain.handle("turnery:pick-file", (e, kind: "part" | "step") => pickFileDialog(wsOf(e), kind === "step" ? "step" : "part"))
   ipcMain.handle("turnery:reveal", (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle("turnery:export", (e, format: ExportFormat) => exportDialog(wsOf(e), format))
+  ipcMain.handle("turnery:save-figure", (e, figure: { format: "png" | "svg"; data: string }) => saveFigureDialog(wsOf(e), figure))
   ipcMain.handle("turnery:agent-setup", () => agentSetup(turneryBin()))
   ipcMain.handle("turnery:copy", (_e, text: string) => clipboard.writeText(String(text)))
   ipcMain.handle("turnery:update", () => updater.status())
