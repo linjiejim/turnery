@@ -322,21 +322,25 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
     }
   }
   const slack = Number.isFinite(hi) ? Math.max(1e-6, (hi - lo) * 1e-4) : 1e-3
-  /** In front of (or on) the nearest face round this pixel. */
+  /**
+   * In front of (or on) the nearest face round this pixel: 1 seen, 0 hidden. Outside the picture
+   * (−1) nothing is known, and nothing is drawn: what's off the view stays off the drawing.
+   */
   const seen = (x: number, y: number, d: number) => {
     const cx = Math.floor(x)
     const cy = Math.floor(y)
+    if (cx < 0 || cy < 0 || cx >= W || cy >= H) return -1
     let far = 0
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
         const px = cx + dx
         const py = cy + dy
-        if (px < 0 || py < 0 || px >= W || py >= H) return true
+        if (px < 0 || py < 0 || px >= W || py >= H) continue
         const z = depth[py * W + px]
-        if (z === Infinity) return true
+        if (z === Infinity) return 1
         if (z > far) far = z
       }
-    return d <= far + Math.max(slack, proj.pixel(d) * 1.5)
+    return d <= far + Math.max(slack, proj.pixel(d) * 1.5) ? 1 : 0
   }
 
   const visible: HlrLine[] = []
@@ -363,7 +367,12 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
         continue
       }
       const here: V2 = [s.nx, s.ny]
-      const on = seen(s.x, s.y, s.depth)
+      const state = seen(s.x, s.y, s.depth)
+      if (state < 0) {
+        end()
+        continue
+      }
+      const on = state === 1
       if (run && runSeen === on) run.b = here
       else {
         const from: V2 = run ? run.b : here
@@ -375,6 +384,8 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
     end()
   }
 
+  // The cut faces the cut-away side: seen only from there (from behind, the part itself is in the way).
+  const capSeen = !!section && (v.projection.ortho ? section.normal[0] * forward[0] + section.normal[1] * forward[1] + section.normal[2] * forward[2] > 0 : section.normal[0] * eye[0] + section.normal[1] * eye[1] + section.normal[2] * eye[2] + section.constant < 0)
   const cut: V2[] = []
   for (const part of parts) {
     const v3 = part.vertices
@@ -400,6 +411,7 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
       const pts = planeCut(part, section)
       for (let i = 0; i < pts.length; i += 2) {
         trace(pts[i], pts[i + 1], part.id)
+        if (!capSeen) continue
         const a = proj.at(pts[i][0], pts[i][1], pts[i][2])
         const an: V2 = [a.nx, a.ny]
         const b = proj.at(pts[i + 1][0], pts[i + 1][1], pts[i + 1][2])
@@ -432,11 +444,15 @@ class Repeats {
   private key(x: number, y: number) {
     return Math.floor(x / Repeats.CELL) * 100003 + Math.floor(y / Repeats.CELL)
   }
-  /** Within ¾ px of a kept line: at both ends and the middle. */
+  /** Along its whole length (every 2 px), within ¾ px of kept lines running its way. */
   covers(l: HlrLine) {
     const a = this.px(l.a)
     const b = this.px(l.b)
-    return [a, b, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as V2].every((p) => this.near(p))
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1])
+    const dir: V2 | null = length > 1 ? [(b[0] - a[0]) / length, (b[1] - a[1]) / length] : null
+    const n = Math.max(2, Math.ceil(length / 2))
+    for (let i = 0; i <= n; i++) if (!this.near([a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n], dir)) return false
+    return true
   }
   /** Keep it unless it lies along what's kept; true when kept. */
   add(l: HlrLine) {
@@ -455,7 +471,8 @@ class Repeats {
     }
     return true
   }
-  private near([x, y]: V2) {
+  /** Within ¾ px of a kept line; with `dir`, one running that way (to within about 6°). */
+  private near([x, y]: V2, dir: V2 | null) {
     for (let dx = -1; dx <= 1; dx++)
       for (let dy = -1; dy <= 1; dy++)
         for (const l of this.cells.get(this.key(x + dx * Repeats.CELL, y + dy * Repeats.CELL)) ?? []) {
@@ -464,6 +481,7 @@ class Repeats {
           const vx = b[0] - a[0]
           const vy = b[1] - a[1]
           const l2 = vx * vx + vy * vy
+          if (dir && l2 > 1 && Math.abs(dir[0] * vy - dir[1] * vx) / Math.sqrt(l2) > 0.1) continue
           const t = l2 ? Math.max(0, Math.min(1, ((x - a[0]) * vx + (y - a[1]) * vy) / l2)) : 0
           if (Math.hypot(a[0] + t * vx - x, a[1] + t * vy - y) <= 0.75) return true
         }

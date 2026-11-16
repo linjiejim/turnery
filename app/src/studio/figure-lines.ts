@@ -41,7 +41,8 @@ export function fitCamera(box: THREE.Box3, dir: THREE.Vector3, projection: "pers
       }
   hh = Math.max(hh, hw / (w / h)) * padding
   const radius = box.getBoundingSphere(new THREE.Sphere()).radius
-  const o = new THREE.OrthographicCamera(-hh * (w / h), hh * (w / h), hh, -hh, 1, dist + radius * 4 + 10)
+  // The eye stands dist + 2r from the middle: everything is between dist + r and dist + 3r away.
+  const o = new THREE.OrthographicCamera(-hh * (w / h), hh * (w / h), hh, -hh, (dist + radius) / 2, dist + radius * 4 + 1e-3)
   o.position.copy(centre).addScaledVector(d, dist + radius * 2)
   o.quaternion.copy(persp.quaternion)
   o.updateProjectionMatrix()
@@ -132,7 +133,8 @@ export function labelTexts(names: string[], labels: FigureLabels): (string | nul
   if (labels === "none") return names.map(() => null)
   if (labels === "numbers") return names.map((_, i) => String((i + 1) * 10))
   if (labels === "names") return names.map(short)
-  return names.map((n) => labels[n] ?? labels[short(n)] ?? null)
+  const own = (k: string) => (Object.hasOwn(labels, k) ? labels[k] : null)
+  return names.map((n) => own(n) ?? own(short(n)))
 }
 
 /**

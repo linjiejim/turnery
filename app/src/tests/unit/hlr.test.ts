@@ -126,3 +126,43 @@ it("numbers parts by tens, by name, or as told", () => {
   expect(labelTexts(["外壳/底壳", "螺钉"], { 底壳: "12", 外壳: "x" })).toEqual(["12", null])
   expect(labelTexts(["a"], "none")).toEqual([null])
 })
+
+it("keeps a line that only touches others at its ends and middle; drops one drawn twice", () => {
+  // Front view: three 20 mm uprights at x = −5, 0, 5, and a 10 mm crossbar at z = 5 touching all three.
+  const lines = [-5, 0, 5].flatMap((x) => [x, 0, -10, x, 0, 10])
+  const part: HlrPart = { id: 0, vertices: new Float32Array(), index: new Uint32Array(), edges: new Float32Array([...lines, -5, 0, 5, 5, 0, 5, -5, 0, 5, 5, 0, 5]) }
+  const { visible } = hiddenLines([part], front())
+  const bars = visible.filter((l) => Math.abs(l.a[1] - l.b[1]) < 1e-6)
+  // The crossbar is kept, once (it was given twice).
+  expect(bars.length).toBe(1)
+  expect(length(bars)).toBeCloseTo(0.5, 2)
+})
+
+it("hatches the cut only from the side that was cut away, and leaves out what's off the picture", () => {
+  const cube = box(0, [-10, -10, -10], [10, 10, 10])
+  // Keeping the near half (y ≤ 0): the cut faces away from the eye, behind the part.
+  expect(hiddenLines([cube], front(), { section: { normal: [0, -1, 0], constant: 0 } }).cut).toEqual([])
+  expect(hiddenLines([cube], front(), { section: { normal: [0, 1, 0], constant: 0 } }).cut.length).toBeGreaterThan(0)
+  // A box beside the 40 mm picture isn't drawn at all, not even its outline.
+  const off = box(1, [40, -5, -5], [50, 5, 5])
+  const { visible, hidden } = hiddenLines([cube, off], front(), { hidden: true })
+  expect([...visible, ...hidden].filter((l) => l.part === 1)).toEqual([])
+  expect(visible.every((l) => [l.a, l.b].every((p) => Math.abs(p[0]) <= 1.001 && Math.abs(p[1]) <= 1.001))).toBe(true)
+})
+
+it("frames a model under a millimetre without clipping it", () => {
+  const tiny = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.1, 0.1, 0.1))
+  const cam = fitCamera(tiny, new THREE.Vector3(1, -1.1, 0.85), "orthographic", 400, 300) as THREE.OrthographicCamera
+  cam.updateMatrixWorld()
+  for (const x of [0, 0.1])
+    for (const y of [0, 0.1])
+      for (const z of [0, 0.1]) {
+        const d = -new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse).z
+        expect(d).toBeGreaterThan(cam.near)
+        expect(d).toBeLessThan(cam.far)
+      }
+})
+
+it("numbers only parts named in the map, not what every object has", () => {
+  expect(labelTexts(["constructor", "toString", "盖"], { 盖: "10" })).toEqual([null, null, "10"])
+})
