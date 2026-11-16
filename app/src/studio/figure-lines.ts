@@ -73,13 +73,25 @@ export function drawnBox(d: DisplayData, view: PartsView): THREE.Box3 | null {
   return partsBox(d, view, parts)
 }
 
-/** The drawn parts as kernel/hlr.ts takes them: their triangles and edges, where they are shown. */
+/** The face each triangle is on (by its face groups), made once per part's triangles. */
+const FACES = new WeakMap<Uint32Array, Int32Array>()
+function facesOf(index: Uint32Array, groups: { start: number; count: number; hash: number }[]) {
+  let faces = FACES.get(index)
+  if (!faces) {
+    faces = new Int32Array(index.length / 3).fill(-1)
+    for (const g of groups) faces.fill(g.hash, g.start / 3, (g.start + g.count) / 3)
+    FACES.set(index, faces)
+  }
+  return faces
+}
+
+/** The drawn parts as kernel/hlr.ts takes them: their triangles, edges and faces, where they are shown. */
 export function hlrParts(d: DisplayData, view: PartsView): HlrPart[] {
   if (!d.mesh) return []
   const geometry = partGeometry(d)
   return drawnParts(d, view).flatMap((k) => {
     const g = geometry.find((x) => x.part === k)
-    return g ? [{ id: k, vertices: d.mesh!.vertices, index: g.index, edges: g.edges, offset: partOffset(d, view, k < 0 ? undefined : k) }] : []
+    return g ? [{ id: k, vertices: d.mesh!.vertices, index: g.index, edges: g.edges, faces: facesOf(g.index, g.groups), offset: partOffset(d, view, k < 0 ? undefined : k) }] : []
   })
 }
 
@@ -127,11 +139,14 @@ export function lineFigure(d: DisplayData, o: LineFigureOptions): { svg: string;
 
 type Label = { text: string; anchor: V2; at: V2; side: "left" | "right" | "top" | "bottom" }
 
-/** The words each numbered part gets. */
-export function labelTexts(names: string[], labels: FigureLabels): (string | null)[] {
+/**
+ * The words each numbered part gets. Numbers go by the part's place in the model (`order`, from 0),
+ * not in the figure: the same part has the same number in every figure, whichever parts are shown.
+ */
+export function labelTexts(names: string[], labels: FigureLabels, order: number[] = names.map((_, i) => i)): (string | null)[] {
   const short = (n: string) => n.split("/").pop() ?? n
   if (labels === "none") return names.map(() => null)
-  if (labels === "numbers") return names.map((_, i) => String((i + 1) * 10))
+  if (labels === "numbers") return order.map((k) => String((k + 1) * 10))
   if (labels === "names") return names.map(short)
   const own = (k: string) => (Object.hasOwn(labels, k) ? labels[k] : null)
   return names.map((n) => own(n) ?? own(short(n)))
@@ -147,7 +162,7 @@ function placeLabels(d: DisplayData, o: LineFigureOptions, lines: Line[]): Label
   const labels = o.labels ?? "none"
   if (labels === "none") return []
   const wanted = (o.labelParts?.length ? o.labelParts : drawnParts(d, o.view)).filter((k) => k >= 0 || !d.parts)
-  const texts = labelTexts(wanted.map((k) => (k >= 0 ? d.parts![k].name : "")), labels)
+  const texts = labelTexts(wanted.map((k) => (k >= 0 ? d.parts![k].name : "")), labels, wanted.map((k) => Math.max(0, k)))
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const l of lines)
     for (const p of [l.a, l.b]) {

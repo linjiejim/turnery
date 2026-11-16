@@ -57,15 +57,19 @@ it("removes what a part in front hides, and gives it back dashed when asked", ()
   // The cube's outline (4 × 10 mm, 0.5 of the window each) is all seen; nothing hidden is kept unless asked.
   expect(length(shown.visible, 0)).toBeGreaterThan(4 * 0.5 * 0.98)
   expect(shown.hidden).toEqual([])
-  // The bar's four long edges (front and back pairs, each 30 mm = 1.5) lose their middle 10 mm (0.5) behind the cube.
+  // The bar's long edges at z = ±2 (front and back ones coincide, drawn once) lose their middle 10 mm (0.5) behind the cube.
   const lost = length(both.hidden, 1)
-  expect(lost).toBeGreaterThan(4 * 0.5 * 0.9)
-  expect(lost).toBeLessThan(4 * 0.5 * 1.15)
+  expect(lost).toBeGreaterThan(2 * 0.5 * 0.9)
+  expect(lost).toBeLessThan(2 * 0.5 * 1.15)
   expect(length(both.hidden, 0)).toBe(0)
   // Back edges seen end on behind the front ones are drawn once: the cube's front outline, not twice over.
   expect(length(shown.visible, 0)).toBeLessThan(4 * 0.5 * 1.05)
-  // And a hidden line never runs under a visible one.
-  expect(length(both.hidden, 1)).toBeLessThan(4 * 0.5 * 1.15)
+  // A hidden line running right under a visible one isn't kept: a line across the cube's face at z = 0,
+  // and the bar's edge at z = 0 behind it.
+  const marked = { ...near, edges: new Float32Array([...near.edges, -5, -20, 0, 5, -20, 0]) }
+  const middle = { ...far, edges: new Float32Array([-15, 0, 0, 15, 0, 0]) }
+  const under = hiddenLines([marked, middle], view, { hidden: true })
+  expect(under.hidden.filter((l) => l.part === 1 && Math.abs(l.a[1]) < 1e-6)).toEqual([])
 })
 
 it("draws a cylinder's outline where its side turns away, and nothing across its middle", () => {
@@ -85,17 +89,24 @@ it("cuts a section: what's in front of the plane goes, the cut face hides what's
   const outer = box(0, [-10, -10, -10], [10, 10, 10])
   const inner = box(1, [-5, -5, -5], [5, 5, 5])
   const view = front()
-  // Keep y ≥ 6: the cut passes in front of the inner cube, which stays hidden behind the cut face.
-  const behind = hiddenLines([outer, inner], view, { section: { normal: [0, 1, 0], constant: -6 } })
+  // Keep y ≥ −6: the cut passes in front of the inner cube (y −5 … 5), which stays whole and hidden behind the cut face.
+  const behind = hiddenLines([outer, inner], view, { section: { normal: [0, 1, 0], constant: 6 } })
   expect(length(behind.visible, 1)).toBe(0)
+  expect(length(hiddenLines([outer, inner], view, { section: { normal: [0, 1, 0], constant: 6 }, hidden: true }).hidden, 1)).toBeGreaterThan(1)
   const outline = loops(behind.cut)
   expect(outline.length).toBe(1)
   // Keep y ≥ 0: the inner cube is cut too; its cut face shows inside the outer one's.
   const through = hiddenLines([outer, inner], view, { section: { normal: [0, 1, 0], constant: 0 } })
   expect(loops(through.cut).length).toBe(2)
   expect(length(through.visible, 1)).toBeGreaterThan(4 * 0.5 * 0.98)
-  // Nothing on the cut-away side is drawn.
-  expect(through.visible.length).toBeGreaterThan(0)
+  // Nothing on the cut-away side is drawn: seen from the side (looking along −X), every line is at y ≥ 0.
+  const side = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 1000)
+  side.position.set(100, 0, 0)
+  side.up.set(0, 0, 1)
+  side.lookAt(0, 0, 0)
+  const fromSide = hiddenLines([outer, inner], hlrView(side, 400, 400), { section: { normal: [0, 1, 0], constant: 0 } })
+  expect(fromSide.visible.length).toBeGreaterThan(0)
+  expect(fromSide.visible.every((l) => [l.a, l.b].every((p) => p[0] * 20 >= -0.05))).toBe(true)
 })
 
 it("follows parts moved apart, and frames them from any direction", () => {
@@ -161,6 +172,52 @@ it("frames a model under a millimetre without clipping it", () => {
         expect(d).toBeGreaterThan(cam.near)
         expect(d).toBeLessThan(cam.far)
       }
+})
+
+it("leaves out a cylinder's seam, which the mesh has as an edge, when it knows the faces", () => {
+  // A cylinder whose side closes on a seam at +X: the first column of points repeated at the end, and the seam an edge.
+  const n = 48, r = 8, h = 20
+  const vertices: number[] = []
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI * 2
+    vertices.push(r * Math.cos(a), r * Math.sin(a), 0, r * Math.cos(a), r * Math.sin(a), h)
+  }
+  const index: number[] = []
+  for (let i = 0; i < n; i++) index.push(i * 2, (i + 1) * 2, (i + 1) * 2 + 1, i * 2, (i + 1) * 2 + 1, i * 2 + 1)
+  const seam = [r, 0, 0, r, 0, h]
+  const part: HlrPart = { id: 0, vertices: new Float32Array(vertices), index: new Uint32Array(index), edges: new Float32Array(seam) }
+  // From +X the seam runs down the middle of what's seen.
+  const cam = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 1000)
+  cam.position.set(100, 0, 10)
+  cam.up.set(0, 0, 1)
+  cam.lookAt(0, 0, 10)
+  const view = hlrView(cam, 400, 400)
+  const middle = (r: ReturnType<typeof hiddenLines>) => r.visible.filter((l) => Math.abs(l.a[0]) < 0.02 && Math.abs(l.b[0]) < 0.02)
+  expect(middle(hiddenLines([part], view)).length).toBeGreaterThan(0)
+  expect(middle(hiddenLines([{ ...part, faces: new Int32Array(n * 2).fill(7) }], view))).toEqual([])
+})
+
+it("hides what's behind a face that reaches past the eye, in perspective", () => {
+  // A ramp from behind the eye (y = −20) up past the box (y = 30): every ray from the eye to the box meets it first.
+  const ramp: HlrPart = {
+    id: 0,
+    vertices: new Float32Array([-50, -20, -50, 50, -20, -50, 50, 30, 50, -50, 30, 50]),
+    // Both windings: whichever way it faces, it hides.
+    index: new Uint32Array([0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]),
+    edges: new Float32Array(),
+  }
+  const target = box(1, [-5, 40, -5], [5, 50, 5])
+  const cam = new THREE.PerspectiveCamera(60, 1, 0.1, 1000)
+  cam.position.set(0, 0, 0)
+  cam.up.set(0, 0, 1)
+  cam.lookAt(0, 1, 0)
+  const res = hiddenLines([ramp, target], hlrView(cam, 400, 400), { hidden: true })
+  expect(length(res.visible, 1)).toBe(0)
+  expect(length(res.hidden, 1)).toBeGreaterThan(0)
+})
+
+it("numbers a part the same in every figure, by its place in the model", () => {
+  expect(labelTexts(["底壳", "上盖"], "numbers", [4, 6])).toEqual(["50", "70"])
 })
 
 it("numbers only parts named in the map, not what every object has", () => {

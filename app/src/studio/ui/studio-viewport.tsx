@@ -837,7 +837,9 @@ export function StudioViewport({
     const { w, h } = viewer.size
     try {
       if (o.format === "png") {
-        const data = renderPicture(display, { camera, width: w * 2, height: h * 2, view, style, looks, section: plane, background: o.background })
+        // Twice the view's size (as sharp as a Retina screen), at most 4096 px on the long side.
+        const k = Math.min(2, 4096 / Math.max(w, h))
+        const data = renderPicture(display, { camera, width: Math.round(w * k), height: Math.round(h * k), view, style, looks, section: plane, background: o.background })
         if (!data) return void notify("还没有东西可以导出")
         await onSaveFigure({ format: "png", data })
       } else {

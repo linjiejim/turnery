@@ -152,7 +152,9 @@ export function meshView(mesh: Mesh, edges: EdgeMesh | null, dir: V3, x: V3): [n
   const long = Math.max(halfW, halfH)
   const W = Math.max(16, Math.round((MESH_VIEW_PX * halfW) / long))
   const H = Math.max(16, Math.round((MESH_VIEW_PX * halfH) / long))
-  const res = hiddenLines([{ id: 0, vertices: v, index: mesh.triangles, edges: edges?.lines ?? new Float32Array() }], { view, width: W, height: H, projection: { ortho: true, halfW, halfH } }, { hidden: true })
+  const faces = new Int32Array(mesh.triangles.length / 3).fill(-1)
+  for (const g of mesh.faceGroups) faces.fill(g.faceId, g.start / 3, (g.start + g.count) / 3)
+  const res = hiddenLines([{ id: 0, vertices: v, index: mesh.triangles, edges: edges?.lines ?? new Float32Array(), faces }], { view, width: W, height: H, projection: { ortho: true, halfW, halfH } }, { hidden: true })
   const flat = (lines: typeof res.visible) => {
     const out: number[] = []
     for (const l of lines) out.push(l.a[0] * halfW + cu, l.a[1] * halfH + cv, l.b[0] * halfW + cu, l.b[1] * halfH + cv)

@@ -478,6 +478,10 @@ async function exportDialog(ws: Workspace | null, format: ExportFormat) {
 
 /** A picture or line drawing of the view (「导出视图」): saved where the person says, next to the open file by default. */
 async function saveFigureDialog(ws: Workspace | null, figure: { format: "png" | "svg"; data: string }) {
+  // Only what the window makes: a PNG data URL or SVG text.
+  const PNG = "data:image/png;base64,"
+  if (typeof figure?.data !== "string" || (figure.format !== "png" && figure.format !== "svg")) return null
+  if (figure.format === "png" && !figure.data.startsWith(PNG)) return null
   const doc = ws?.engine.docState()
   const png = figure.format === "png"
   const res = await saveDialog(ws, {
@@ -487,7 +491,7 @@ async function saveFigureDialog(ws: Workspace | null, figure: { format: "png" | 
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
   if (res.canceled || !res.filePath) return null
-  writeFileSync(res.filePath, png ? Buffer.from(figure.data.replace(/^data:image\/png;base64,/, ""), "base64") : figure.data)
+  writeFileSync(res.filePath, png ? Buffer.from(figure.data.slice(PNG.length), "base64") : figure.data)
   shell.showItemInFolder(res.filePath)
   return res.filePath
 }

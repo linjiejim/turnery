@@ -87,6 +87,8 @@ export class Snapshotter {
       return out
     } finally {
       this.holder.remove(object)
+      // Small first: restoring the ratio resizes the canvas, and at the picture's size that would be huge.
+      this.renderer.setSize(1, 1, false)
       this.renderer.setPixelRatio(ratio)
     }
   }

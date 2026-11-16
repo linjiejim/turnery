@@ -22,8 +22,12 @@ export type HlrView = {
   height: number
 }
 
-/** One part: its triangles and edge points (pairs) in the file's coordinates, and where it's shown. */
-export type HlrPart = { id: number; vertices: Float32Array; index: Uint32Array; edges: Float32Array; offset?: V3 }
+/**
+ * One part: its triangles and edge points (pairs) in the file's coordinates, and where it's shown.
+ * `faces`, the face each triangle is on (one per triangle), lets seams go: the edge where a closed
+ * face (a cylinder's side) meets itself is in the mesh's edges, but no drawing shows it.
+ */
+export type HlrPart = { id: number; vertices: Float32Array; index: Uint32Array; edges: Float32Array; offset?: V3; faces?: ArrayLike<number> }
 
 /** A run of a line, from `a` to `b`, in normalised picture coordinates (−1 … 1, y up). */
 export type HlrLine = { a: V2; b: V2; part: number }
@@ -45,23 +49,49 @@ export type HlrResult = {
 // ------------------------------------------------------------------ outlines
 
 /**
- * A part's triangle edges inside its faces, with the triangles either side (vertex, vertex, triangle,
- * triangle): where one faces the eye and the other doesn't, the surface turns away there. Faces don't
- * share vertices, so the solid's own edges between faces (drawn anyway) aren't in here.
+ * Every vertex's point, numbered by position: faces don't share vertices, and neither do a closed
+ * face's two sides along its seam, but the same point is the same point. Made once per vertex buffer
+ * (the parts of a display share one).
+ */
+const POINTS = new WeakMap<Float32Array, { ids: Int32Array; byKey: Map<string, number> }>()
+const pointKey = (x: number, y: number, z: number) => `${Math.round(x * 1e4)},${Math.round(y * 1e4)},${Math.round(z * 1e4)}`
+function points(vertices: Float32Array) {
+  let known = POINTS.get(vertices)
+  if (!known) {
+    const byKey = new Map<string, number>()
+    const ids = new Int32Array(vertices.length / 3)
+    for (let i = 0; i < ids.length; i++) {
+      const k = pointKey(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2])
+      let n = byKey.get(k)
+      if (n === undefined) byKey.set(k, (n = byKey.size))
+      ids[i] = n
+    }
+    POINTS.set(vertices, (known = { ids, byKey }))
+  }
+  return known
+}
+/** A triangle side by its two points, either way round. */
+const sideKey = (a: number, b: number) => Math.min(a, b) * 2 ** 26 + Math.max(a, b)
+
+/**
+ * A part's triangle sides shared by two triangles (vertex, vertex, triangle, triangle): where one
+ * faces the eye and the other doesn't, the surface turns away there (an outline). Sides are matched
+ * by position, so an outline along a seam (a cylinder's, where its side meets itself) is found too.
+ * Only where the surface is smooth (the two within 60°): a sharp edge is drawn as an edge already.
  */
 export type Adjacency = { pairs: Uint32Array; normals: Float32Array; centres: Float32Array }
-const ADJACENCY = new WeakMap<Uint32Array, Adjacency>()
+const ADJACENCY = new WeakMap<Uint32Array, { vertices: Float32Array; adj: Adjacency }>()
 
 export function adjacency(vertices: Float32Array, index: Uint32Array): Adjacency {
   const known = ADJACENCY.get(index)
-  if (known) return known
+  if (known?.vertices === vertices) return known.adj
   const v = vertices
+  const { ids } = points(vertices)
   const n = index.length / 3
   const normals = new Float32Array(n * 3)
   const centres = new Float32Array(n * 3)
   const first = new Map<number, number>()
   const pairs: number[] = []
-  const stride = v.length / 3 + 1
   for (let t = 0; t < n; t++) {
     const a = index[t * 3] * 3
     const b = index[t * 3 + 1] * 3
@@ -77,18 +107,54 @@ export function adjacency(vertices: Float32Array, index: Uint32Array): Adjacency
     for (let k = 0; k < 3; k++) {
       const i = index[t * 3 + k]
       const j = index[t * 3 + ((k + 1) % 3)]
-      const key = i < j ? i * stride + j : j * stride + i
+      const key = sideKey(ids[i], ids[j])
       const other = first.get(key)
       if (other === undefined) first.set(key, t)
       else {
-        pairs.push(Math.min(i, j), Math.max(i, j), other, t)
         first.delete(key)
+        const ax = normals[other * 3], ay = normals[other * 3 + 1], az = normals[other * 3 + 2]
+        const bx = normals[t * 3], by = normals[t * 3 + 1], bz = normals[t * 3 + 2]
+        const dot = ax * bx + ay * by + az * bz
+        if (dot > 0.5 * Math.sqrt((ax * ax + ay * ay + az * az) * (bx * bx + by * by + bz * bz))) pairs.push(i, j, other, t)
       }
     }
   }
   const out = { pairs: Uint32Array.from(pairs), normals, centres }
-  ADJACENCY.set(index, out)
+  ADJACENCY.set(index, { vertices, adj: out })
   return out
+}
+
+/**
+ * The seams among a part's edges: edge segments with triangles on both sides all on one face. The
+ * mesh has them as edges (a cylinder's side closes there) but no drawing shows them.
+ * Returns a test on an edge segment's two ends (in the part's own coordinates).
+ */
+const SEAMS = new WeakMap<Uint32Array, { vertices: Float32Array; seam: (a: V3, b: V3) => boolean }>()
+export function seams(vertices: Float32Array, index: Uint32Array, faces: ArrayLike<number>): (a: V3, b: V3) => boolean {
+  const known = SEAMS.get(index)
+  if (known?.vertices === vertices) return known.seam
+  const { ids, byKey } = points(vertices)
+  // Per side: the face on it, or -2 once two different faces (a crease: a real edge) have been seen.
+  const sides = new Map<number, number>()
+  const count = new Map<number, number>()
+  for (let t = 0; t < index.length / 3; t++) {
+    const f = faces[t]
+    for (let k = 0; k < 3; k++) {
+      const key = sideKey(ids[index[t * 3 + k]], ids[index[t * 3 + ((k + 1) % 3)]])
+      const was = sides.get(key)
+      sides.set(key, was === undefined || was === f ? f : -2)
+      count.set(key, (count.get(key) ?? 0) + 1)
+    }
+  }
+  const seam = (a: V3, b: V3) => {
+    const ia = byKey.get(pointKey(a[0], a[1], a[2]))
+    const ib = byKey.get(pointKey(b[0], b[1], b[2]))
+    if (ia === undefined || ib === undefined) return false
+    const key = sideKey(ia, ib)
+    return (sides.get(key) ?? -2) >= 0 && (count.get(key) ?? 0) >= 2
+  }
+  SEAMS.set(index, { vertices, seam })
+  return seam
 }
 
 // ------------------------------------------------------------------ the view
@@ -179,60 +245,108 @@ export function depthPicture(parts: HlrPart[], v: HlrView, section: HlrOptions["
   const back = pn ? new Float32Array(W * H).fill(Infinity) : null
   const sx = new Float64Array(3), sy = new Float64Array(3), sz = new Float64Array(3)
   const ex = new Float64Array(3), ey = new Float64Array(3), ez = new Float64Array(3)
+  // Perspective: what's nearer than this to the eye is cut off (a triangle reaching past the eye is clipped, not dropped).
+  const near = 1e-3
+  /** A polygon in eye space cut to depth ≥ near (Sutherland–Hodgman against one plane). */
+  const clipNear = (px: number[], py: number[], pz: number[]) => {
+    const ox: number[] = [], oy: number[] = [], oz: number[] = []
+    for (let k = 0; k < px.length; k++) {
+      const j = (k + 1) % px.length
+      const dk = -pz[k] - near
+      const dj = -pz[j] - near
+      if (dk >= 0) {
+        ox.push(px[k])
+        oy.push(py[k])
+        oz.push(pz[k])
+      }
+      if (dk >= 0 !== dj >= 0) {
+        const s = dk / (dk - dj)
+        ox.push(px[k] + (px[j] - px[k]) * s)
+        oy.push(py[k] + (py[j] - py[k]) * s)
+        oz.push(pz[k] + (pz[j] - pz[k]) * s)
+      }
+    }
+    return [ox, oy, oz]
+  }
+  let bx0 = W, by0 = H, bx1 = -1, by1 = -1
+  /** Rasterise the triangle in ex, ey, ez (eye space) into the front or the back picture. */
+  const raster = () => {
+    for (let k = 0; k < 3; k++) {
+      const d = -ez[k]
+      const nx = p.ortho ? ex[k] / p.halfW : ex[k] / (d * p.tanHalfFov * p.aspect)
+      const ny = p.ortho ? ey[k] / p.halfH : ey[k] / (d * p.tanHalfFov)
+      sx[k] = ((nx + 1) / 2) * W
+      sy[k] = ((1 - ny) / 2) * H
+      sz[k] = d
+    }
+    // Facing the eye: the triangle's normal (eye space) against the way to the eye.
+    const ux = ex[1] - ex[0], uy = ey[1] - ey[0], uz = ez[1] - ez[0]
+    const wx = ex[2] - ex[0], wy = ey[2] - ey[0], wz = ez[2] - ez[0]
+    const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx
+    const facing = p.ortho ? nz > 0 : -(nx * ex[0] + ny * ey[0] + nz * ez[0]) > 0
+    if (!facing && !back) return
+    const into = facing ? front : back!
+    const area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0])
+    if (Math.abs(area) < 1e-12) return
+    const x0 = Math.max(0, Math.floor(Math.min(sx[0], sx[1], sx[2])))
+    const x1 = Math.min(W - 1, Math.ceil(Math.max(sx[0], sx[1], sx[2])))
+    const y0 = Math.max(0, Math.floor(Math.min(sy[0], sy[1], sy[2])))
+    const y1 = Math.min(H - 1, Math.ceil(Math.max(sy[0], sy[1], sy[2])))
+    if (x0 > x1 || y0 > y1) return
+    if (x0 < bx0) bx0 = x0
+    if (y0 < by0) by0 = y0
+    if (x1 > bx1) bx1 = x1
+    if (y1 > by1) by1 = y1
+    const inv = 1 / area
+    for (let y = y0; y <= y1; y++) {
+      const cy = y + 0.5
+      for (let x = x0; x <= x1; x++) {
+        const cx = x + 0.5
+        const w0 = ((sx[1] - cx) * (sy[2] - cy) - (sx[2] - cx) * (sy[1] - cy)) * inv
+        const w1 = ((sx[2] - cx) * (sy[0] - cy) - (sx[0] - cx) * (sy[2] - cy)) * inv
+        const w2 = 1 - w0 - w1
+        if (w0 < -1e-9 || w1 < -1e-9 || w2 < -1e-9) continue
+        const d = p.ortho ? w0 * sz[0] + w1 * sz[1] + w2 * sz[2] : 1 / (w0 / sz[0] + w1 / sz[1] + w2 / sz[2])
+        const o = y * W + x
+        if (d >= into[o]) continue
+        if (pn && !kept(ray(cx, cy), d)) continue
+        into[o] = d
+      }
+    }
+  }
   for (const part of parts) {
     const vert = part.vertices
     const idx = part.index
     const [ox, oy, oz] = part.offset ?? [0, 0, 0]
-    let bx0 = W, by0 = H, bx1 = -1, by1 = -1
+    bx0 = W
+    by0 = H
+    bx1 = -1
+    by1 = -1
     for (let t = 0; t < idx.length; t += 3) {
-      let behind = false
+      let behind = 0
       for (let k = 0; k < 3; k++) {
         const i = idx[t + k] * 3
         const x = vert[i] + ox, y = vert[i + 1] + oy, z = vert[i + 2] + oz
         ex[k] = m[0] * x + m[4] * y + m[8] * z + m[12]
         ey[k] = m[1] * x + m[5] * y + m[9] * z + m[13]
         ez[k] = m[2] * x + m[6] * y + m[10] * z + m[14]
-        const d = -ez[k]
-        if (!p.ortho && d <= 1e-6) behind = true
-        const nx = p.ortho ? ex[k] / p.halfW : ex[k] / (d * p.tanHalfFov * p.aspect)
-        const ny = p.ortho ? ey[k] / p.halfH : ey[k] / (d * p.tanHalfFov)
-        sx[k] = ((nx + 1) / 2) * W
-        sy[k] = ((1 - ny) / 2) * H
-        sz[k] = d
+        if (!p.ortho && -ez[k] < near) behind++
       }
-      if (behind) continue
-      // Facing the eye: the triangle's normal (eye space) against the way to the eye.
-      const ux = ex[1] - ex[0], uy = ey[1] - ey[0], uz = ez[1] - ez[0]
-      const wx = ex[2] - ex[0], wy = ey[2] - ey[0], wz = ez[2] - ez[0]
-      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx
-      const facing = p.ortho ? nz > 0 : -(nx * ex[0] + ny * ey[0] + nz * ez[0]) > 0
-      if (!facing && !back) continue
-      const into = facing ? front : back!
-      const area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0])
-      if (Math.abs(area) < 1e-12) continue
-      const x0 = Math.max(0, Math.floor(Math.min(sx[0], sx[1], sx[2])))
-      const x1 = Math.min(W - 1, Math.ceil(Math.max(sx[0], sx[1], sx[2])))
-      const y0 = Math.max(0, Math.floor(Math.min(sy[0], sy[1], sy[2])))
-      const y1 = Math.min(H - 1, Math.ceil(Math.max(sy[0], sy[1], sy[2])))
-      if (x0 > x1 || y0 > y1) continue
-      if (x0 < bx0) bx0 = x0
-      if (y0 < by0) by0 = y0
-      if (x1 > bx1) bx1 = x1
-      if (y1 > by1) by1 = y1
-      const inv = 1 / area
-      for (let y = y0; y <= y1; y++) {
-        const cy = y + 0.5
-        for (let x = x0; x <= x1; x++) {
-          const cx = x + 0.5
-          const w0 = ((sx[1] - cx) * (sy[2] - cy) - (sx[2] - cx) * (sy[1] - cy)) * inv
-          const w1 = ((sx[2] - cx) * (sy[0] - cy) - (sx[0] - cx) * (sy[2] - cy)) * inv
-          const w2 = 1 - w0 - w1
-          if (w0 < -1e-9 || w1 < -1e-9 || w2 < -1e-9) continue
-          const d = p.ortho ? w0 * sz[0] + w1 * sz[1] + w2 * sz[2] : 1 / (w0 / sz[0] + w1 / sz[1] + w2 / sz[2])
-          const o = y * W + x
-          if (d >= into[o]) continue
-          if (pn && !kept(ray(cx, cy), d)) continue
-          into[o] = d
+      if (!behind) raster()
+      else if (behind < 3) {
+        // Partly behind the eye: what's in front of it, as one or two triangles.
+        const [cx, cy, cz] = clipNear([ex[0], ex[1], ex[2]], [ey[0], ey[1], ey[2]], [ez[0], ez[1], ez[2]])
+        for (let k = 1; k + 1 < cx.length; k++) {
+          ex[0] = cx[0]
+          ey[0] = cy[0]
+          ez[0] = cz[0]
+          ex[1] = cx[k]
+          ey[1] = cy[k]
+          ez[1] = cz[k]
+          ex[2] = cx[k + 1]
+          ey[2] = cy[k + 1]
+          ez[2] = cz[k + 1]
+          raster()
         }
       }
     }
@@ -310,12 +424,17 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
   const H = v.height
   const proj = projector(v)
   const { eye, forward } = eyeOf(v.view)
+  // Perspective: the plane just in front of the eye (world); lines nearer than it are cut off.
+  const nearPlane = { normal: forward, constant: -(forward[0] * eye[0] + forward[1] * eye[1] + forward[2] * eye[2]) - 1e-3 }
   // A little room for a line lying on its own faces: what a pixel spans at that depth, and a trace of the model's size.
   let lo = Infinity
   let hi = -Infinity
   for (const part of parts) {
     const [ox, oy, oz] = part.offset ?? [0, 0, 0]
-    for (let i = 0; i < part.vertices.length; i += 3) {
+    // Its own triangles' corners (the vertex buffer may be every part's); a few hundred are plenty.
+    const step = Math.max(1, Math.floor(part.index.length / 600))
+    for (let t = 0; t < part.index.length; t += step) {
+      const i = part.index[t] * 3
       const s = part.vertices[i] + ox + part.vertices[i + 1] + oy + part.vertices[i + 2] + oz
       if (s < lo) lo = s
       if (s > hi) hi = s
@@ -346,7 +465,8 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
   const visible: HlrLine[] = []
   const hidden: HlrLine[] = []
   const trace = (a0: V3, b0: V3, part: number) => {
-    const clipped = clipSegment(a0, b0, section)
+    let clipped = clipSegment(a0, b0, section)
+    if (clipped && !v.projection.ortho) clipped = clipSegment(clipped[0], clipped[1], nearPlane)
     if (!clipped) return
     const [a, b] = clipped
     const pa = proj.at(a[0], a[1], a[2])
@@ -390,9 +510,13 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
   for (const part of parts) {
     const v3 = part.vertices
     const [ox, oy, oz] = part.offset ?? [0, 0, 0]
-    // The solid's edges.
+    // The solid's edges, but not its seams.
     const e = part.edges
-    for (let i = 0; i + 5 < e.length; i += 6) trace([e[i] + ox, e[i + 1] + oy, e[i + 2] + oz], [e[i + 3] + ox, e[i + 4] + oy, e[i + 5] + oz], part.id)
+    const seam = part.faces ? seams(v3, part.index, part.faces) : null
+    for (let i = 0; i + 5 < e.length; i += 6) {
+      if (seam?.([e[i], e[i + 1], e[i + 2]], [e[i + 3], e[i + 4], e[i + 5]])) continue
+      trace([e[i] + ox, e[i + 1] + oy, e[i + 2] + oz], [e[i + 3] + ox, e[i + 4] + oy, e[i + 5] + oz], part.id)
+    }
     // Outlines: where a curved face turns away from the eye.
     const adj = adjacency(v3, part.index)
     const facing = (t: number) => {
@@ -423,7 +547,9 @@ export function hiddenLines(parts: HlrPart[], v: HlrView, opts: HlrOptions = {})
   // land on lines already drawn: once is enough, and a hidden line under a visible one isn't hidden.
   const kept = new Repeats(W, H)
   const once = visible.sort((p, q) => len(q) - len(p)).filter((l) => kept.add(l))
-  return { visible: once, hidden: hidden.filter((l) => !kept.covers(l)), cut }
+  const under = new Repeats(W, H)
+  const hiddenOnce = hidden.sort((p, q) => len(q) - len(p)).filter((l) => !kept.covers(l) && under.add(l))
+  return { visible: once, hidden: hiddenOnce, cut }
 }
 
 const len = (l: HlrLine) => Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1])
