@@ -27,7 +27,8 @@ createRoot(document.getElementById("root")!).render(
     <LucideProvider strokeWidth={1.75}>
       <TooltipProvider>
         <DesktopApp />
-        <Toaster />
+        {/* Below the 48px title bar (its buttons sit top right); sonner resets any side left out to 24px. */}
+        <Toaster offset={{ top: 56, right: 16 }} />
       </TooltipProvider>
     </LucideProvider>
   </StrictMode>,

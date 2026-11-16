@@ -1,8 +1,10 @@
 import * as React from "react"
 import type { UIMessage } from "ai"
 import { Button } from "@/components/ui/button"
+import { Callout } from "@/components/ui/callout"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog"
 import { Field, FieldGroup } from "@/components/ui/field"
 import { Input, Textarea } from "@/components/ui/input"
@@ -61,14 +63,6 @@ export function ShareDialog({ open, onOpenChange, tree, messages }: { open: bool
   }
 
   const url = made ? shareUrl(made.id) : ""
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url)
-      notify.success("已复制链接")
-    } catch {
-      notify("没能复制，请手动选中链接复制")
-    }
-  }
 
   return (
     <>
@@ -79,9 +73,7 @@ export function ShareDialog({ open, onOpenChange, tree, messages }: { open: bool
             <DialogBody>
               <div className="flex gap-2">
                 <Input readOnly value={url} aria-label="分享链接" className="font-mono" onFocus={(e) => e.currentTarget.select()} />
-                <Button variant="primary" onClick={() => void copy()}>
-                  复制链接
-                </Button>
+                <CopyButton value={url} label="复制链接" variant="primary" size="md" />
               </div>
               <p className="mt-3 text-small text-muted-foreground">一年里没人打开过的链接会自动删除。之后再改模型，链接里的不会跟着变。</p>
               <Button variant="link" size="sm" className="mt-4 text-destructive" onClick={() => setConfirmDelete(true)}>
@@ -108,9 +100,9 @@ export function ShareDialog({ open, onOpenChange, tree, messages }: { open: bool
                 </label>
               </FieldGroup>
               {error && (
-                <p role="alert" className="mt-4 rounded-md bg-destructive-subtle px-3 py-2 text-small text-destructive">
+                <Callout tone="danger" className="mt-4">
                   {error}
-                </p>
+                </Callout>
               )}
             </DialogBody>
           )}

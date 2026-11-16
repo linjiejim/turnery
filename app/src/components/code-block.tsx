@@ -1,7 +1,6 @@
 import * as React from "react"
-import { Check, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { IconButton } from "@/components/ui/button"
+import { CopyButton } from "@/components/ui/copy-button"
 
 /**
  * A read-only Python snippet with light highlighting (keywords, strings,
@@ -42,21 +41,14 @@ function highlight(line: string) {
 }
 
 export function CodeBlock({ code, className }: { code: string; className?: string }) {
-  const [copied, setCopied] = React.useState(false)
   return (
     <div className={cn("group relative rounded-lg border bg-sunken", className)}>
-      <IconButton
-        label={copied ? "已复制" : "复制代码"}
-        size="icon-sm"
+      <CopyButton
+        value={code}
+        label="复制代码"
+        iconOnly
         className="absolute right-1.5 top-1.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={() => {
-          navigator.clipboard?.writeText(code)
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
-        }}
-      >
-        {copied ? <Check /> : <Copy />}
-      </IconButton>
+      />
       <pre className="overflow-x-auto px-3 py-2.5 font-mono text-caption leading-5 text-foreground">
         {code.split("\n").map((l, i) => (
           <div key={i}>{l ? highlight(l) : " "}</div>
