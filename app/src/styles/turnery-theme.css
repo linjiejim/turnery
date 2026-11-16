@@ -21,6 +21,9 @@
   --scene-metal: #b9b9b9;
   --scene-edge: #2b2b2b;
   --scene-edge-soft: #8f8f8f;
+  /* 线描: faces in paper, edges and outlines in ink (on either theme, ink stands out from paper). */
+  --scene-paper: #ffffff;
+  --scene-ink: #1f1f1f;
   --scene-ghost: #9a9a9a;
   --scene-plane: #8a8a8a;
   --scene-hover: #78c9d8;
@@ -58,6 +61,8 @@
   --scene-metal: #9c9c9c;
   --scene-edge: #101010;
   --scene-edge-soft: #5c5c5c;
+  --scene-paper: #1c1c1c;
+  --scene-ink: #e4e4e4;
   --scene-ghost: #8c8c8c;
   --scene-plane: #9c9c9c;
   --scene-defined: #f0f0f0;

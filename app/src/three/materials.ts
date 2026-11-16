@@ -7,6 +7,55 @@ import { hexOf, luminance, type Look } from "@/studio/appearance"
 export type LookMaterials = { surface: THREE.Material; edge: THREE.LineBasicMaterial }
 
 /**
+ * How the model is drawn: shaded with its edges (`shaded`); as a line drawing, faces in paper and
+ * edges and outlines in ink, hidden lines removed (`lines`); or see-through, every edge showing (`xray`).
+ */
+export type ViewStyle = "shaded" | "lines" | "xray"
+
+/** The paint roles a face can have beside resting (selected, pointed at, a step's new or changed faces). */
+type Role = "highlight" | "hovered" | "added" | "modified"
+
+/**
+ * 线描 faces: paper, inked where a curved face turns away from the eye. Those outlines are not edges
+ * of the solid (a cylinder's sides, a sphere's rim), so they are found here, where the facing (normal ·
+ * view) crosses zero: a band about `uWidth` device pixels wide, whatever the distance or the zoom. A flat
+ * face never crosses it, so it is never inked. Faces seen from behind are the cut of a section.
+ */
+const LINE_VERTEX = /* glsl */ `
+#include <common>
+#include <clipping_planes_pars_vertex>
+varying vec3 vNormalV;
+varying vec3 vViewPosition;
+void main() {
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  vNormalV = normalize(normalMatrix * normal);
+  vViewPosition = -mvPosition.xyz;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <clipping_planes_vertex>
+}`
+const LINE_FRAGMENT = /* glsl */ `
+#include <common>
+#include <clipping_planes_pars_fragment>
+uniform vec3 uFill;
+uniform vec3 uInk;
+uniform vec3 uCut;
+uniform float uWidth;
+varying vec3 vNormalV;
+varying vec3 vViewPosition;
+void main() {
+  #include <clipping_planes_fragment>
+  if (!gl_FrontFacing) {
+    gl_FragColor = vec4(uCut, 1.0);
+  } else {
+    vec3 toEye = isOrthographic ? vec3(0.0, 0.0, 1.0) : normalize(vViewPosition);
+    float facing = dot(normalize(vNormalV), toEye);
+    float px = abs(facing) / max(fwidth(facing), 1e-6);
+    gl_FragColor = vec4(mix(uFill, uInk, 1.0 - smoothstep(uWidth - 0.5, uWidth + 0.5, px)), 1.0);
+  }
+  #include <colorspace_fragment>
+}`
+
+/**
  * Every material the viewport uses, coloured from the scene tokens.
  * One kit per viewer; `applyTokens` recolours in place on theme change.
  *
@@ -61,6 +110,16 @@ export class MaterialKit {
   readonly gridMinor = new THREE.LineBasicMaterial({ transparent: true, opacity: 1, depthWrite: false })
   readonly gridMajor = new THREE.LineBasicMaterial({ transparent: true, opacity: 1, depthWrite: false })
 
+  // 线描: paper faces (tinted when selected, pointed at or changed) and ink lines.
+  readonly line = this.lineSurface()
+  private lineRoles: Record<Role, THREE.ShaderMaterial> = { highlight: this.lineSurface(), hovered: this.lineSurface(), added: this.lineSurface(), modified: this.lineSurface() }
+  readonly ink = new THREE.LineBasicMaterial()
+  // 半透明: faces seen through, in a neutral grey or the part's own colour, every edge showing.
+  readonly xray = this.xraySurface()
+  private xrayRoles: Record<Role, THREE.MeshStandardMaterial> = { highlight: this.xraySurface(0.3), hovered: this.xraySurface(0.3), added: this.xraySurface(0.3), modified: this.xraySurface(0.3) }
+  /** See-through versions of parts' own colours, made on first use. */
+  private xrayLooks = new Map<THREE.Material, THREE.MeshStandardMaterial>()
+
   readonly sketch = new LineMaterial({ linewidth: 2.2, worldUnits: false })
   readonly sketchThin = new LineMaterial({ linewidth: 1.2, worldUnits: false })
   readonly sketchDefined = new LineMaterial({ linewidth: 2.2, worldUnits: false })
@@ -81,6 +140,54 @@ export class MaterialKit {
     const m = new THREE.MeshStandardMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, ...p })
     this.withCutFaces(m)
     return m
+  }
+
+  private lineSurface() {
+    return new THREE.ShaderMaterial({
+      uniforms: { uFill: { value: new THREE.Color() }, uInk: { value: new THREE.Color() }, uCut: { value: new THREE.Color() }, uWidth: { value: 1.6 } },
+      vertexShader: LINE_VERTEX,
+      fragmentShader: LINE_FRAGMENT,
+      clipping: true,
+      // Flat colours as the tokens give them: tone mapping would grey the paper.
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    })
+  }
+
+  /** Depth isn't written: faces behind show through those in front, and every edge shows. One colour blends the same in any order. */
+  private xraySurface(opacity = 0.2) {
+    const m = new THREE.MeshStandardMaterial({ transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, roughness: 0.7, metalness: 0 })
+    // Both sides always, section or not (as a clear part).
+    m.userData.clear = true
+    return m
+  }
+
+  /** What a face drawn with `m` when shaded is drawn with in `style`. A see-through context part stays as it is. */
+  styled(m: THREE.Material, style: ViewStyle): THREE.Material {
+    if (style === "shaded" || m === this.ghost) return m
+    const role: Role | null = m === this.highlight ? "highlight" : m === this.hovered ? "hovered" : m === this.added ? "added" : m === this.modified ? "modified" : null
+    // A clear part stays see-through on a line drawing, as it is (and cut by a section like it): what's inside it still shows.
+    if (style === "lines") return role ? this.lineRoles[role] : m === this.glass || m.userData.clear ? m : this.line
+    if (role) return this.xrayRoles[role]
+    // A colour of the part's own: see-through in that colour. The theme's greys: the neutral one.
+    if ([...this.looks.values()].some((l) => l.surface === m) && (m as THREE.MeshStandardMaterial).color) {
+      let x = this.xrayLooks.get(m)
+      if (!x) {
+        x = this.xraySurface(0.24)
+        x.color.copy((m as THREE.MeshStandardMaterial).color)
+        this.clip([x])
+        this.xrayLooks.set(m, x)
+      }
+      return x
+    }
+    return this.xray
+  }
+
+  /** What an edge drawn with `m` when shaded is drawn with in `style`: ink on a line drawing. */
+  styledEdge(m: THREE.Material, style: ViewStyle): THREE.Material {
+    return style === "lines" && m !== this.edgeGhost ? this.ink : m
   }
 
   /** With a section plane active, back faces seen through the cut are painted flat: the solid looks filled. */
@@ -124,6 +231,25 @@ export class MaterialKit {
     this.dimension.color.copy(t.defined)
     this.path.color.copy(t.sketch)
     for (const m of [this.model, this.modelDark, this.metal, this.hovered, this.added, this.highlight, this.modified]) (m.userData.uCut as { value: THREE.Color }).value.copy(t.cut)
+    // 线描: paper, a light wash of the role's colour on it, ink; the cut a shade of ink on paper.
+    const wash: [THREE.ShaderMaterial, THREE.Color, number][] = [
+      [this.line, t.paper, 0],
+      [this.lineRoles.highlight, t.highlight, 0.28],
+      [this.lineRoles.hovered, t.hover, 0.4],
+      [this.lineRoles.added, t.good, 0.3],
+      [this.lineRoles.modified, t.modified, 0.3],
+    ]
+    for (const [m, c, k] of wash) {
+      m.uniforms.uFill.value.copy(t.paper).lerp(c, k)
+      m.uniforms.uInk.value.copy(t.ink)
+      m.uniforms.uCut.value.copy(t.paper).lerp(t.ink, 0.18)
+    }
+    this.ink.color.copy(t.ink)
+    this.xray.color.copy(t.edgeSoft)
+    this.xrayRoles.highlight.color.copy(t.highlight)
+    this.xrayRoles.hovered.color.copy(t.hover)
+    this.xrayRoles.added.color.copy(t.good)
+    this.xrayRoles.modified.color.copy(t.modified)
   }
 
   setResolution(w: number, h: number) {
@@ -181,11 +307,21 @@ export class MaterialKit {
     return [...this.looks.values()].flatMap((m) => [m.surface, m.edge])
   }
 
+  /** The other styles' materials (线描, 半透明): clipped by a section like the shaded ones. */
+  private styleMaterials(): THREE.Material[] {
+    return [this.line, ...Object.values(this.lineRoles), this.ink, this.xray, ...Object.values(this.xrayRoles), ...this.xrayLooks.values()]
+  }
+
+  /** A solid face's material: it shows its inside (the cut) only while a section is on. */
+  private cutSided(m: THREE.Material) {
+    return (m instanceof THREE.MeshStandardMaterial && !m.userData.clear) || m instanceof THREE.ShaderMaterial
+  }
+
   /** Clipping for these materials as for the rest (a section may be on when they're made). */
   private clip(list: THREE.Material[]) {
     for (const m of list) {
       m.clippingPlanes = this.sectionOn ? this.clipping : null
-      if (m instanceof THREE.MeshStandardMaterial && !m.userData.clear) m.side = this.sectionOn ? THREE.DoubleSide : THREE.FrontSide
+      if (this.cutSided(m)) m.side = this.sectionOn ? THREE.DoubleSide : THREE.FrontSide
       m.needsUpdate = true
     }
   }
@@ -195,9 +331,9 @@ export class MaterialKit {
     this.clipping.length = 0
     if (plane) this.clipping.push(plane)
     const on = !!plane
-    for (const m of [this.model, this.modelDark, this.metal, this.hovered, this.added, this.highlight, this.modified, this.glass, this.edge, this.edgeSoft, this.edgeHighlight, ...this.lookMaterials()]) {
+    for (const m of [this.model, this.modelDark, this.metal, this.hovered, this.added, this.highlight, this.modified, this.glass, this.edge, this.edgeSoft, this.edgeHighlight, ...this.lookMaterials(), ...this.styleMaterials()]) {
       m.clippingPlanes = on ? this.clipping : null
-      if (m instanceof THREE.MeshStandardMaterial && !m.userData.clear) m.side = on ? THREE.DoubleSide : THREE.FrontSide
+      if (this.cutSided(m)) m.side = on ? THREE.DoubleSide : THREE.FrontSide
       m.needsUpdate = this.sectionOn !== on
     }
     this.sectionOn = on
@@ -205,7 +341,8 @@ export class MaterialKit {
 
   dispose() {
     for (const v of Object.values(this)) if (v instanceof THREE.Material) v.dispose()
-    for (const m of this.lookMaterials()) m.dispose()
+    for (const m of [...this.lookMaterials(), ...this.styleMaterials()]) m.dispose()
     this.looks.clear()
+    this.xrayLooks.clear()
   }
 }

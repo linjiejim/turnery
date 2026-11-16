@@ -1,7 +1,7 @@
 import * as THREE from "three"
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
-import type { MaterialKit } from "@/three/materials"
+import type { MaterialKit, ViewStyle } from "@/three/materials"
 import { isSet } from "./appearance"
 import type { DisplayData } from "./kernel/build"
 
@@ -139,17 +139,18 @@ function paintMesh(mesh: THREE.Mesh, brush: Brush) {
   if (count) geo.addGroup(start, count, material)
 }
 
-/** Parts are shown each on its own (pulled apart, some hidden or alone): what belongs to the whole body steps aside. */
-const apart = (d: DisplayData, view: PartsView) => !!d.parts && (view.explode > 0 || view.hidden.size > 0 || !!view.focus || d.parts.some((p) => p.hidden))
+/** Parts are shown each on its own (pulled apart, moved, some hidden or alone): what belongs to the whole body steps aside. */
+const apart = (d: DisplayData, view: PartsView) => !!d.parts && (view.explode > 0 || hasMoves(view, d) || view.hidden.size > 0 || !!view.focus || d.parts.some((p) => p.hidden))
 
 /**
  * The live model as three.js objects: its faces (painted by this step's new / modified status, or by
  * provenance when a feature is highlighted), its edges, and the sketch outline if any. At rest each
  * part shows its own colour and finish (`looks`; off: a white model). A body in parts is one mesh and
  * one set of edges per part, all of them always there: hiding, isolating and pulling apart only show,
- * hide and move them (`applyView`), without building anything again.
+ * hide and move them (`applyView`), without building anything again. Drawn in `style` (`applyStyle`
+ * changes it, again without building anything).
  */
-export function modelObject(d: DisplayData, kit: MaterialKit, paint: Paint, view: PartsView = NO_PARTS_VIEW, looks = true): THREE.Group {
+export function modelObject(d: DisplayData, kit: MaterialKit, paint: Paint, view: PartsView = NO_PARTS_VIEW, looks = true, style: ViewStyle = "shaded"): THREE.Group {
   const root = new THREE.Group()
   root.name = "studio-model"
   const materials: THREE.Material[] = [kit.model, kit.highlight, kit.modified, kit.ghost, kit.modelDark, kit.hovered, kit.added]
@@ -210,7 +211,9 @@ export function modelObject(d: DisplayData, kit: MaterialKit, paint: Paint, view
     if (d.edges?.length) {
       const eg = new THREE.BufferGeometry()
       eg.setAttribute("position", new THREE.BufferAttribute(d.edges, 3))
-      root.add(new THREE.LineSegments(eg, edgeOf(undefined)))
+      const lines = new THREE.LineSegments(eg, edgeOf(undefined))
+      lines.userData.rest = lines.material
+      root.add(lines)
     }
   }
   if (d.threads?.length) {
@@ -245,33 +248,59 @@ export function modelObject(d: DisplayData, kit: MaterialKit, paint: Paint, view
     root.add(lines)
   }
   addRefs(root, d, kit)
-  applyView(root, d, view, kit)
+  root.userData.style = style
+  if (root.userData.parts) applyView(root, d, view, kit)
+  else applyStyle(root, d, view, kit, style)
   return root
 }
 
 /**
- * Show a model the way `view` says: each part visible or not, where it is when pulled apart, and
- * see-through when others are kept solid. Cheap enough for every step of the explode slider.
+ * Show a model the way `view` says: each part visible or not, where it is when pulled apart or moved,
+ * and see-through when others are kept solid. Cheap enough for every step of the explode slider.
  */
 export function applyView(root: THREE.Object3D, d: DisplayData, view: PartsView, kit: MaterialKit) {
   if (!root.userData.parts || !d.parts) return
+  const style = (root.userData.style as ViewStyle | undefined) ?? "shaded"
   const split = apart(d, view)
   const solid = view.focus?.mode === "ghost" ? new Set(view.focus.parts) : null
   for (const o of root.children) {
     const k = o.userData.part as number | undefined
     if (k === undefined) {
       if (o.userData.whole) o.visible = !split
+      // Faces no part claims: drawn in place, in the style all the same.
+      else if ((o as THREE.Mesh).isMesh && o.userData.materials) (o as THREE.Mesh).material = surfacesOf(o as THREE.Mesh, kit, style)
       continue
     }
     const part = d.parts[k]
     o.visible = partVisible(d, view, k)
-    o.position.set(part.explode[0] * view.explode, part.explode[1] * view.explode, part.explode[2] * view.explode)
+    o.position.set(...partOffset(d, view, k))
     const ghost = !!solid && !solid.has(part.name)
     if ((o as THREE.Mesh).isMesh) {
-      ;(o as THREE.Mesh).material = ghost ? kit.ghost : (o.userData.materials as THREE.Material[])
+      ;(o as THREE.Mesh).material = ghost ? kit.ghost : surfacesOf(o as THREE.Mesh, kit, style)
       o.userData.contextGhost = ghost
-    } else (o as THREE.LineSegments).material = ghost ? kit.edgeGhost : (o.userData.rest as THREE.Material)
+    } else (o as THREE.LineSegments).material = ghost ? kit.edgeGhost : edgeIn(o, kit, style)
   }
+}
+
+/** Draw a model built by `modelObject` in another style (shaded, line drawing, see-through), without building it again. */
+export function applyStyle(root: THREE.Object3D, d: DisplayData, view: PartsView, kit: MaterialKit, style: ViewStyle) {
+  root.userData.style = style
+  if (root.userData.parts) return applyView(root, d, view, kit)
+  for (const o of root.children) {
+    if ((o as THREE.Mesh).isMesh && o.userData.materials) (o as THREE.Mesh).material = surfacesOf(o as THREE.Mesh, kit, style)
+    else if ((o as THREE.LineSegments).isLineSegments && o.userData.rest) (o as THREE.LineSegments).material = edgeIn(o, kit, style)
+  }
+}
+
+/** An edge's material in `style` (its own when shaded). */
+const edgeIn = (o: THREE.Object3D, kit: MaterialKit, style: ViewStyle) => (style === "shaded" ? (o.userData.rest as THREE.Material) : kit.styledEdge(o.userData.rest as THREE.Material, style))
+
+/** A mesh's materials in `style`, index for index (its faces keep their paint), made once per mesh and style. */
+function surfacesOf(mesh: THREE.Mesh, kit: MaterialKit, style: ViewStyle): THREE.Material[] {
+  const shaded = mesh.userData.materials as THREE.Material[]
+  if (style === "shaded") return shaded
+  const made = (mesh.userData.styled ??= {}) as Partial<Record<ViewStyle, THREE.Material[]>>
+  return (made[style] ??= shaded.map((m) => kit.styled(m, style)))
 }
 
 /** Reference bodies (`import`, desktop app): see-through, faint edges, not pickable, never painted. */
@@ -303,18 +332,53 @@ function materialIndex(g: Group, paint: Brush, rest = 0) {
   return g.status === "new" ? 6 : g.status === "modified" ? 2 : rest
 }
 
-/** How a split body is shown: parts pulled apart (0–1 of their explode vectors) and hidden ones. */
-export type PartsView = { explode: number; hidden: Set<number>; focus?: { parts: string[]; mode: "isolate" | "ghost" } }
+type V3 = [number, number, number]
+
+/**
+ * How a split body or an assembly is shown: parts pulled apart (0–1 of their explode vectors), parts
+ * moved by hand to look at them (by name, in mm: only the view, the file keeps where they are), hidden
+ * ones, and isolated or kept-solid ones.
+ */
+export type PartsView = { explode: number; hidden: Set<number>; focus?: { parts: string[]; mode: "isolate" | "ghost" }; moved?: Record<string, V3> }
 export const NO_PARTS_VIEW: PartsView = { explode: 0, hidden: new Set() }
+
+/** Any part moved by hand (and not back where it was); with `d`, only parts the model has count. */
+export const hasMoves = (view: PartsView, d?: DisplayData) =>
+  !!view.moved && Object.entries(view.moved).some(([name, m]) => m.some((v) => v !== 0) && (!d?.parts || d.parts.some((p) => p.name === name)))
+
+/** The view with these parts (by name; none given: every part) back where they were. */
+export function withoutMoves(view: PartsView, names?: string[]): PartsView {
+  if (!view.moved) return view
+  if (!names) return { ...view, moved: undefined }
+  const moved = Object.fromEntries(Object.entries(view.moved).filter(([name]) => !names.includes(name)))
+  return { ...view, moved: Object.keys(moved).length ? moved : undefined }
+}
 
 /** Visibility and translations are shared by rendering, picking and annotation pins. */
 export function partVisible(d: DisplayData, view: PartsView, index: number) {
   const part = d.parts?.[index]
   return !!part && !part.hidden && !view.hidden.has(index) && (view.focus?.mode !== "isolate" || view.focus.parts.includes(part.name))
 }
-export function partOffset(d: DisplayData, view: PartsView, index?: number): [number, number, number] {
+/** Where a part is shown, from where it is in the file: its share of the explode, and where it was moved to by hand. */
+export function partOffset(d: DisplayData, view: PartsView, index?: number): V3 {
   const part = index === undefined ? undefined : d.parts?.[index]
-  return part ? part.explode.map((v) => v * view.explode) as [number, number, number] : [0, 0, 0]
+  if (!part) return [0, 0, 0]
+  const moved = view.moved?.[part.name]
+  return [0, 1, 2].map((k) => part.explode[k] * view.explode + (moved?.[k] ?? 0)) as V3
+}
+
+/** The box round some parts (by index) as shown, from each part's own box: cheap enough for every step of a drag. */
+export function partsBox(d: DisplayData, view: PartsView, indices: number[]): THREE.Box3 | null {
+  const boxes = sortedOf(d)?.parts
+  if (!boxes) return null
+  const out = new THREE.Box3()
+  for (const k of indices) {
+    const b = boxes[k]?.box
+    if (!b || b.isEmpty()) continue
+    const off = new THREE.Vector3(...partOffset(d, view, k))
+    out.union(b.clone().translate(off))
+  }
+  return out.isEmpty() ? null : out
 }
 
 /** Re-paint an existing model object without rebuilding geometry. */

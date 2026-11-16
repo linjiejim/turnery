@@ -14,6 +14,8 @@ const NAMES = {
   metal: "--scene-metal",
   edge: "--scene-edge",
   edgeSoft: "--scene-edge-soft",
+  paper: "--scene-paper",
+  ink: "--scene-ink",
   ghost: "--scene-ghost",
   plane: "--scene-plane",
   hover: "--scene-hover",

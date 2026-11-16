@@ -26,6 +26,15 @@ export const VIEW_DIRS: Record<ViewName, THREE.Vector3> = {
   bottom: new THREE.Vector3(0, -1e-4, -1).normalize(),
 }
 
+/** How the picture is projected: with depth (things further away look smaller), or orthographic (as on a drawing). */
+export type Projection = "perspective" | "orthographic"
+
+/**
+ * How far behind the orbit camera its orthographic twin stands: everything the picture shows is in
+ * front of it, so everything shown can be picked (a pick's ray starts in the camera's own plane).
+ */
+const ORTHO_BACK = 10000
+
 export type ViewerOptions = {
   grid?: boolean
   /** Half extent of the ground grid, mm. */
@@ -43,6 +52,11 @@ export class Viewer {
   readonly renderer: THREE.WebGLRenderer
   readonly labels: CSS2DRenderer
   readonly scene = new THREE.Scene()
+  /**
+   * The orbit camera: the controls, flying to a view and framing all move this one. With the
+   * orthographic projection on, its twin (`eye`) draws from the same place and direction, things at
+   * the orbit target as big as this one shows them; zooming is still this camera moving in.
+   */
   readonly camera: THREE.PerspectiveCamera
   readonly controls: OrbitControls
   /** Models and their annotations. */
@@ -69,6 +83,10 @@ export class Viewer {
   private pmrem: THREE.PMREMGenerator
   private envRT: THREE.WebGLRenderTarget
   private raycaster = new THREE.Raycaster()
+  private ortho = new THREE.OrthographicCamera()
+  private projectionMode: Projection = "perspective"
+  /** The twin needs placing again (the camera moved, the view was resized). */
+  private orthoStale = true
   size = { w: 1, h: 1 }
 
   constructor(container: HTMLElement, opts: ViewerOptions = {}) {
@@ -144,6 +162,7 @@ export class Viewer {
 
   invalidate() {
     this.dirty = true
+    this.orthoStale = true
   }
 
   /** Called every frame while mounted; return true to keep frames coming (an animation is running). */
@@ -187,8 +206,10 @@ export class Viewer {
   }
 
   renderNow() {
-    this.renderer.render(this.scene, this.camera)
-    this.labels.render(this.scene, this.camera)
+    this.orthoStale = true
+    const eye = this.eye
+    this.renderer.render(this.scene, eye)
+    this.labels.render(this.scene, eye)
     for (const cb of this.cameraListeners) cb()
     for (const cb of this.renderedListeners) cb()
   }
@@ -203,7 +224,64 @@ export class Viewer {
     this.camera.updateProjectionMatrix()
     this.kit.setResolution(w, h)
     this.dirty = true
+    this.orthoStale = true
     if (this.visible) this.renderNow()
+  }
+
+  // ---------------------------------------------------------------- projection
+
+  get projection(): Projection {
+    return this.projectionMode
+  }
+
+  setProjection(p: Projection) {
+    if (p === this.projectionMode) return
+    this.projectionMode = p
+    this.invalidate()
+  }
+
+  /** The camera the picture is drawn with: picking and projecting go through it too. */
+  get eye(): THREE.PerspectiveCamera | THREE.OrthographicCamera {
+    if (this.projectionMode === "perspective") return this.camera
+    if (this.orthoStale) this.placeOrtho()
+    return this.ortho
+  }
+
+  /** The orthographic twin: the orbit camera's direction, as big at the target, stood back so nothing is behind it. */
+  private placeOrtho() {
+    const cam = this.camera
+    const o = this.ortho
+    const half = cam.position.distanceTo(this.controls.target) * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))
+    o.quaternion.copy(cam.quaternion)
+    o.position.copy(cam.position).addScaledVector(this.forward(), -ORTHO_BACK)
+    o.top = half
+    o.bottom = -half
+    o.right = half * cam.aspect
+    o.left = -o.right
+    o.near = 1
+    o.far = ORTHO_BACK + cam.far
+    o.updateProjectionMatrix()
+    o.updateMatrixWorld()
+    this.orthoStale = false
+  }
+
+  /** The way the camera looks, as a unit vector. */
+  forward(out = new THREE.Vector3()) {
+    return out.set(0, 0, -1).applyQuaternion(this.camera.quaternion)
+  }
+
+  /** How far along the line of sight `p` is, measured as a pick measures its hits (`Intersection.distance`). */
+  depthOf(p: THREE.Vector3) {
+    const eye = this.eye
+    return eye === this.camera ? p.distanceTo(eye.position) : _v.copy(p).sub(eye.position).dot(this.forward(_w))
+  }
+
+  /** Millimetres one CSS pixel of the view covers at `p`: less further away with depth, the same everywhere on a drawing. */
+  worldPerPixel(p: THREE.Vector3) {
+    const eye = this.eye
+    if (eye !== this.camera) return (this.ortho.top - this.ortho.bottom) / this.size.h
+    const depth = Math.max(1e-3, _v.copy(p).sub(this.camera.position).dot(this.forward(_w)))
+    return (2 * depth * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / this.size.h
   }
 
   private refreshTheme() {
@@ -344,24 +422,24 @@ export class Viewer {
 
   /** The nearest visible hit; `accept` can skip hits (a section plane's cut-away side, back faces). */
   pick(ev: { clientX: number; clientY: number }, objects: THREE.Object3D[], recursive = true, accept?: (h: THREE.Intersection, ray: THREE.Ray) => boolean) {
-    this.raycaster.setFromCamera(this.ndc(ev), this.camera)
+    this.raycaster.setFromCamera(this.ndc(ev), this.eye)
     return this.raycaster.intersectObjects(objects, recursive).find((h) => h.object.visible && (!accept || accept(h, this.raycaster.ray))) ?? null
   }
 
   /** Where the pointer ray meets a plane (sketch dragging, extrude handles). */
   rayOnPlane(ev: { clientX: number; clientY: number }, plane: THREE.Plane) {
-    this.raycaster.setFromCamera(this.ndc(ev), this.camera)
+    this.raycaster.setFromCamera(this.ndc(ev), this.eye)
     return this.raycaster.ray.intersectPlane(plane, new THREE.Vector3())
   }
 
   ray(ev: { clientX: number; clientY: number }) {
-    this.raycaster.setFromCamera(this.ndc(ev), this.camera)
+    this.raycaster.setFromCamera(this.ndc(ev), this.eye)
     return this.raycaster.ray.clone()
   }
 
   /** World point → CSS pixels inside the container. */
   project(p: THREE.Vector3) {
-    const v = p.clone().project(this.camera)
+    const v = p.clone().project(this.eye)
     return { x: ((v.x + 1) / 2) * this.size.w, y: ((1 - v.y) / 2) * this.size.h, behind: v.z > 1 }
   }
 
@@ -395,6 +473,9 @@ export class Viewer {
     this.labels.domElement.remove()
   }
 }
+
+const _v = new THREE.Vector3()
+const _w = new THREE.Vector3()
 
 /**
  * Dispose geometries and drop HTML labels under `root`. Materials belong to the
