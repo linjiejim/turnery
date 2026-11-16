@@ -30,4 +30,6 @@ it("says how far a part has moved, to the step's precision", () => {
   expect(moveLabel(1, 0, 1)).toBe("Y 0")
   expect(moveLabel(1, 0.3, 1)).toBe("Y 0")
   expect(moveLabel(0, 1.25, 0.05)).toBe("X +1.25")
+  expect(moveLabel(0, 0.015, 0.005)).toBe("X +0.015")
+  expect(moveLabel(2, -0.002, 0.001)).toBe("Z −0.002")
 })

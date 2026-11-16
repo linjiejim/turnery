@@ -64,7 +64,7 @@ function useLooksSwitch(): [boolean, (on: boolean) => void] {
 
 const VIEW_STORE = "ft-studio-view"
 /** How the model is drawn and projected: like the colours, the person's own way of looking, kept across parts and launches. */
-export type ViewPrefs = { style: ViewStyle; projection: Projection }
+type ViewPrefs = { style: ViewStyle; projection: Projection }
 const VIEW_DEFAULT: ViewPrefs = { style: "shaded", projection: "perspective" }
 const STYLES: ViewStyle[] = ["shaded", "lines", "xray"]
 function useViewPrefs(): [ViewPrefs, (p: Partial<ViewPrefs>) => void] {
@@ -345,11 +345,21 @@ export function StudioViewport({
     paintRef.current = paint
   }, [paint])
 
+  // What the view keeps by name (isolated, moved) only for parts the model still has: a part renamed
+  // or removed since (an undo, the agent) leaves nothing behind that can't be seen or put back.
   const view = React.useMemo(() => {
     if (!display?.parts || rs) return NO_PARTS_VIEW
-    if (!parts.focus) return parts
-    const names = parts.focus.parts.filter((name) => display.parts!.some((p) => p.name === name))
-    return names.length === parts.focus.parts.length ? parts : { ...parts, focus: names.length ? { ...parts.focus, parts: names } : undefined }
+    const known = (name: string) => display.parts!.some((p) => p.name === name)
+    let v = parts
+    if (v.focus && !v.focus.parts.every(known)) {
+      const names = v.focus.parts.filter(known)
+      v = { ...v, focus: names.length ? { ...v.focus, parts: names } : undefined }
+    }
+    if (v.moved && !Object.keys(v.moved).every(known)) {
+      const moved = Object.fromEntries(Object.entries(v.moved).filter(([name]) => known(name)))
+      v = { ...v, moved: Object.keys(moved).length ? moved : undefined }
+    }
+    return v
   }, [display, rs, parts])
   // The model is built once per display; hiding, isolating and pulling apart only move and show its parts.
   const viewRef = React.useRef(view)
@@ -414,8 +424,9 @@ export function StudioViewport({
     [viewer, display, view],
   )
   // Opening the explode panel pulls the parts halfway apart (and frames them there); closing it puts them back.
+  // Read by the animation between renders: kept current before the next frame.
   const partsRef = React.useRef(parts)
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     partsRef.current = parts
   }, [parts])
   const explodeTo = React.useCallback(
@@ -430,10 +441,11 @@ export function StudioViewport({
   const openExplode = React.useCallback(
     (on: boolean) => {
       setExploding(on)
+      if (!onParts) return
       if (on) frameShown(EXPLODE_OPEN)
       explodeTo(on ? EXPLODE_OPEN : 0)
     },
-    [explodeTo, frameShown],
+    [explodeTo, frameShown, onParts],
   )
 
   React.useEffect(() => {
@@ -752,9 +764,11 @@ export function StudioViewport({
   // Selected parts can be pulled out along X, Y or Z to look at them: arrows at their middle. Only the
   // view moves them (`view.moved`); the file keeps where they are, and 「移回原位」 puts them back.
   const canMove = tool === "select" && !rs && !!onParts && !!display?.parts && display.parts.length > 1 && selectedParts.length > 0
-  const moving = React.useRef({ view, onParts, names: selectionNames })
-  React.useEffect(() => {
-    moving.current = { view, onParts, names: selectionNames }
+  // What a drag moves: the selected parts that are shown (the arrows stand in their middle).
+  const movable = display?.parts ? selectedParts.flatMap((i) => (partVisible(display, view, i) ? [display.parts![i].name] : [])) : []
+  const moving = React.useRef({ view, onParts, names: movable })
+  React.useLayoutEffect(() => {
+    moving.current = { view, onParts, names: movable }
   })
   const [gizmo, setGizmo] = React.useState<MoveGizmo | null>(null)
   React.useEffect(() => {

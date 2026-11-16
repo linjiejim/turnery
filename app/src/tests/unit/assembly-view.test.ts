@@ -2,7 +2,8 @@ import * as THREE from "three"
 import { expect, it } from "vitest"
 import { applyStyle, applyView, hasMoves, modelObject, partOffset, partsBox, repaint, groupAt, faceTarget, withoutMoves, NO_PARTS_VIEW } from "@/studio/scene"
 import type { DisplayData } from "@/studio/kernel/build"
-import type { MaterialKit } from "@/three/materials"
+import { MaterialKit } from "@/three/materials"
+import type { SceneTokens } from "@/three/tokens"
 import { newNote, parseNotes } from "@/desktop/core/notes"
 import { matchesPart, selectGroup, selectParts, wholeNames, wholeOf } from "@/studio/part-selection"
 
@@ -159,8 +160,43 @@ it("moves parts by hand on top of the explode, by name, and puts them back", () 
   expect(withoutMoves(view, ["first"]).moved).toEqual({ second: [0, 0, 12] })
   expect(hasMoves(withoutMoves(view))).toBe(false)
   expect(hasMoves({ ...NO_PARTS_VIEW, moved: { first: [0, 0, 0] } })).toBe(false)
-  // A part the view doesn't know (renamed, gone) moves nothing.
-  expect(partOffset(data, { ...NO_PARTS_VIEW, moved: { gone: [5, 5, 5] } }, 0)).toEqual([0, 0, 0])
+  // A part the view doesn't know (renamed, gone) moves nothing, and doesn't count as moved for the model.
+  const stale = { ...NO_PARTS_VIEW, moved: { gone: [5, 5, 5] as [number, number, number] } }
+  expect(partOffset(data, stale, 0)).toEqual([0, 0, 0])
+  expect(hasMoves(stale, data)).toBe(false)
+  expect(hasMoves({ ...stale, moved: { ...stale.moved, second: [1, 0, 0] } }, data)).toBe(true)
+})
+
+it("maps every shaded material to its line-drawing and see-through counterpart, and cuts them all", () => {
+  // Any colour will do for the tokens: the mapping is what's tested.
+  const tokens = new Proxy({}, { get: (_, k) => (k === "dark" ? false : new THREE.Color(0.5, 0.5, 0.5)) }) as SceneTokens
+  const real = new MaterialKit(tokens)
+  // Line drawing: paper for resting faces, a tinted paper for each paint role, ink for edges; clear parts stay clear.
+  expect(real.styled(real.model, "lines")).toBe(real.line)
+  expect(real.styled(real.modelDark, "lines")).toBe(real.line)
+  const lit = real.styled(real.highlight, "lines")
+  expect(lit).not.toBe(real.line)
+  expect(lit).toBeInstanceOf(THREE.ShaderMaterial)
+  expect(real.styled(real.glass, "lines")).toBe(real.glass)
+  expect(real.styled(real.ghost, "lines")).toBe(real.ghost)
+  expect(real.styledEdge(real.edge, "lines")).toBe(real.ink)
+  expect(real.styledEdge(real.edgeGhost, "lines")).toBe(real.edgeGhost)
+  // See-through: the neutral grey, or the part's own colour.
+  expect(real.styled(real.model, "xray")).toBe(real.xray)
+  const red = real.forLook({ color: "#cc3333" } as never).surface
+  const redXray = real.styled(red, "xray") as THREE.MeshStandardMaterial
+  expect(redXray).not.toBe(real.xray)
+  expect(redXray.color.getHexString()).toBe((red as THREE.MeshStandardMaterial).color.getHexString())
+  expect(real.styled(red, "xray")).toBe(redXray)
+  expect(real.styled(real.model, "shaded")).toBe(real.model)
+  // A section cuts the other styles' materials too (made before or after it was switched on).
+  real.setSection(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0))
+  for (const m of [real.line, lit, real.ink, real.xray, redXray]) expect(m.clippingPlanes?.length).toBe(1)
+  const blue = real.styled(real.forLook({ color: "#3333cc" } as never).surface, "xray")
+  expect(blue.clippingPlanes?.length).toBe(1)
+  real.setSection(null)
+  expect(real.line.clippingPlanes).toBeNull()
+  real.dispose()
 })
 
 it("draws the same model shaded, as a line drawing or see-through without building it again", () => {

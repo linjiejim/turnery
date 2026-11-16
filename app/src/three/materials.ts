@@ -168,8 +168,8 @@ export class MaterialKit {
   styled(m: THREE.Material, style: ViewStyle): THREE.Material {
     if (style === "shaded" || m === this.ghost) return m
     const role: Role | null = m === this.highlight ? "highlight" : m === this.hovered ? "hovered" : m === this.added ? "added" : m === this.modified ? "modified" : null
-    // A clear part stays see-through on a line drawing: what's inside it still shows.
-    if (style === "lines") return role ? this.lineRoles[role] : m === this.glass || m.userData.clear ? this.ghost : this.line
+    // A clear part stays see-through on a line drawing, as it is (and cut by a section like it): what's inside it still shows.
+    if (style === "lines") return role ? this.lineRoles[role] : m === this.glass || m.userData.clear ? m : this.line
     if (role) return this.xrayRoles[role]
     // A colour of the part's own: see-through in that colour. The theme's greys: the neutral one.
     if ([...this.looks.values()].some((l) => l.surface === m) && (m as THREE.MeshStandardMaterial).color) {

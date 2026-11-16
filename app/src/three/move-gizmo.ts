@@ -40,13 +40,13 @@ export function closestOnLine(origin: THREE.Vector3, dir: THREE.Vector3, ray: TH
 
 /** How a distance moved reads on the arrow: 「X +12」, 「Z −0.5」 (mm). */
 export function moveLabel(axis: Axis, mm: number, step: number) {
-  const digits = step >= 1 ? 0 : step >= 0.1 ? 1 : 2
+  const digits = Math.max(0, -Math.floor(Math.log10(step) + 1e-9))
   const v = Math.abs(mm) < step / 2 ? 0 : mm
   return `${NAMES[axis]} ${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}`
 }
 
-/** What a drag tells: which arrow was taken, how far it has moved (mm, in steps), and that it ended. */
-export type MoveHandlers = { start?: (axis: Axis) => void; move: (axis: Axis, mm: number) => void; end?: (axis: Axis, mm: number) => void }
+/** What a drag tells: which arrow was taken, and how far it has moved so far (mm, in steps). */
+export type MoveHandlers = { start?: (axis: Axis) => void; move: (axis: Axis, mm: number) => void }
 
 /**
  * Three arrows at a point, X red, Y green and Z blue as on the axis triad: drag one to move along that
@@ -126,6 +126,7 @@ export class MoveGizmo {
     el.addEventListener("pointercancel", this.onUp, opts)
     el.addEventListener("dblclick", this.onDouble, opts)
     el.addEventListener("pointerleave", this.onLeave)
+    el.addEventListener("lostpointercapture", this.onLost, opts)
     this.stops.push(() => {
       el.removeEventListener("pointerdown", this.onDown, opts)
       el.removeEventListener("pointermove", this.onMove, opts)
@@ -133,6 +134,7 @@ export class MoveGizmo {
       el.removeEventListener("pointercancel", this.onUp, opts)
       el.removeEventListener("dblclick", this.onDouble, opts)
       el.removeEventListener("pointerleave", this.onLeave)
+      el.removeEventListener("lostpointercapture", this.onLost, opts)
     })
   }
 
@@ -246,7 +248,7 @@ export class MoveGizmo {
     // Ours alone: the camera doesn't turn and the click doesn't select what's below.
     e.stopPropagation()
     e.preventDefault()
-    this.viewer.container.setPointerCapture(e.pointerId)
+    this.viewer.renderer.domElement.setPointerCapture(e.pointerId)
     this.drag = { axis, pointer: e.pointerId, from, step: moveStep(this.viewer.worldPerPixel(origin)), moved: 0, origin }
     this.viewer.renderer.domElement.style.cursor = "grabbing"
     this.label.textContent = moveLabel(axis, 0, this.drag.step)
@@ -264,6 +266,8 @@ export class MoveGizmo {
     }
     if (e.pointerId !== d.pointer) return
     e.stopPropagation()
+    // The button came up where we didn't hear it: the drag is over.
+    if (!(e.buttons & 1)) return this.finish()
     const s = this.along(e, d.axis, d.origin)
     if (s === null) return
     const moved = Math.round(Math.round((s - d.from) / d.step) * d.step * 1e6) / 1e6
@@ -284,16 +288,20 @@ export class MoveGizmo {
     const d = this.drag
     if (!d) return
     this.drag = null
-    if (this.viewer.container.hasPointerCapture(d.pointer)) this.viewer.container.releasePointerCapture(d.pointer)
+    const canvas = this.viewer.renderer.domElement
+    if (canvas.hasPointerCapture(d.pointer)) canvas.releasePointerCapture(d.pointer)
     this.viewer.renderer.domElement.style.cursor = this.hot === null ? "" : "grab"
     this.tag.visible = false
     this.shade()
-    this.on.end?.(d.axis, d.moved)
   }
 
   /** A double-click on an arrow isn't one on the part behind it. */
   private onDouble = (e: MouseEvent) => {
     if (this.axisAt(e) !== null) e.stopPropagation()
+  }
+
+  private onLost = (e: PointerEvent) => {
+    if (this.drag && e.pointerId === this.drag.pointer) this.finish()
   }
 
   private onLeave = () => {

@@ -140,7 +140,7 @@ function paintMesh(mesh: THREE.Mesh, brush: Brush) {
 }
 
 /** Parts are shown each on its own (pulled apart, moved, some hidden or alone): what belongs to the whole body steps aside. */
-const apart = (d: DisplayData, view: PartsView) => !!d.parts && (view.explode > 0 || hasMoves(view) || view.hidden.size > 0 || !!view.focus || d.parts.some((p) => p.hidden))
+const apart = (d: DisplayData, view: PartsView) => !!d.parts && (view.explode > 0 || hasMoves(view, d) || view.hidden.size > 0 || !!view.focus || d.parts.some((p) => p.hidden))
 
 /**
  * The live model as three.js objects: its faces (painted by this step's new / modified status, or by
@@ -267,6 +267,8 @@ export function applyView(root: THREE.Object3D, d: DisplayData, view: PartsView,
     const k = o.userData.part as number | undefined
     if (k === undefined) {
       if (o.userData.whole) o.visible = !split
+      // Faces no part claims: drawn in place, in the style all the same.
+      else if ((o as THREE.Mesh).isMesh && o.userData.materials) (o as THREE.Mesh).material = surfacesOf(o as THREE.Mesh, kit, style)
       continue
     }
     const part = d.parts[k]
@@ -340,8 +342,9 @@ type V3 = [number, number, number]
 export type PartsView = { explode: number; hidden: Set<number>; focus?: { parts: string[]; mode: "isolate" | "ghost" }; moved?: Record<string, V3> }
 export const NO_PARTS_VIEW: PartsView = { explode: 0, hidden: new Set() }
 
-/** Any part moved by hand (and not back where it was). */
-export const hasMoves = (view: PartsView) => !!view.moved && Object.values(view.moved).some((m) => m.some((v) => v !== 0))
+/** Any part moved by hand (and not back where it was); with `d`, only parts the model has count. */
+export const hasMoves = (view: PartsView, d?: DisplayData) =>
+  !!view.moved && Object.entries(view.moved).some(([name, m]) => m.some((v) => v !== 0) && (!d?.parts || d.parts.some((p) => p.name === name)))
 
 /** The view with these parts (by name; none given: every part) back where they were. */
 export function withoutMoves(view: PartsView, names?: string[]): PartsView {
