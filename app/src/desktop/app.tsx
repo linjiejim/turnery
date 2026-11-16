@@ -231,9 +231,13 @@ export function DesktopApp() {
                   notify.error(r.text.replace(/^✗ /, ""))
                   return false
                 }
-                // What is isolated and selected here goes by the parts' names: they follow.
+                // What is isolated, moved and selected here goes by the parts' names: they follow.
                 const to = (n: string) => renamedPart(n, before, name.trim())
-                setPartsView((v) => (v.focus ? { ...v, focus: { ...v.focus, parts: v.focus.parts.map(to) } } : v))
+                setPartsView((v) => ({
+                  ...v,
+                  ...(v.focus ? { focus: { ...v.focus, parts: v.focus.parts.map(to) } } : {}),
+                  ...(v.moved ? { moved: Object.fromEntries(Object.entries(v.moved).map(([n, m]) => [to(n), m])) } : {}),
+                }))
                 setSelected((s) => (s && s.path === doc.path ? { ...s, parts: s.parts.map(to) } : s))
                 return true
               },

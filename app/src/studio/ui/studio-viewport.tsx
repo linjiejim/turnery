@@ -10,12 +10,15 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner"
 import { notify } from "@/components/ui/toast"
 import { Viewport } from "@/components/viewport"
-import { disposeObject, type Viewer } from "@/three/viewer"
+import { disposeObject, type Projection, type Viewer } from "@/three/viewer"
+import type { ViewStyle } from "@/three/materials"
+import { MoveGizmo } from "@/three/move-gizmo"
+import { ease } from "@/three/tween"
 import { circled, type PickInfo } from "../annotations"
 import type { DisplayData } from "../kernel/build"
 import type { MeasureResult, MeasureTarget } from "../kernel/measure"
 import type { Pin } from "../look"
-import { applyView, edgeHighlight, regionStrokes, facesBox, groupAt, faceTarget, hasLooks, partOffset, partVisible, modelObject, NO_PARTS_VIEW, repaint, type Hover, type Paint, type PartsView } from "../scene"
+import { applyStyle, applyView, edgeHighlight, regionStrokes, facesBox, groupAt, faceTarget, hasLooks, hasMoves, partOffset, partsBox, partVisible, modelObject, NO_PARTS_VIEW, repaint, withoutMoves, type Hover, type Paint, type PartsView } from "../scene"
 import type { Annotations, FocusRegion } from "../use-annotations"
 import type { Studio } from "../use-studio"
 import type { Reselect } from "../use-reselect"
@@ -58,6 +61,42 @@ function useLooksSwitch(): [boolean, (on: boolean) => void] {
   }, [])
   return [on, set]
 }
+
+const VIEW_STORE = "ft-studio-view"
+/** How the model is drawn and projected: like the colours, the person's own way of looking, kept across parts and launches. */
+export type ViewPrefs = { style: ViewStyle; projection: Projection }
+const VIEW_DEFAULT: ViewPrefs = { style: "shaded", projection: "perspective" }
+const STYLES: ViewStyle[] = ["shaded", "lines", "xray"]
+function useViewPrefs(): [ViewPrefs, (p: Partial<ViewPrefs>) => void] {
+  const [prefs, setPrefs] = React.useState<ViewPrefs>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(VIEW_STORE) ?? "{}") as Partial<ViewPrefs>
+      return {
+        style: STYLES.includes(saved.style as ViewStyle) ? (saved.style as ViewStyle) : VIEW_DEFAULT.style,
+        projection: saved.projection === "orthographic" ? "orthographic" : "perspective",
+      }
+    } catch {
+      return VIEW_DEFAULT
+    }
+  })
+  const update = React.useCallback((p: Partial<ViewPrefs>) => {
+    setPrefs((was) => {
+      const next = { ...was, ...p }
+      try {
+        localStorage.setItem(VIEW_STORE, JSON.stringify(next))
+      } catch {
+        /* private mode: this window only */
+      }
+      return next
+    })
+  }, [])
+  return [prefs, update]
+}
+
+/** How long pulling the parts apart (or putting them back) takes when the explode panel opens or closes. */
+const EXPLODE_MS = 450
+/** How far the parts come apart when the explode panel opens. */
+const EXPLODE_OPEN = 0.5
 
 /** Wording and numbering for hosts other than the web studio (the desktop app's notes). */
 /** Where the camera was left in a file. */
@@ -168,6 +207,8 @@ export function StudioViewport({
   const [measured, setMeasured] = React.useState<{ key: string; result: MeasureResult | null } | null>(null)
   const [section, setSection] = React.useState<Section | null>(null)
   const [looks, setLooks] = useLooksSwitch()
+  const [prefs, setPrefs] = useViewPrefs()
+  const style = prefs.style
   // A new model invalidates the picks (hashes belong to the old one).
   const [shownDisplay, setShownDisplay] = React.useState(display)
   if (shownDisplay !== display) {
@@ -312,9 +353,10 @@ export function StudioViewport({
   }, [display, rs, parts])
   // The model is built once per display; hiding, isolating and pulling apart only move and show its parts.
   const viewRef = React.useRef(view)
+  const styleRef = React.useRef(style)
   React.useEffect(() => {
     if (!viewer || !display) return
-    const g = modelObject(display, viewer.kit, paintRef.current, viewRef.current, looks)
+    const g = modelObject(display, viewer.kit, paintRef.current, viewRef.current, looks, styleRef.current)
     viewer.setContent(g)
     current.current = g
     if (viewKey !== shownKey.current) {
@@ -342,6 +384,16 @@ export function StudioViewport({
     applyView(current.current, display, view, viewer.kit)
     viewer.invalidate()
   }, [viewer, display, view])
+  // Shaded, a line drawing or see-through: the same model, other materials.
+  React.useEffect(() => {
+    styleRef.current = style
+    if (!viewer || !display || !current.current) return
+    applyStyle(current.current, display, viewRef.current, viewer.kit, style)
+    viewer.invalidate()
+  }, [viewer, display, style])
+  React.useEffect(() => {
+    viewer?.setProjection(prefs.projection)
+  }, [viewer, prefs.projection])
   // Closed (another file loading): where the camera is now is kept for coming back.
   React.useEffect(() => {
     if (!viewer) return
@@ -350,13 +402,39 @@ export function StudioViewport({
     }
   }, [viewer, cameras])
 
-  // Frame the pulled-apart parts once the learner lets go of the explode slider.
-  const frameExploded = React.useCallback(() => {
-    if (!viewer || !display?.bbox || !display.parts) return
-    const box = new THREE.Box3(new THREE.Vector3(...display.bbox[0]), new THREE.Vector3(...display.bbox[1]))
-    for (const p of display.parts) box.expandByPoint(new THREE.Vector3(...p.center).addScaledVector(new THREE.Vector3(...p.explode), parts.explode))
-    void viewer.fit(box, { animate: true })
-  }, [viewer, display, parts.explode])
+  // Frame the parts as shown (pulled apart, moved): when the learner lets go of the explode slider, or
+  // where they are going when the explode panel opens.
+  const frameShown = React.useCallback(
+    (explode?: number) => {
+      if (!viewer || !display?.parts) return
+      const v = explode === undefined ? view : { ...view, explode }
+      const box = partsBox(display, v, display.parts.flatMap((_, i) => (partVisible(display, v, i) ? [i] : [])))
+      if (box) void viewer.fit(box, { animate: true })
+    },
+    [viewer, display, view],
+  )
+  // Opening the explode panel pulls the parts halfway apart (and frames them there); closing it puts them back.
+  const partsRef = React.useRef(parts)
+  React.useEffect(() => {
+    partsRef.current = parts
+  }, [parts])
+  const explodeTo = React.useCallback(
+    (to: number) => {
+      if (!viewer || !onParts) return
+      const from = partsRef.current.explode
+      if (from === to) return
+      void viewer.tweens.run(EXPLODE_MS, (k) => onParts({ ...partsRef.current, explode: from + (to - from) * k }), { tag: "explode", ease: ease.inOut })
+    },
+    [viewer, onParts],
+  )
+  const openExplode = React.useCallback(
+    (on: boolean) => {
+      setExploding(on)
+      if (on) frameShown(EXPLODE_OPEN)
+      explodeTo(on ? EXPLODE_OPEN : 0)
+    },
+    [explodeTo, frameShown],
+  )
 
   React.useEffect(() => {
     if (!viewer || !current.current) return
@@ -583,7 +661,7 @@ export function StudioViewport({
         return
       }
       if (isBusy) return notify(whyBusy)
-      if (isMeasuring && latest.current.view.explode > 0) return notify("测量使用装配位置：先把爆炸拖回 0。爆炸状态仍可选件和标注。")
+      if (isMeasuring && (latest.current.view.explode > 0 || hasMoves(latest.current.view))) return notify("测量用的是装配位置：先把爆炸拖回 0、挪开的零件移回原位。分开时仍可选件和标注。")
       // The model's own mesh (not a see-through reference body, which can't be picked).
       const meshes = pickable(current.current)
       if (!d?.mesh || !meshes.length || s.kernel.phase !== "ready") return
@@ -671,12 +749,59 @@ export function StudioViewport({
     if (!onParts || !selectionNames.length) return
     onParts({ ...view, focus: focusMatches && view.focus?.mode === "ghost" ? undefined : { parts: selectionNames, mode: "ghost" } })
   }
-  /** F: the selected parts, or everything (pulled apart as shown). */
+  // Selected parts can be pulled out along X, Y or Z to look at them: arrows at their middle. Only the
+  // view moves them (`view.moved`); the file keeps where they are, and 「移回原位」 puts them back.
+  const canMove = tool === "select" && !rs && !!onParts && !!display?.parts && display.parts.length > 1 && selectedParts.length > 0
+  const moving = React.useRef({ view, onParts, names: selectionNames })
+  React.useEffect(() => {
+    moving.current = { view, onParts, names: selectionNames }
+  })
+  const [gizmo, setGizmo] = React.useState<MoveGizmo | null>(null)
+  React.useEffect(() => {
+    if (!viewer || !canMove) return
+    // Where each selected part was when the drag began: the drag moves them all by the same amount from there.
+    const from = new Map<string, V3>()
+    const g = new MoveGizmo(viewer, {
+      start: () => {
+        const { view: v, names } = moving.current
+        from.clear()
+        for (const n of names) from.set(n, v.moved?.[n] ?? [0, 0, 0])
+      },
+      move: (axis, mm) => {
+        const { view: v, onParts: set } = moving.current
+        const moved = { ...v.moved }
+        for (const [name, was] of from) {
+          const to = [...was] as V3
+          to[axis] = Math.round((was[axis] + mm) * 1e6) / 1e6
+          moved[name] = to
+        }
+        set?.({ ...v, moved })
+      },
+    })
+    setGizmo(g)
+    return () => {
+      g.dispose()
+      setGizmo(null)
+    }
+  }, [viewer, canMove])
+  // The arrows stand in the middle of the selected parts as shown, and go along with them.
+  React.useEffect(() => {
+    if (!gizmo || !display) return
+    const box = partsBox(display, view, selectedParts.filter((i) => partVisible(display, view, i)))
+    gizmo.setAt(box ? box.getCenter(new THREE.Vector3()) : null)
+  }, [gizmo, display, view, selectedParts])
+  const movedNames = Object.entries(view.moved ?? {}).flatMap(([name, m]) => (m.some((x) => x !== 0) && display?.parts?.some((p) => p.name === name) ? [name] : []))
+  const selectionMoved = selectionNames.some((n) => movedNames.includes(n))
+  const movedElsewhere = movedNames.some((n) => !selectionNames.includes(n))
+  const movedLabels = display?.parts ? wholeNames(display.parts, movedNames).length : movedNames.length
+  const moveBack = (names?: string[]) => onParts?.(withoutMoves(view, names))
+
+  /** F: the selected parts, or everything (pulled apart and moved as shown). */
   const frame = () => {
     if (!viewer || !display?.bbox) return
     const box = selectedParts.length ? facesBox(display, view, (g) => g.part !== undefined && selectedParts.includes(g.part)) : null
     if (box) return void viewer.fit(new THREE.Box3(new THREE.Vector3(...box[0]), new THREE.Vector3(...box[1])), { animate: true })
-    if (display.parts && parts.explode > 0) return frameExploded()
+    if (display.parts && (parts.explode > 0 || hasMoves(view))) return frameShown()
     void viewer.fit(new THREE.Box3(new THREE.Vector3(...display.bbox[0]), new THREE.Vector3(...display.bbox[1])), { animate: true })
   }
 
@@ -684,7 +809,7 @@ export function StudioViewport({
   // with ⌘ / Ctrl / ⌥ held, or while the drawing sheet covers the view. By key position, so they work
   // with a Chinese input method on too. Esc goes back one level at a time: the open card or panel
   // handles its own, then the tool, then (the timeline's own handler) the selection and the step.
-  const keyActions = { tool, chooseTool, sketch, onAnnotation, onNoteSelection, selectedParts, section, bbox: display?.bbox ?? null, showDims, dimsTotal: shownDims.total, explodable: Boolean(display?.parts && display.parts.length > 1), exploding, looks, hasLooks: hasLooks(display), canHide: Boolean(onParts && display?.parts), hideSelected, showAll, isolateSelected, ghostOthers, oneComponent, frame, onOpenPart, busyCard: Boolean(draft || keysOpen || editingDim || openNote), stopMeasuring, onParts, parts }
+  const keyActions = { tool, chooseTool, sketch, onAnnotation, onNoteSelection, selectedParts, section, bbox: display?.bbox ?? null, showDims, dimsTotal: shownDims.total, explodable: Boolean(display?.parts && display.parts.length > 1), exploding, openExplode, looks, hasLooks: hasLooks(display), prefs, setPrefs, canHide: Boolean(onParts && display?.parts), hideSelected, showAll, isolateSelected, ghostOthers, oneComponent, frame, onOpenPart, busyCard: Boolean(draft || keysOpen || editingDim || openNote), stopMeasuring }
   const keyRef = React.useRef(keyActions)
   React.useEffect(() => {
     keyRef.current = keyActions
@@ -738,13 +863,15 @@ export function StudioViewport({
           if (k.dimsTotal) return handled(), setShowDims(!k.showDims)
           return
         case "KeyE":
-          if (!k.explodable) return
-          handled()
-          if (k.exploding) k.onParts?.({ ...k.parts, explode: 0 })
-          return setExploding(!k.exploding)
-        case "KeyA":
-          if (k.hasLooks) return handled(), setLooks(!k.looks)
+          if (k.explodable) return handled(), k.openExplode(!k.exploding)
           return
+        case "KeyA":
+          if (k.hasLooks && k.prefs.style !== "lines") return handled(), setLooks(!k.looks)
+          return
+        case "KeyO":
+          return handled(), k.setPrefs({ projection: k.prefs.projection === "perspective" ? "orthographic" : "perspective" })
+        case "KeyW":
+          return handled(), k.setPrefs({ style: STYLES[(STYLES.indexOf(k.prefs.style) + 1) % STYLES.length] })
         case "KeyF":
           return handled(), k.frame()
         case "KeyH":
@@ -764,10 +891,10 @@ export function StudioViewport({
   }, [active, setLooks])
   return (
     <Viewport className="absolute inset-0" onReady={onReady} triadBesideCube>
-      {onParts && display?.parts && (selectedParts.length > 0 || view.focus || view.hidden.size > 0) && (
+      {onParts && display?.parts && (selectedParts.length > 0 || view.focus || view.hidden.size > 0 || movedNames.length > 0) && (
         <div role="toolbar" aria-label="选中零件" className="absolute left-3 z-20 flex max-w-[calc(100%_-_1.5rem)] flex-wrap items-center gap-0.5 rounded-md border bg-background/95 p-1 shadow-popover [&_button]:px-2" style={{ bottom: "calc(var(--timeline-h, 0px) + 1.25rem)" }}>
           <span className="max-w-48 truncate px-2 text-caption" title={selectionLabels.join("、")}>
-            {selectionLabels.length > 1 ? `已选 ${selectionLabels.length} 个零件` : selectionLabels[0] ?? (view.focus ? `${view.focus.mode === "ghost" ? "保留实体" : "已隔离"} ${wholeNames(display.parts, view.focus.parts).length} 个零件` : `已隐藏 ${hiddenLabels} 个零件`)}
+            {selectionLabels.length > 1 ? `已选 ${selectionLabels.length} 个零件` : selectionLabels[0] ?? (view.focus ? `${view.focus.mode === "ghost" ? "保留实体" : "已隔离"} ${wholeNames(display.parts, view.focus.parts).length} 个零件` : view.hidden.size ? `已隐藏 ${hiddenLabels} 个零件` : `已挪开 ${movedLabels} 个零件`)}
           </span>
           {selectionNames.length > 0 && selectionActions}
           {selectionNames.length > 0 && selectionActions && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
@@ -778,6 +905,8 @@ export function StudioViewport({
           {selectionNames.length > 0 && <Button size="sm" variant="ghost" onClick={() => onSelectFeature?.(null)}>清除选择<Kbd>Esc</Kbd></Button>}
           {view.focus && <Button size="sm" variant="ghost" onClick={() => onParts({ ...view, focus: undefined })}>恢复显示{!selectionNames.length && <Kbd>I</Kbd>}</Button>}
           {view.hidden.size > 0 && <Button size="sm" variant="ghost" onClick={showAll}>显示隐藏的 {hiddenLabels} 个<Kbd>⇧H</Kbd></Button>}
+          {selectionMoved && <Button size="sm" variant="ghost" title="选中的零件回到文件里的位置" onClick={() => moveBack(selectionNames)}>移回原位</Button>}
+          {movedElsewhere && <Button size="sm" variant="ghost" title="挪开的零件都回到文件里的位置" onClick={() => moveBack()}>全部移回原位</Button>}
         </div>
       )}
       {kernel.phase === "loading" && (
@@ -814,22 +943,25 @@ export function StudioViewport({
           onDims={setShowDims}
           explode={display.parts && display.parts.length > 1 ? parts.explode : null}
           exploding={exploding}
-          onExploding={(on) => {
-            if (!on) onParts?.({ ...parts, explode: 0 })
-            setExploding(on)
+          onExploding={openExplode}
+          onExplode={(explode) => {
+            viewer?.tweens.cancel("explode")
+            onParts?.({ ...parts, explode })
           }}
-          onExplode={(explode) => onParts?.({ ...parts, explode })}
-          onExplodeEnd={frameExploded}
-          looks={{ on: looks, available: hasLooks(display) }}
+          onExplodeEnd={() => frameShown()}
+          looks={{ on: looks, available: hasLooks(display), lines: style === "lines" }}
           onLooks={setLooks}
+          display={prefs}
+          onDisplay={setPrefs}
           changes={showChanges}
           onChanges={setShowChanges}
           keysOpen={keysOpen}
           onKeysOpen={setKeysOpen}
-          keys={[...VIEW_KEYS.filter((k) => (onAnnotation || !"VCRP".includes(k.keys)) && (sketch || !"RP".includes(k.keys)) && (onParts || !["H / ⇧H", "I"].includes(k.keys))), ...keys]}
+          keys={[...VIEW_KEYS.filter((k) => (onAnnotation || !"VCRP".includes(k.keys)) && (sketch || !"RP".includes(k.keys)) && (onParts || !["H / ⇧H", "I", "拖箭头"].includes(k.keys)) && (onSelectFeature || k.keys !== "拖箭头")), ...keys]}
           tips={[
             ...(readOnly || copy?.hint === null ? [] : [`${copy?.hint ?? "单击模型上的面或边，标注要改的地方"}。`]),
             "拖动转视角，滚轮缩放；拖右上角的方块也能转，点它的面、棱或角转到对应的视图。",
+            ...(onParts && onSelectFeature && display.parts && display.parts.length > 1 ? ["选中零件后拖它中间的 X / Y / Z 箭头，把它挪开看；只改视图，不改文件。"] : []),
           ]}
         />
       )}
@@ -940,11 +1072,11 @@ function pickVisible(viewer: Viewer, e: { clientX: number; clientY: number }, me
 function pickTargets(viewer: Viewer, d: DisplayData, meshes: THREE.Mesh[], e: PointerEvent, cut: THREE.Plane | null = null, view: PartsView = NO_PARTS_VIEW): { edge: Target | null; face: Target | null } {
   const kept = (p: THREE.Vector3) => !cut || cut.distanceToPoint(p) >= -1e-6
   const hit = pickVisible(viewer, e, meshes, cut)
-  const edge = nearestEdge(viewer, d, e, e.pointerType === "touch" ? 14 : 8, hit?.distance, kept, view, hit ? groupAt(hit)?.part : undefined)
+  const edge = nearestEdge(viewer, d, e, e.pointerType === "touch" ? 14 : 8, hit ?? undefined, kept, view, hit ? groupAt(hit)?.part : undefined)
   return { edge, face: hit ? faceTarget(hit) : null }
 }
 
-function nearestEdge(viewer: Viewer, d: DisplayData, e: PointerEvent, maxPx: number, faceDistance?: number, kept: (p: THREE.Vector3) => boolean = () => true, view: PartsView = NO_PARTS_VIEW, hitPart?: number) {
+function nearestEdge(viewer: Viewer, d: DisplayData, e: PointerEvent, maxPx: number, face?: THREE.Intersection, kept: (p: THREE.Vector3) => boolean = () => true, view: PartsView = NO_PARTS_VIEW, hitPart?: number) {
   const pts = d.edges
   if (!pts) return null
   const rect = viewer.renderer.domElement.getBoundingClientRect()
@@ -952,9 +1084,10 @@ function nearestEdge(viewer: Viewer, d: DisplayData, e: PointerEvent, maxPx: num
   const my = e.clientY - rect.top
   const a = new THREE.Vector3()
   const b = new THREE.Vector3()
-  const cam = viewer.camera.position
-  // Edges on the far side sit deeper than the face under the pointer.
-  const slack = faceDistance !== undefined ? Math.max(0.5, faceDistance * 0.02) : Infinity
+  // Edges on the far side sit deeper than the face under the pointer (by more than a little, which grows
+  // with how far off the face is: on a drawing as well, where every pick's ray starts far behind).
+  const faceDistance = face?.distance
+  const slack = face ? Math.max(0.5, face.point.distanceTo(viewer.camera.position) * 0.02) : Infinity
   let best: { hash: number; point: V3; px: number } | null = null
   for (const g of d.edgeGroups) {
     if (g.part !== undefined && (!partVisible(d, view, g.part) || (hitPart !== undefined && g.part !== hitPart))) continue
@@ -973,7 +1106,7 @@ function nearestEdge(viewer: Viewer, d: DisplayData, e: PointerEvent, maxPx: num
       if (px > maxPx || (best && px >= best.px)) continue
       const p = a.clone().lerp(b, t)
       if (!kept(p)) continue
-      if (faceDistance !== undefined && p.distanceTo(cam) > faceDistance + slack) continue
+      if (faceDistance !== undefined && viewer.depthOf(p) > faceDistance + slack) continue
       best = { hash: g.hash, point: p.sub(offset).toArray() as V3, px }
     }
   }

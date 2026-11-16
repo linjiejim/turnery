@@ -60,7 +60,7 @@ export function gatherRegion(viewer: Viewer, display: DisplayData, pick: ViewPic
     })
     for (const line of lines) for (const { hit } of line) if (hit) hits.push(hit)
     // Points off the model sit at the depth of the stroke's points on it (or of the view's centre).
-    const fallback = camera.position.distanceTo(viewer.controls.target)
+    const fallback = viewer.depthOf(viewer.controls.target)
     strokes = lines.map((line) => {
       const on = line.filter((x) => x.hit)
       const depth = on.length ? on.reduce((a, x) => a + x.hit!.depth, 0) / on.length : fallback
@@ -83,7 +83,7 @@ export function gatherRegion(viewer: Viewer, display: DisplayData, pick: ViewPic
   const near = hits.reduce<Hit | null>((best, h) => (!best || Math.hypot(h.at.x - centre.x, h.at.y - centre.y) < Math.hypot(best.at.x - centre.x, best.at.y - centre.y) ? h : best), null)
   const point = near
     ? toV3(near.native)
-    : toV3(viewer.ray({ clientX: r.left + centre.x, clientY: r.top + centre.y }).at(camera.position.distanceTo(viewer.controls.target), new THREE.Vector3()))
+    : toV3(viewer.ray({ clientX: r.left + centre.x, clientY: r.top + centre.y }).at(viewer.depthOf(viewer.controls.target), new THREE.Vector3()))
   const part = near?.group.part !== undefined ? display.parts?.[near.group.part]?.name : undefined
   return {
     shape: marks.shape,
