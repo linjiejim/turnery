@@ -230,7 +230,7 @@ export function StudioViewport({
   const style = prefs.style
   // The card's one choice (白模 / 彩色 / 线描 / 半透明), kept as the two switches it always was.
   const look = viewLook(style, looks)
-  // See-through always shows the parts' colours; shaded follows the switch.
+  // Only shaded follows the switch; see-through and a line drawing always use the parts' own looks.
   const coloured = drawsColours(style, looks)
   const chooseLook = React.useCallback(
     (next: ViewLook) => {

@@ -38,11 +38,13 @@ describe("display look: 白模 / 彩色 / 线描 / 半透明", () => {
     expect(colourKey("xray")).toBe("colour")
   })
 
-  it("see-through always draws the parts' colours; shaded follows the switch", () => {
+  it("only shaded follows the switch: see-through always has the parts' colours, a line drawing keeps clear parts clear", () => {
     expect(drawsColours("xray", false)).toBe(true)
     expect(drawsColours("xray", true)).toBe(true)
     expect(drawsColours("shaded", false)).toBe(false)
     expect(drawsColours("shaded", true)).toBe(true)
+    // The card shows one 线描 however it was reached: no hidden switch decides whether a clear lid hides what's inside.
+    expect(drawsColours("lines", false)).toBe(true)
     expect(drawsColours("lines", true)).toBe(true)
   })
 })

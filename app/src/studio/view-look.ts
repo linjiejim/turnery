@@ -35,7 +35,11 @@ export function colourKey(look: ViewLook): ViewLook {
   return look === "colour" ? "plain" : "colour"
 }
 
-/** Whether the parts are drawn in their colours: see-through always is (that's how parts tell apart in it). */
+/**
+ * Whether the parts are drawn with their own looks. Only shaded follows the switch (白模 / 彩色): see-through
+ * shows the colours (that's how parts tell apart in it), and a line drawing keeps a clear part clear, so the
+ * one 线描 the card shows looks the same however it was reached.
+ */
 export function drawsColours(style: ViewStyle, colours: boolean): boolean {
-  return colours || style === "xray"
+  return colours || style !== "shaded"
 }
