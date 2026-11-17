@@ -385,16 +385,24 @@ test.describe("工作台", () => {
     await steps.nth(1).click()
     await page.mouse.move(5, 5)
     await expect(name).toHaveText(second)
-    await expect(tree.getByRole("button", { name: "回到最新" })).toBeVisible()
+    const back = tree.getByRole("button", { name: "回到最新" })
+    await expect(back).toBeVisible()
     expect(await bar.boundingBox(), "a step open, the strip keeps its size").toEqual(rest)
-    // From the keyboard the card opens at once.
+    // Back at the first sketch (no solid yet) the colour picker keeps its place, only disabled.
+    await steps.nth(0).click()
+    await page.mouse.move(5, 5)
+    await expect(tree.getByRole("button", { name: /^零件的颜色/ })).toBeDisabled()
+    expect(await bar.boundingBox(), "at a sketch with no solid, the strip keeps its size").toEqual(rest)
+    // From the keyboard the card opens at once; Esc closes the card first, then lets go of the step.
     await steps.nth(3).focus()
     await expect(steps.nth(3)).toHaveAttribute("data-state", "instant-open")
     await expect(card).toContainText("第 4 步")
     await page.keyboard.press("Escape")
+    await expect(card).toHaveCount(0)
+    await expect(back, "one Esc closes one thing").toBeVisible()
     await page.keyboard.press("Escape")
+    await expect(back).toHaveCount(0)
     await steps.nth(3).blur()
-    await expect(tree.getByRole("button", { name: "回到最新" })).toHaveCount(0)
     await expect(name).toHaveCount(0)
   })
 

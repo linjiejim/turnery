@@ -90,8 +90,8 @@ export function TreeOverlay({
   const [pinned, setPinned] = React.useState<string | null>(null)
   /** A step double-clicked: its details open with the name being edited (cleared once it is). */
   const [renaming, setRenaming] = React.useState<string | null>(null)
-  /** The name under the strip didn't fit: the card spells it out. */
-  const [labelCut, setLabelCut] = React.useState(false)
+  /** The name under the strip isn't all there (cut short, or its step scrolled away): the card spells it out. */
+  const [nameHidden, setNameHidden] = React.useState(false)
   const rollbackIndex = rollback ? tree.features.findIndex((x) => x.id === rollback) : -1
   const last = tree.features.at(-1)?.id ?? null
 
@@ -146,7 +146,8 @@ export function TreeOverlay({
   React.useEffect(() => {
     if (!pinned && !selectedFeature) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || reselect?.state || (e.target as HTMLElement)?.closest?.("input, textarea, select, [role=menu], [role=alertdialog]")) return
+      // Taken already (the card or a popover closing on this Esc): one Esc closes one thing.
+      if (e.key !== "Escape" || e.defaultPrevented || reselect?.state || (e.target as HTMLElement)?.closest?.("input, textarea, select, [role=menu], [role=alertdialog]")) return
       unpin()
       onSelectFeature?.(null)
     }
@@ -193,8 +194,9 @@ export function TreeOverlay({
     const center = s.left + s.width / 2 - b.left
     el.style.left = `${labelLeft(center, el.offsetWidth, b.width)}px`
     // Scrolled out of the strip: no name pointing at nothing.
-    el.style.visibility = center >= 0 && center <= b.width ? "" : "hidden"
-    setLabelCut(el.scrollWidth > el.clientWidth)
+    const outside = center < 0 || center > b.width
+    el.style.visibility = outside ? "hidden" : ""
+    setNameHidden(outside || el.scrollWidth > el.clientWidth)
   }, [named])
   React.useLayoutEffect(place, [place, namedText, tree.features])
   React.useLayoutEffect(() => {
@@ -291,12 +293,14 @@ export function TreeOverlay({
         {/* Two rows of their own: 「回到最新」 appearing moves nothing. */}
         <div className="flex shrink-0 flex-col justify-center gap-0.5 border-r border-transparent px-2 text-caption text-faint-foreground timeline-lit:border-border">
           <div className="flex h-5 items-center gap-1 whitespace-nowrap">
-            {canColor && studio.display?.mesh && (
+            {/* Kept in place while the step shown has no solid yet (a first sketch), only disabled. */}
+            {canColor && (
               <span className={LIT}>
                 <LookPicker
                   look={{ ...(tree.appearance?.color ? { color: tree.appearance.color } : {}), ...(tree.appearance?.finish ? { finish: tree.appearance.finish } : {}), source: "part" }}
                   label={splitParts ? "整个零件的颜色（各零件自己设的优先）" : "零件的颜色"}
                   onChange={(c) => setLook(undefined, c)}
+                  disabled={!studio.display?.mesh}
                   className="-ml-1"
                 />
               </span>
@@ -314,18 +318,18 @@ export function TreeOverlay({
               />
             </span>
           </div>
+          {/* Laid out even when hidden, so the column is as wide with it as without. */}
           <div className="flex h-5 items-center">
-            {rollback && (
-              <Button size="sm" variant="secondary" className="h-5 px-1.5 text-caption" onClick={() => studio.showFeature(null)}>
-                回到最新
-              </Button>
-            )}
+            <Button size="sm" variant="secondary" className={cn("h-5 px-1.5 text-caption", !rollback && "invisible")} onClick={() => studio.showFeature(null)}>
+              回到最新
+            </Button>
           </div>
         </div>
-        <div ref={strip} className="relative flex min-w-0">
+        {/* At least a name wide, so a short tree's names aren't cut. */}
+        <div ref={strip} className="relative flex min-w-40">
           <ol
             ref={list}
-            className="flex min-w-0 items-stretch gap-0.5 overflow-x-auto overflow-y-hidden overscroll-contain px-1 py-0.5 [scrollbar-width:thin]"
+            className="flex min-w-0 items-stretch gap-0.5 overflow-x-auto overflow-y-hidden overscroll-contain px-1 py-0.5 [scrollbar-width:none]"
             onKeyDown={onKeyDown}
             onScroll={place}
             // A plain wheel scrolls the timeline sideways.
@@ -357,7 +361,7 @@ export function TreeOverlay({
                         aria-label={name}
                         onMouseEnter={() => show(f)}
                         onFocus={() => show(f)}
-                        onBlur={(e) => { if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node | null)) hide() }}
+                        onBlur={hide}
                         aria-current={active ? "step" : undefined}
                         // The icon on top; the row under it is where the name shows (drawn once, for the whole strip).
                         className={cn("group/step flex w-8 flex-col items-center rounded-md text-muted-foreground", (after || f.suppressed) && "opacity-50")}
@@ -388,7 +392,7 @@ export function TreeOverlay({
                         collisionPadding={8}
                         className="z-50 w-max max-w-64 rounded-md border bg-popover px-2.5 py-1.5 text-small shadow-popover data-[state=delayed-open]:animate-fade-in data-[state=instant-open]:animate-fade-in"
                       >
-                        <StepCard feature={f} result={r} index={i} name={name} full={labelCut && named === f.id} dims={studio.dims} />
+                        <StepCard feature={f} result={r} index={i} name={name} full={nameHidden && named === f.id} dims={studio.dims} />
                       </TooltipPrimitive.Content>
                     </TooltipPrimitive.Portal>
                   </TooltipPrimitive.Root>
@@ -429,7 +433,7 @@ function StepCard({ feature: f, result: r, index, name, full, dims }: { feature:
   const shown = cardDims(dims, f.id)
   return (
     <div className="flex flex-col gap-0.5">
-      {/* The name is under the step already; spelled out here only when it didn't fit there. */}
+      {/* The name is under the step already; spelled out here only when it isn't all there. */}
       {full && <div className="font-medium">{name}</div>}
       <div className="text-caption text-faint-foreground tabular">{stepLine(f, index)}</div>
       {shown.length > 0 && (
