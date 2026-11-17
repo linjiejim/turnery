@@ -9,13 +9,13 @@ import { Button, IconButton } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ResizeHandle } from "@/components/ui/resize-handle"
 import { matchesPart } from "@/studio/part-selection"
 import { isSet, lookText, type Appearance, type Look, type LookChange } from "@/studio/appearance"
 import { LookPicker } from "@/studio/ui/look-picker"
 import { turnery } from "../bridge"
 import type { PartSummary, ProjectFile, Snapshot } from "../core/protocol"
 import { LEFT, STRUCTURE, type Panels } from "../panels"
-import { Resizer } from "./resizer"
 import { fileStem } from "./words"
 
 /**
@@ -47,6 +47,8 @@ export type Structure = {
 
 const NO_NAMES: string[] = []
 const NO_ITEMS: Instance[] = []
+const leftWidth = (w: number) => (p: Panels): Panels => ({ ...p, left: { ...p.left, w } })
+const structureHeight = (structureH: number) => (p: Panels): Panels => ({ ...p, structureH })
 
 /**
  * The left panel: the project's files (a folder: its assemblies and parts) or, without one, the open
@@ -59,7 +61,8 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
   onCollapse: () => void
   width: number
   panels: Panels
-  onPanels: (change: (p: Panels) => Panels) => void
+  /** `save: false` while a handle is being dragged. */
+  onPanels: (change: (p: Panels) => Panels, save?: boolean) => void
   structure?: Structure | null
   selected?: string[]
   onSelect?: (part: Instance, additive: boolean) => void
@@ -71,6 +74,15 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
 }) {
   const [query, setQuery] = useState("")
   const box = useRef<HTMLElement>(null)
+  // The panel's height, for how tall 「结构」 may get (the files keep 128 px).
+  const [room, setRoom] = useState(() => window.innerHeight)
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setRoom(el.clientHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const mac = turnery.platform === "darwin"
   const instances = structure?.items ?? NO_ITEMS
   const project = snapshot?.project ?? null
@@ -106,7 +118,16 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
   const both = instances.length > 0 && !filesFolded && !structureFolded
   return (
     <aside ref={box} className="relative flex shrink-0 flex-col border-r bg-sunken" style={{ width }} aria-label={project ? `项目 ${project.name}` : "零件"}>
-      <Resizer edge="right" label="拖动调整左栏宽度" value={width} min={LEFT.min} max={LEFT.max} initial={LEFT.initial} onChange={(w) => onPanels((p) => ({ ...p, left: { ...p.left, w } }))} />
+      <ResizeHandle
+        side="right"
+        label="调整左栏宽度"
+        value={width}
+        min={LEFT.min}
+        max={LEFT.max}
+        defaultValue={LEFT.initial}
+        onValueChange={(w) => onPanels(leftWidth(w), false)}
+        onValueCommit={(w) => onPanels(leftWidth(w))}
+      />
       {/* The top of the window: on a Mac the traffic lights sit here, and the row drags the window. */}
       <div className={cn("flex h-12 shrink-0 items-center gap-1 pr-1.5 select-none [-webkit-app-region:drag]", mac ? "pl-22" : "pl-2.5")}>
         <button
@@ -177,14 +198,15 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
           style={both ? { height: panels.structureH, maxHeight: "calc(100% - 8rem)" } : undefined}
         >
           {both && (
-            <Resizer
-              edge="top"
-              label="拖动调整文件和结构的高度"
+            <ResizeHandle
+              side="top"
+              label="调整文件和结构的高度"
               value={panels.structureH}
               min={STRUCTURE.min}
-              max={() => Math.max(STRUCTURE.min, (box.current?.clientHeight ?? 600) - 128)}
-              initial={STRUCTURE.initial}
-              onChange={(structureH) => onPanels((p) => ({ ...p, structureH }))}
+              max={Math.max(STRUCTURE.min, room - 128)}
+              defaultValue={STRUCTURE.initial}
+              onValueChange={(h) => onPanels(structureHeight(h), false)}
+              onValueCommit={(h) => onPanels(structureHeight(h))}
             />
           )}
           <SectionTitle

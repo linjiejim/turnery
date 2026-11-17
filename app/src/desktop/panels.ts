@@ -66,7 +66,10 @@ export function readPanels(vw: number): Panels {
 export function usePanels() {
   const [panels, setPanels] = React.useState(() => readPanels(window.innerWidth))
   const [vw, setVw] = React.useState(() => window.innerWidth)
+  // Whether the last change is to be remembered: a resize handle's moves aren't, its commit is.
+  const keep = React.useRef(true)
   React.useEffect(() => {
+    if (!keep.current) return
     try {
       localStorage.setItem(STORE, JSON.stringify(panels))
     } catch {
@@ -78,9 +81,13 @@ export function usePanels() {
     window.addEventListener("resize", fit)
     return () => window.removeEventListener("resize", fit)
   }, [])
-  const update = React.useCallback((change: (p: Panels) => Panels) => setPanels(change), [])
-  const toggleLeft = React.useCallback(() => setPanels((p) => ({ ...p, left: { ...p.left, open: !p.left.open } })), [])
-  const toggleRight = React.useCallback((open?: boolean) => setPanels((p) => ({ ...p, right: { ...p.right, open: open ?? !p.right.open } })), [])
+  /** `save: false` while a handle is being dragged; it saves once the drag is done. */
+  const update = React.useCallback((change: (p: Panels) => Panels, save = true) => {
+    keep.current = save
+    setPanels(change)
+  }, [])
+  const toggleLeft = React.useCallback(() => update((p) => ({ ...p, left: { ...p.left, open: !p.left.open } })), [update])
+  const toggleRight = React.useCallback((open?: boolean) => update((p) => ({ ...p, right: { ...p.right, open: open ?? !p.right.open } })), [update])
   return { panels, widths: panelWidths(panels, vw), update, toggleLeft, toggleRight }
 }
 

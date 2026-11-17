@@ -430,7 +430,7 @@ export function DesktopApp() {
           <RightPanel
             open={panels.panels.right.open}
             width={panels.widths.right}
-            onWidth={(w) => panels.update((p) => ({ ...p, right: { ...p.right, w } }))}
+            onWidth={(w, save) => panels.update((p) => ({ ...p, right: { ...p.right, w } }), save)}
             onOpen={panels.toggleRight}
             tab={details && detailsFront ? "details" : tab}
             onTab={chooseTab}
