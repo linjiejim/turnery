@@ -5,7 +5,8 @@
 // best. All in each view's 2D coordinates (mm); the sheet is laid out in the UI.
 import { makeProjectedEdges, ProjectionCamera, type Edge, type Shape3D } from "replicad"
 import type { Dim } from "./dims"
-import { meshEdges } from "./mesh"
+import { hiddenLines } from "./hlr"
+import { meshEdges, type EdgeMesh, type Mesh } from "./mesh"
 import { disposeInfos, faceInfos } from "./select"
 import { compoundOf } from "./topo"
 
@@ -62,7 +63,18 @@ function frame(view: ViewName) {
   return { dir: unit(v.dir), x: unit(v.x) }
 }
 
-export function makeDrawing(body: Shape3D, origins: string[], dims: Dim[], withIso: boolean, note?: string): DrawingData {
+/**
+ * Above this many triangles the views come from the mesh (kernel/hlr.ts): OpenCascade's exact
+ * hidden-line removal takes minutes there (an assembly of 179 parts, 217 000 triangles: 4 min for
+ * three views), the mesh's well under a second a view.
+ */
+export const MESH_DRAWING_TRIANGLES = 40_000
+
+/**
+ * The drawing's views: visible and hidden lines (in each view's u, v) by exact hidden-line removal,
+ * or, given the body's mesh, from the mesh.
+ */
+export function makeDrawing(body: Shape3D, origins: string[], dims: Dim[], withIso: boolean, note?: string, mesh?: { mesh: Mesh; edges: EdgeMesh | null }): DrawingData {
   const names: ViewName[] = withIso ? ["front", "top", "left", "iso"] : ["front", "top", "left"]
   const [lo, hi] = body.boundingBox.bounds as [V3, V3]
   const size = sub(hi, lo)
@@ -70,11 +82,17 @@ export function makeDrawing(body: Shape3D, origins: string[], dims: Dim[], withI
   const used = new Set<string>()
   const views = names.map((name) => {
     const { dir, x } = frame(name)
-    const cam = new ProjectionCamera([0, 0, 0], dir, x)
-    const { visible, hidden } = makeProjectedEdges(body, cam)
-    cam.delete()
-    const vis = segments(visible)
-    const hid = dedupe(segments(hidden), vis)
+    let vis: number[]
+    let hid: number[]
+    if (mesh) [vis, hid] = meshView(mesh.mesh, mesh.edges, dir, x)
+    else {
+      const cam = new ProjectionCamera([0, 0, 0], dir, x)
+      const { visible, hidden } = makeProjectedEdges(body, cam)
+      cam.delete()
+      vis = segments(visible)
+      hid = segments(hidden)
+    }
+    hid = dedupe(hid, vis)
     const box = bounds(vis)
     const view: SheetView = { name, visible: vis, hidden: hid, centre: name === "iso" ? [] : centres(name, box), bbox: box, dims: [] }
     return view
@@ -99,6 +117,50 @@ export function makeDrawing(body: Shape3D, origins: string[], dims: Dim[], withI
   overall(f, size[2], [f.bbox[0][0], f.bbox[0][1]], [f.bbox[0][0], f.bbox[1][1]], [-2 * pad, 0])
   overall(t, size[1], [t.bbox[1][0], t.bbox[0][1]], [t.bbox[1][0], t.bbox[1][1]], [2 * pad, 0])
   return { views, size, note }
+}
+
+/** Mesh points per pixel of the depth picture a view is judged on: its longer side. */
+const MESH_VIEW_PX = 2400
+
+/**
+ * One view from the mesh: looking along −`dir`, `x` to the right, as the exact views (u = p · x,
+ * v = p · (dir × x)). Visible and hidden lines as segment pairs [u0, v0, u1, v1, …].
+ */
+export function meshView(mesh: Mesh, edges: EdgeMesh | null, dir: V3, x: V3): [number[], number[]] {
+  const y = cross(dir, x)
+  const v = mesh.vertices
+  let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity, w1 = -Infinity
+  for (let i = 0; i < v.length; i += 3) {
+    const p: V3 = [v[i], v[i + 1], v[i + 2]]
+    const u = dot(p, x)
+    const w = dot(p, y)
+    const d = dot(p, dir)
+    if (u < u0) u0 = u
+    if (u > u1) u1 = u
+    if (w < v0) v0 = w
+    if (w > v1) v1 = w
+    if (d > w1) w1 = d
+  }
+  if (!Number.isFinite(u0)) return [[], []]
+  const cu = (u0 + u1) / 2
+  const cv = (v0 + v1) / 2
+  const halfW = Math.max(1e-3, (u1 - u0) / 2) * 1.02
+  const halfH = Math.max(1e-3, (v1 - v0) / 2) * 1.02
+  const back = w1 + 1
+  // World → eye (column-major): rows x, y, dir, the eye stood in front of everything along `dir`.
+  const view = [x[0], y[0], dir[0], 0, x[1], y[1], dir[1], 0, x[2], y[2], dir[2], 0, -cu, -cv, -back, 1]
+  const long = Math.max(halfW, halfH)
+  const W = Math.max(16, Math.round((MESH_VIEW_PX * halfW) / long))
+  const H = Math.max(16, Math.round((MESH_VIEW_PX * halfH) / long))
+  const faces = new Int32Array(mesh.triangles.length / 3).fill(-1)
+  for (const g of mesh.faceGroups) faces.fill(g.faceId, g.start / 3, (g.start + g.count) / 3)
+  const res = hiddenLines([{ id: 0, vertices: v, index: mesh.triangles, edges: edges?.lines ?? new Float32Array(), faces }], { view, width: W, height: H, projection: { ortho: true, halfW, halfH } }, { hidden: true })
+  const flat = (lines: typeof res.visible) => {
+    const out: number[] = []
+    for (const l of lines) out.push(l.a[0] * halfW + cu, l.a[1] * halfH + cv, l.b[0] * halfW + cu, l.b[1] * halfH + cv)
+    return out
+  }
+  return [flat(res.visible), flat(res.hidden)]
 }
 
 /** Projected HLR edges as segment pairs (they lie in the view plane, z = 0). */

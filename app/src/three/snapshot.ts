@@ -63,6 +63,36 @@ export class Snapshotter {
     ctx.drawImage(this.renderer.domElement, 0, 0, c.width, c.height)
   }
 
+  /**
+   * Draw `object` as `camera` sees it (a copy of a view's camera, perspective or orthographic) into a
+   * new canvas of `w` × `h` pixels, background left transparent. The lights ride with the camera as
+   * they do in the view.
+   */
+  drawFrom(object: THREE.Object3D, camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, w: number, h: number): HTMLCanvasElement {
+    const ratio = this.renderer.getPixelRatio()
+    this.renderer.setPixelRatio(1)
+    this.renderer.setSize(w, h, false)
+    this.kit.setResolution(w, h)
+    this.camera.position.copy(camera.position)
+    this.camera.quaternion.copy(camera.quaternion)
+    this.camera.updateMatrixWorld()
+    camera.updateMatrixWorld()
+    this.holder.add(object)
+    try {
+      this.renderer.render(this.scene, camera)
+      const out = document.createElement("canvas")
+      out.width = w
+      out.height = h
+      out.getContext("2d")!.drawImage(this.renderer.domElement, 0, 0, w, h)
+      return out
+    } finally {
+      this.holder.remove(object)
+      // Small first: restoring the ratio resizes the canvas, and at the picture's size that would be huge.
+      this.renderer.setSize(1, 1, false)
+      this.renderer.setPixelRatio(ratio)
+    }
+  }
+
   /** Render once to a data URL (static thumbnails). Disposes the object. */
   shot(object: THREE.Object3D, opts: { w: number; h: number; dir?: THREE.Vector3; box?: THREE.Box3; padding?: number }) {
     const dpr = Math.min(window.devicePixelRatio, 2)

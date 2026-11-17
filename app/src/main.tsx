@@ -16,7 +16,8 @@ createRoot(document.getElementById("root")!).render(
     <LucideProvider strokeWidth={1.75}>
       <TooltipProvider>
         <App />
-        <Toaster />
+        {/* Below the 48 px top bar every page has (as the desktop's below its title bar): its actions stay clickable. */}
+        <Toaster offset={{ top: 56, right: 16 }} />
       </TooltipProvider>
     </LucideProvider>
   </StrictMode>,

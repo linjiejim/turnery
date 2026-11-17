@@ -137,8 +137,9 @@ describe("turnery: paths and catalog", () => {
     // Was ~236 000 characters with every selector inlined (set_tree alone ~100 000), then ~86 000 with
     // selectors under $defs. Now a selector's `not` only says "same fields", and anything else written
     // twice in one tool (a path's and a polyline's points, the two ends of a distance) is hoisted too.
-    // (62 400 then; the three printing checks and 3MF added about 1 600.)
-    expect(total).toBeLessThan(66_000)
+    // (62 400 then; the three printing checks and 3MF added about 1 600, export's pictures — png and
+    // svg, their view, style, explode and labels — about 750.)
+    expect(total).toBeLessThan(66_500)
     const byName = (n: string) => JSON.stringify(inputJsonSchema(agentCommands().find((c) => c.name === n)!)).length
     expect(byName("set_tree")).toBeLessThan(4_000)
     expect(byName("check")).toBeLessThan(10_500)

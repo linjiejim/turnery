@@ -149,6 +149,22 @@ export type LookRequest = {
   size?: "normal" | "large"
   /** Without the parts' colours and finishes (a white model). */
   plain?: boolean
+  /** Not views to look at: one picture to keep (`export` to .png), drawn as asked. */
+  figure?: FigureRequest
+}
+
+/** A picture of the model to keep (export to .png): from `dir`, in a style, parts pulled apart or left out. */
+export type FigureRequest = {
+  dir: V3
+  projection: "perspective" | "orthographic"
+  style: "shaded" | "lines" | "xray"
+  /** 0–1 of each part's explode distance. */
+  explode: number
+  /** Parts (by name) left out. */
+  hide: string[]
+  background: "white" | "transparent"
+  /** The parts' own colours. */
+  looks: boolean
 }
 
 export type EngineEvent =
@@ -193,6 +209,8 @@ export interface TurneryBridge {
   kernel(path: string, call: KernelCall): Promise<unknown>
   /** The engine asks the window to render views for `look`. */
   onLook(render: (req: LookRequest) => Promise<string[]>): () => void
+  /** Keep a picture or line drawing of the view: asks where (next to the open file), shows it in Finder. The path, or null when cancelled. */
+  saveFigure(figure: { format: "png" | "svg"; data: string }): Promise<string | null>
   answerPick(id: string, answer: { info: PickInfo; text?: string } | null): Promise<void>
   openPart(): Promise<string | null>
   newPart(): Promise<string | null>
@@ -255,6 +273,8 @@ export type Notice = { tone: "info" | "success" | "error"; text: string }
 export type MenuAction = "undo" | "redo" | "agent-setup" | "focus" | "toggle-left" | "toggle-right" | "back" | "forward"
 
 export type ExportFormat = "step" | "stl" | "3mf" | "py" | "json"
+/** Pictures `export` makes as well: the model as seen, or a line drawing. */
+export type FigureFormat = "png" | "svg"
 
 export type { BuildReport, DisplayData, PickInfo, Tree }
 

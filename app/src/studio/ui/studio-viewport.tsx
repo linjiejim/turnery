@@ -33,7 +33,9 @@ import { gatherRegion } from "../region-pick"
 import { declutter, dimensionLayer, dimParam } from "../dimension-layer"
 import type { Dim } from "../kernel/dims"
 import { DimEditor } from "./dim-editor"
-import { MeasurePanel, ViewTools } from "./viewport-tools"
+import { MeasurePanel, ViewTools, type ExportViewOptions } from "./viewport-tools"
+import { renderPicture } from "../figure"
+import { lineFigure } from "../figure-lines"
 import { VIEW_KEYS, type KeyRow, type ViewTool } from "../view-keys"
 import { useWords } from "./host-words"
 
@@ -93,6 +95,19 @@ function useViewPrefs(): [ViewPrefs, (p: Partial<ViewPrefs>) => void] {
   return [prefs, update]
 }
 
+/** A picture of the view to keep: a PNG data URL, or SVG text. */
+export type SavedFigure = { format: "png"; data: string } | { format: "svg"; data: string }
+
+/** The browser's way of keeping a picture: a download. */
+async function downloadFigure(f: SavedFigure) {
+  const a = document.createElement("a")
+  const url = f.format === "png" ? f.data : URL.createObjectURL(new Blob([f.data], { type: "image/svg+xml" }))
+  a.href = url
+  a.download = f.format === "png" ? "视图.png" : "线稿.svg"
+  a.click()
+  if (f.format === "svg") setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /** How long pulling the parts apart (or putting them back) takes when the explode panel opens or closes. */
 const EXPLODE_MS = 450
 /** How far the parts come apart when the explode panel opens. */
@@ -143,6 +158,7 @@ export function StudioViewport({
   viewKey,
   cameras: cameraMemory,
   pinNotes,
+  onSaveFigure = downloadFigure,
 }: {
   studio: Studio
   hover: Hover | null
@@ -182,6 +198,8 @@ export function StudioViewport({
   cameras?: Map<string, ViewCamera>
   /** Notes already on the model: a click on a pin opens its card (none on the site). */
   pinNotes?: PinNotes
+  /** Keep an exported picture or line drawing (the desktop asks where); without it, the browser downloads it. */
+  onSaveFigure?: (figure: SavedFigure) => Promise<void>
 }) {
   const [viewer, setViewer] = React.useState<Viewer | null>(null)
   const current = React.useRef<THREE.Group | null>(null)
@@ -810,6 +828,30 @@ export function StudioViewport({
   const movedLabels = display?.parts ? wholeNames(display.parts, movedNames).length : movedNames.length
   const moveBack = (names?: string[]) => onParts?.(withoutMoves(view, names))
 
+  // 「导出视图」: what the view shows, from where it looks now.
+  const exportView = async (o: ExportViewOptions) => {
+    if (!viewer || !display?.mesh) return
+    // A copy without the lights that ride on the view's camera.
+    const eye = viewer.eye
+    const camera = eye instanceof THREE.OrthographicCamera ? new THREE.OrthographicCamera().copy(eye, false) : new THREE.PerspectiveCamera().copy(eye, false)
+    const { w, h } = viewer.size
+    try {
+      if (o.format === "png") {
+        // Twice the view's size (as sharp as a Retina screen), at most 4096 px on the long side.
+        const k = Math.min(2, 4096 / Math.max(w, h))
+        const data = renderPicture(display, { camera, width: Math.round(w * k), height: Math.round(h * k), view, style, looks, section: plane, background: o.background })
+        if (!data) return void notify("还没有东西可以导出")
+        await onSaveFigure({ format: "png", data })
+      } else {
+        const figure = lineFigure(display, { camera, width: w, height: h, view, section: plane, hidden: o.hidden, labels: o.labels, labelParts: selectedParts.length ? selectedParts : undefined })
+        if (!figure) return void notify("这个视角下没有可画的线")
+        await onSaveFigure({ format: "svg", data: figure.svg })
+      }
+    } catch (e) {
+      notify.error(`导出没成功：${(e as Error)?.message ?? e}`)
+    }
+  }
+
   /** F: the selected parts, or everything (pulled apart and moved as shown). */
   const frame = () => {
     if (!viewer || !display?.bbox) return
@@ -967,6 +1009,8 @@ export function StudioViewport({
           onLooks={setLooks}
           display={prefs}
           onDisplay={setPrefs}
+          onExportView={exportView}
+          numbered={Boolean(display.parts && display.parts.length > 1)}
           changes={showChanges}
           onChanges={setShowChanges}
           keysOpen={keysOpen}
