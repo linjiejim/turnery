@@ -353,6 +353,51 @@ test.describe("工作台", () => {
     await expect(page.getByLabel("失败")).toHaveCount(0)
   })
 
+  test("/studio 特征时间线：从不变大，名字只在指向的那一步下面，停一下才弹出卡片", async ({ page }) => {
+    await page.goto("/studio?start=flange")
+    const tree = page.getByRole("navigation", { name: "特征树" })
+    await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
+    const bar = tree.locator("[data-timeline-bar]")
+    const steps = tree.locator("[data-step]")
+    const name = tree.locator("[data-step-name]")
+    const rest = await bar.boundingBox()
+    await expect(name, "at rest no step is named").toHaveCount(0)
+
+    // Pointing at a step names it, under it; the card waits for the pointer to rest.
+    const second = (await steps.nth(1).getAttribute("aria-label"))!
+    await steps.nth(1).hover()
+    await expect(name).toHaveText(second)
+    await expect(steps.nth(1), "the card opens after a pause").toHaveAttribute("data-state", "delayed-open")
+    const card = page.getByRole("tooltip")
+    await expect(card).toContainText("第 2 步")
+    expect(await bar.boundingBox(), "pointed at, the strip keeps its size").toEqual(rest)
+    // The name and card follow the pointer; once a card is up, the next one opens at once.
+    const third = (await steps.nth(2).getAttribute("aria-label"))!
+    await steps.nth(2).hover()
+    await expect(name).toHaveText(third)
+    await expect(steps.nth(2)).toHaveAttribute("data-state", "instant-open")
+    await expect(card).toContainText("第 3 步")
+    await page.mouse.move(5, 5)
+    await expect(name).toHaveCount(0)
+    await expect(card).toHaveCount(0)
+
+    // A step clicked stays named once the pointer leaves; 「回到最新」 appears without moving anything.
+    await steps.nth(1).click()
+    await page.mouse.move(5, 5)
+    await expect(name).toHaveText(second)
+    await expect(tree.getByRole("button", { name: "回到最新" })).toBeVisible()
+    expect(await bar.boundingBox(), "a step open, the strip keeps its size").toEqual(rest)
+    // From the keyboard the card opens at once.
+    await steps.nth(3).focus()
+    await expect(steps.nth(3)).toHaveAttribute("data-state", "instant-open")
+    await expect(card).toContainText("第 4 步")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("Escape")
+    await steps.nth(3).blur()
+    await expect(tree.getByRole("button", { name: "回到最新" })).toHaveCount(0)
+    await expect(name).toHaveCount(0)
+  })
+
   test("/studio 的说明：指向 ⓘ 就全部显示，不用点", async ({ page }) => {
     await page.goto("/studio?start=flange")
     const count = page.getByRole("navigation", { name: "特征树" }).getByText("5 个特征")
