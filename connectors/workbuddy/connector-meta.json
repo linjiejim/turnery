@@ -1,0 +1,21 @@
+{
+  "name": "Turnery",
+  "name_zh": "Turnery 参数化建模",
+  "name_en": "Turnery",
+  "description": "Parametric CAD by chat: feature tree, kernel-checked sizes, STEP/STL export. Needs Turnery on Mac.",
+  "description_zh": "用对话建参数化 CAD 零件：特征树随时可改，尺寸由几何内核复核，导出 STEP/STL。需要先在 Mac 上安装 Turnery。",
+  "description_en": "Parametric CAD by chat: feature tree, kernel-checked sizes, STEP/STL export. Needs Turnery on Mac.",
+  "source": "turnery",
+  "type": "mcp",
+  "examples_zh": [
+    "用 Turnery 建一个 60×40×25 mm 的盒子，壁厚 2 mm，四角打 M3 螺丝孔",
+    "给树莓派 Pico 做一个不用支撑就能 3D 打印的外壳",
+    "把刚才那个支架的壁厚改成 3 mm，导出 STL"
+  ],
+  "examples_en": [
+    "Use Turnery to build a 60×40×25 mm box with 2 mm walls and M3 holes in the corners",
+    "Make an enclosure for a Raspberry Pi Pico that prints without supports",
+    "Change the bracket's wall to 3 mm and export an STL"
+  ],
+  "minWorkbuddyVersion": "5.0.0"
+}

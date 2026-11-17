@@ -90,12 +90,24 @@ agent 交给你的是一棵**特征树**：有名字的参数，一步步的特�
    xattr -dr com.apple.quarantine /Applications/Turnery.app
    ```
 
-3. 接入 agent。Claude Code 里装插件最省事（MCP 服务加一个告诉 Claude 什么时候、怎么用它的 skill）：
+3. 接入 agent。装插件最省事（MCP 服务加一个告诉 agent 什么时候、怎么用它的 skill）。Claude Code：
 
    ```
    /plugin marketplace add linjiejim/turnery
    /plugin install turnery@turnery
    ```
+
+   Codex：
+
+   ```bash
+   codex plugin marketplace add linjiejim/turnery
+   ```
+
+   ```bash
+   codex plugin add turnery@turnery
+   ```
+
+   WorkBuddy：在「插件」页点 **+** 添加插件市场 `linjiejim/turnery`，再安装 `turnery`。
 
    也可以手动加服务，窗口右上角「接入 Agent」会给出这台机器上的完整命令：
 

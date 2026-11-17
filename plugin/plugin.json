@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "turnery",
+  "version": "0.10.0",
+  "description": "Build parametric CAD parts with the Turnery desktop app over MCP: a feature tree you can read and change, requirements the kernel re-measures, STEP/STL export. Needs Turnery.app installed (macOS).",
+  "author": { "name": "Jim Lin", "url": "https://github.com/linjiejim" },
+  "homepage": "https://turnery.linjiejim.com/desktop",
+  "repository": "https://github.com/linjiejim/turnery",
+  "license": "MIT",
+  "keywords": ["cad", "parametric", "3d-printing", "mcp", "opencascade", "enclosure"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Turnery",
+        "shortDescription": "Parametric CAD you can watch",
+        "longDescription": "Turnery is a desktop CAD app with an MCP server. The agent builds parts as a feature tree (sketches, extrusions, fillets, holes, patterns, assemblies) and an OpenCascade kernel computes the geometry while you watch in a 3D window, drag parameters and pin notes on faces. Dimensions you state become checks the kernel re-measures on every rebuild. Export STEP, STL, 3MF, PNG or patent-style SVG line drawings. Needs Turnery.app on macOS; the MCP server runs locally and calls no model.",
+        "developerName": "Jim Lin",
+        "category": "Developer Tools",
+        "capabilities": ["Build parts", "Check dimensions", "Export STEP/STL"],
+        "websiteURL": "https://turnery.linjiejim.com/desktop",
+        "defaultPrompt": [
+          "Use Turnery to build a 60x40x25 mm box with 2 mm walls and M3 screw holes in the corners",
+          "Use Turnery to make an enclosure for a Raspberry Pi Pico that prints without supports"
+        ],
+        "brandColor": "#2759E0",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "turnery": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "turnery-mcp"],
+      "runtime": { "type": "node", "version": ">=18.0.0" }
+    }
+  }
+}

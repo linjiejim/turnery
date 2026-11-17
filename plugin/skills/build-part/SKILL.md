@@ -5,10 +5,11 @@ description: Build or change a parametric CAD part or assembly with Turnery - en
 
 # Build a part with Turnery
 
-Turnery is a desktop app; its MCP server (`turnery`, tools named `mcp__plugin_turnery_turnery__*`) edits a feature tree stored as `*.turnery.json` and an OpenCascade kernel computes the geometry. The user watches every step in the Turnery window.
+Turnery is a desktop app; its MCP server (`turnery`; your client may prefix the tool names, for example `mcp__plugin_turnery_turnery__guide`) edits a feature tree stored as `*.turnery.json` and an OpenCascade kernel computes the geometry. The user watches every step in the Turnery window.
 
 1. **Read the guide first.** Call `guide` once per session. It is the reference for coordinates, selectors and each feature; the tool descriptions assume you have read it. The guide and the tool results are in Chinese; answer the user in their language.
 2. **Say what you are about to build** in one or two sentences before the first tool call: what it is, which parts, single file or assembly. Ask when the object or a dimension is unclear.
+   **Use absolute paths** for `open_part`, `open_project`, `import` and `export`, inside the folder the user is working in. Some clients start the server in another folder, so a relative path may not land where you expect.
 3. **Parameters first.** `open_part` (with `create: true` for a new file), then `set_params` for every key dimension, then features that refer to the parameter names. Give each feature a `name` and an `intent`.
 4. **Read every result.** `✗` means fix that feature with `edit_feature`; do not stack a new feature on top. `⚠` must be handled or explained.
 5. **Check, don't claim.** When the request has numbers, call `check` with one item per number, quoting the user's words in `said` and writing the number they gave as the expected value. Then `look` at the result. Use `measure` for distances; do not compute them yourself.
@@ -16,4 +17,6 @@ Turnery is a desktop app; its MCP server (`turnery`, tools named `mcp__plugin_tu
 7. **Colours.** When the user names colours ("lid in orange", "black screws") or wants to see the final look, call `set_appearance` (a palette name or `#RRGGBB`; finish `matte`, `metal` or `clear`). It never changes geometry; `look` draws the colours and names them.
 8. **Deliver** with `export` (`step`, `stl`, `3mf`, `py`, `json`, `bom`); STEP, 3MF and the BOM carry the colours.
 
-If the `turnery` server failed to connect, Turnery.app is not installed or has never been opened: point the user to https://github.com/linjiejim/turnery/releases/latest and have them reconnect with `/mcp`.
+If the `turnery` server failed to connect, Turnery.app is not installed or has never been opened. Turnery runs on macOS only. Point the user to https://github.com/linjiejim/turnery/releases/latest, then have them reconnect the server (`/mcp` in Claude Code) or start a new session.
+
+If you cannot run local programs at all (for example in a web chat), Turnery's tools cannot load there: say that Turnery needs an agent running on the user's Mac, such as Claude Code, Codex or WorkBuddy. Otherwise, missing `turnery` tools mean the server failed to connect, as above.

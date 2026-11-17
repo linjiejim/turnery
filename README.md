@@ -88,12 +88,24 @@ The `intent` reads: "the posts run from the floor to the ceiling; after the spli
    xattr -dr com.apple.quarantine /Applications/Turnery.app
    ```
 
-3. Connect your agent. In Claude Code, install the plugin (the MCP server plus a skill that tells Claude when and how to use it):
+3. Connect your agent. The plugin is the easiest way (the MCP server plus a skill that tells the agent when and how to use it). In Claude Code:
 
    ```
    /plugin marketplace add linjiejim/turnery
    /plugin install turnery@turnery
    ```
+
+   In Codex:
+
+   ```bash
+   codex plugin marketplace add linjiejim/turnery
+   ```
+
+   ```bash
+   codex plugin add turnery@turnery
+   ```
+
+   In WorkBuddy, add the plugin marketplace `linjiejim/turnery` with **+** on the Plugins page, then install `turnery`.
 
    Or add the server by hand; the "接入 Agent" button in the window shows the exact command for your machine:
 
