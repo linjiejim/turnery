@@ -37,6 +37,7 @@ import { MeasurePanel, ViewTools, type ExportViewOptions } from "./viewport-tool
 import { renderPicture } from "../figure"
 import { lineFigure } from "../figure-lines"
 import { VIEW_KEYS, type KeyRow, type ViewTool } from "../view-keys"
+import { colourKey, drawsColours, lookPrefs, nextLook, viewLook, type ViewLook } from "../view-look"
 import { useWords } from "./host-words"
 
 type V3 = [number, number, number]
@@ -227,6 +228,18 @@ export function StudioViewport({
   const [looks, setLooks] = useLooksSwitch()
   const [prefs, setPrefs] = useViewPrefs()
   const style = prefs.style
+  // The card's one choice (白模 / 彩色 / 线描 / 半透明), kept as the two switches it always was.
+  const look = viewLook(style, looks)
+  // See-through always shows the parts' colours; shaded follows the switch.
+  const coloured = drawsColours(style, looks)
+  const chooseLook = React.useCallback(
+    (next: ViewLook) => {
+      const p = lookPrefs(next)
+      if (p.colours !== undefined) setLooks(p.colours)
+      setPrefs({ style: p.style })
+    },
+    [setLooks, setPrefs],
+  )
   // A new model invalidates the picks (hashes belong to the old one).
   const [shownDisplay, setShownDisplay] = React.useState(display)
   if (shownDisplay !== display) {
@@ -384,7 +397,7 @@ export function StudioViewport({
   const styleRef = React.useRef(style)
   React.useEffect(() => {
     if (!viewer || !display) return
-    const g = modelObject(display, viewer.kit, paintRef.current, viewRef.current, looks, styleRef.current)
+    const g = modelObject(display, viewer.kit, paintRef.current, viewRef.current, coloured, styleRef.current)
     viewer.setContent(g)
     current.current = g
     if (viewKey !== shownKey.current) {
@@ -405,7 +418,7 @@ export function StudioViewport({
       }
     } else fittedSize.current = 0
     return stop
-  }, [viewer, display, onPresented, looks, viewKey, cameras])
+  }, [viewer, display, onPresented, coloured, viewKey, cameras])
   React.useEffect(() => {
     viewRef.current = view
     if (!viewer || !display || !current.current) return
@@ -839,7 +852,7 @@ export function StudioViewport({
       if (o.format === "png") {
         // Twice the view's size (as sharp as a Retina screen), at most 4096 px on the long side.
         const k = Math.min(2, 4096 / Math.max(w, h))
-        const data = renderPicture(display, { camera, width: Math.round(w * k), height: Math.round(h * k), view, style, looks, section: plane, background: o.background })
+        const data = renderPicture(display, { camera, width: Math.round(w * k), height: Math.round(h * k), view, style, looks: coloured, section: plane, background: o.background })
         if (!data) return void notify("还没有东西可以导出")
         await onSaveFigure({ format: "png", data })
       } else {
@@ -865,7 +878,7 @@ export function StudioViewport({
   // with ⌘ / Ctrl / ⌥ held, or while the drawing sheet covers the view. By key position, so they work
   // with a Chinese input method on too. Esc goes back one level at a time: the open card or panel
   // handles its own, then the tool, then (the timeline's own handler) the selection and the step.
-  const keyActions = { tool, chooseTool, sketch, onAnnotation, onNoteSelection, selectedParts, section, bbox: display?.bbox ?? null, showDims, dimsTotal: shownDims.total, explodable: Boolean(display?.parts && display.parts.length > 1), exploding, openExplode, looks, hasLooks: hasLooks(display), prefs, setPrefs, canHide: Boolean(onParts && display?.parts), hideSelected, showAll, isolateSelected, ghostOthers, oneComponent, frame, onOpenPart, busyCard: Boolean(draft || keysOpen || editingDim || openNote), stopMeasuring }
+  const keyActions = { tool, chooseTool, sketch, onAnnotation, onNoteSelection, selectedParts, section, bbox: display?.bbox ?? null, showDims, dimsTotal: shownDims.total, explodable: Boolean(display?.parts && display.parts.length > 1), exploding, openExplode, look, chooseLook, hasLooks: hasLooks(display), prefs, setPrefs, canHide: Boolean(onParts && display?.parts), hideSelected, showAll, isolateSelected, ghostOthers, oneComponent, frame, onOpenPart, busyCard: Boolean(draft || keysOpen || editingDim || openNote), stopMeasuring }
   const keyRef = React.useRef(keyActions)
   React.useEffect(() => {
     keyRef.current = keyActions
@@ -922,12 +935,13 @@ export function StudioViewport({
           if (k.explodable) return handled(), k.openExplode(!k.exploding)
           return
         case "KeyA":
-          if (k.hasLooks && k.prefs.style !== "lines") return handled(), setLooks(!k.looks)
+          // 白模 ⇄ 彩色 (from a line drawing or see-through, to 彩色); nothing to colour, nothing to switch.
+          if (k.hasLooks) return handled(), k.chooseLook(colourKey(k.look))
           return
         case "KeyO":
           return handled(), k.setPrefs({ projection: k.prefs.projection === "perspective" ? "orthographic" : "perspective" })
         case "KeyW":
-          return handled(), k.setPrefs({ style: STYLES[(STYLES.indexOf(k.prefs.style) + 1) % STYLES.length] })
+          return handled(), k.chooseLook(nextLook(k.look))
         case "KeyF":
           return handled(), k.frame()
         case "KeyH":
@@ -944,7 +958,7 @@ export function StudioViewport({
     }
     window.addEventListener("keydown", onKey, true)
     return () => window.removeEventListener("keydown", onKey, true)
-  }, [active, setLooks])
+  }, [active])
   return (
     <Viewport className="absolute inset-0" onReady={onReady} triadBesideCube>
       {onParts && display?.parts && (selectedParts.length > 0 || view.focus || view.hidden.size > 0 || movedNames.length > 0) && (
@@ -1005,10 +1019,11 @@ export function StudioViewport({
             onParts?.({ ...parts, explode })
           }}
           onExplodeEnd={() => frameShown()}
-          looks={{ on: looks, available: hasLooks(display), lines: style === "lines" }}
-          onLooks={setLooks}
-          display={prefs}
-          onDisplay={setPrefs}
+          display={{ look, projection: prefs.projection, colours: hasLooks(display), canSetColours: !readOnly }}
+          onDisplay={(d) => {
+            if (d.look) chooseLook(d.look)
+            if (d.projection) setPrefs({ projection: d.projection })
+          }}
           onExportView={exportView}
           numbered={Boolean(display.parts && display.parts.length > 1)}
           changes={showChanges}
