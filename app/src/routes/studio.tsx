@@ -9,6 +9,7 @@ import { Button, IconButton } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { ResizeHandle } from "@/components/ui/resize-handle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { notify } from "@/components/ui/toast"
 import { ChatPanel } from "@/studio/ui/chat-panel"
@@ -17,8 +18,7 @@ import { saveBlob } from "@/studio/download"
 import { EMPTY_TREE, type Tree } from "@/studio/dsl"
 import { readTreeFile } from "@/studio/import"
 import { checkTree } from "@/studio/limits"
-import { PanelResizer } from "@/studio/ui/panel-resizer"
-import { usePanelWidth } from "@/studio/ui/panel-width"
+import { PANEL_DEFAULT, PANEL_MIN, usePanelWidth } from "@/studio/ui/panel-width"
 import { ShareDialog } from "@/studio/ui/share-dialog"
 import { CodePanel, ParamsPanel } from "@/studio/ui/side-panels"
 import type { Hover } from "@/studio/scene"
@@ -278,7 +278,17 @@ export function StudioPage() {
           style={{ "--panel-w": `${panel.width}px` } as React.CSSProperties}
           className="relative flex shrink-0 flex-col border-l lg:w-(--panel-w) max-lg:h-[55dvh] max-lg:w-full max-lg:border-t max-lg:border-l-0"
         >
-          <PanelResizer {...panel} />
+          <ResizeHandle
+            side="left"
+            label="调整面板宽度"
+            value={panel.width}
+            min={PANEL_MIN}
+            max={panel.max}
+            defaultValue={PANEL_DEFAULT}
+            onValueChange={(w) => panel.resize(w)}
+            onValueCommit={(w) => panel.resize(w, true)}
+            className="max-lg:hidden"
+          />
           <TabsList className="shrink-0 px-3">
             <TabsTrigger value="chat">对话</TabsTrigger>
             <TabsTrigger value="params">参数</TabsTrigger>

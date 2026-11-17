@@ -2,9 +2,9 @@ import * as React from "react"
 import { Code, History, MessageSquare, PanelRightClose, PanelRightOpen, SlidersHorizontal, SquareMousePointer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IconButton } from "@/components/ui/button"
+import { ResizeHandle } from "@/components/ui/resize-handle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RIGHT, RAIL } from "../panels"
-import { Resizer } from "./resizer"
 
 export type PanelTab = "details" | "notes" | "params" | "activity" | "code"
 
@@ -36,7 +36,8 @@ export function RightPanel({
 }: {
   open: boolean
   width: number
-  onWidth: (w: number) => void
+  /** `save: false` while the edge is being dragged. */
+  onWidth: (w: number, save?: boolean) => void
   onOpen: (open: boolean) => void
   tab: PanelTab
   onTab: (t: PanelTab) => void
@@ -81,7 +82,16 @@ export function RightPanel({
     )
   return (
     <Tabs value={tab} onValueChange={(v) => onTab(v as PanelTab)} className="relative flex shrink-0 flex-col border-l" style={{ width }}>
-      <Resizer edge="left" label="拖动调整右栏宽度" value={width} min={RIGHT.min} max={RIGHT.max} initial={RIGHT.initial} onChange={onWidth} />
+      <ResizeHandle
+        side="left"
+        label="调整右栏宽度"
+        value={width}
+        min={RIGHT.min}
+        max={RIGHT.max}
+        defaultValue={RIGHT.initial}
+        onValueChange={(w) => onWidth(w, false)}
+        onValueCommit={(w) => onWidth(w)}
+      />
       <div className="flex shrink-0 items-center border-b pr-1.5">
         <TabsList className="min-w-0 flex-1 border-b-0 px-3">
           {tabs.map((t) => (

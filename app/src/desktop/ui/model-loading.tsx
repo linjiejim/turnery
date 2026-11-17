@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import type { LoadState } from "../core/protocol"
 
@@ -16,7 +17,6 @@ export function ModelLoading({ load, visible }: { load: LoadState; visible: bool
   const title = visible && load.startedAt ? "正在恢复精确几何" : !load.startedAt ? "正在显示模型" : p ? STAGES[p.stage] : "正在打开模型"
   const elapsed = Math.max(0, Math.floor((now - (load.startedAt || mountedAt)) / 1000))
   const determinate = p && p.total > 0
-  const percent = determinate ? Math.min(100, Math.round(100 * p.completed / p.total)) : 0
   return (
     <div role="status" aria-live="polite" aria-atomic="true" data-testid="model-loading" title={visible ? "预览已显示，可旋转、选件和隔离；标注与测量等精确几何就绪后可用。" : undefined} className="pointer-events-auto w-80 max-w-full rounded-lg border bg-background/95 px-3 py-2 shadow-popover">
       <div className="flex items-center gap-2 text-body">
@@ -28,11 +28,7 @@ export function ModelLoading({ load, visible }: { load: LoadState; visible: bool
         {determinate && <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{p.completed} / {p.total}</span>}
         <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{elapsed} 秒</span>
       </div>
-      {determinate && (
-        <div role="progressbar" aria-label={title} aria-valuemin={0} aria-valuemax={p.total} aria-valuenow={p.completed} className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-[width] motion-reduce:transition-none" style={{ width: `${percent}%` }} />
-        </div>
-      )}
+      {determinate && <Progress value={p.completed} max={p.total} aria-label={title} className="mt-2" />}
     </div>
   )
 }
