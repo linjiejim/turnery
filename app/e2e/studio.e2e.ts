@@ -152,6 +152,40 @@ test.describe("工作台", () => {
     expect(await page.locator("[data-dim-id]").count()).toBeLessThanOrEqual(12)
   })
 
+  test("/studio 显示样式：白模 / 彩色 / 线描 / 半透明一排，颜色不再单独一个按钮", async ({ page }) => {
+    await page.goto("/studio?start=flange")
+    await expect(page.getByRole("navigation", { name: "特征树" }).getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
+    const tools = page.getByRole("toolbar", { name: "视图工具" })
+    await expect(tools.getByRole("button", { name: "颜色" }), "colours live in the display card now").toHaveCount(0)
+
+    const button = tools.getByRole("button", { name: "显示样式" })
+    await button.click()
+    const card = page.getByRole("dialog", { name: "显示样式" })
+    const looks = card.getByRole("radiogroup", { name: "样式" })
+    await expect(looks.getByRole("radio")).toHaveText(["白模", "彩色", "线描", "半透明"])
+    await expect(card.getByRole("radiogroup", { name: "投影" }).getByRole("radio")).toHaveText(["透视", "正交"])
+
+    // The flange has no colours: 彩色 looks like 白模, and the card says why and where colours are set.
+    await looks.getByRole("radio", { name: "彩色" }).click()
+    await expect(card.getByRole("note")).toHaveText("零件还没设颜色，所以看起来是白模：用零件名旁边或时间线左端的圆点设颜色。")
+    await looks.getByRole("radio", { name: "白模" }).click()
+    await expect(card.getByRole("note")).toHaveCount(0)
+    await expect(button, "a white model with nothing to colour is the usual view").toHaveAttribute("aria-pressed", "false")
+
+    // W steps through the four, round to 白模; a line drawing or see-through lights the button.
+    // (Keys typed inside the card belong to it: wait until it has closed.)
+    await page.keyboard.press("Escape")
+    await expect(card).toHaveCount(0)
+    for (const [next, lit] of [["彩色", "false"], ["线描", "true"], ["半透明", "true"], ["白模", "false"]] as const) {
+      await page.keyboard.press("w")
+      await expect(button).toHaveAttribute("aria-pressed", lit)
+      await button.click()
+      await expect(looks.getByRole("radio", { name: next })).toHaveAttribute("aria-checked", "true")
+      await page.keyboard.press("Escape")
+      await expect(card).toHaveCount(0)
+    }
+  })
+
   test("/studio 拆件：零件行、隐藏、爆炸、分件导出", async ({ page }) => {
     const tree = {
       params: { L: 80, W: 50, H: 30, t: 2, Hs: 20 },

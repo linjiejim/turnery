@@ -1,29 +1,28 @@
 import * as React from "react"
-import { ArrowLeftRight, BoxSelect, Cuboid, Expand, GitCompareArrows, ImageDown, Keyboard, MessageSquarePlus, MousePointer2, Palette, PenLine, Ruler, RulerDimensionLine, ScissorsLineDashed, X } from "lucide-react"
+import { ArrowLeftRight, BoxSelect, Cuboid, Expand, GitCompareArrows, ImageDown, Keyboard, MessageSquarePlus, MousePointer2, PenLine, Ruler, RulerDimensionLine, ScissorsLineDashed, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button, IconButton } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Kbd } from "@/components/ui/kbd"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Segmented } from "@/components/ui/segmented"
-import type { ViewStyle } from "@/three/materials"
 import type { Projection } from "@/three/viewer"
 import type { MeasureResult } from "../kernel/measure"
 import { AXIS_INDEX, newSection, round, type Section } from "../section"
 import type { KeyRow, ViewTool } from "../view-keys"
+import { LOOK_WORDS, VIEW_LOOKS, type ViewLook } from "../view-look"
 
 type V3 = [number, number, number]
 
 /** What 「导出视图」 makes: a picture of the view, or a black-and-white line drawing. */
 export type ExportViewOptions = { format: "png"; background: "white" | "transparent" } | { format: "svg"; labels: "none" | "numbers" | "names"; hidden: boolean }
 
-const STYLE_WORDS: Record<ViewStyle, string> = { shaded: "着色", lines: "线描", xray: "半透明" }
 const PROJECTION_WORDS: Record<Projection, string> = { perspective: "透视", orthographic: "正交" }
 
 /**
  * The tools column on the left edge of the view, in three groups: what a click does (select, note,
  * frame, draw, measure), how the model is cut and labelled (section, dimensions), and how it looks
- * (display style and projection, explode, colours, changes). Each tool has a one-letter key, shown in
+ * (display style with colours, projection, explode, changes). Each tool has a one-letter key, shown in
  * its tooltip; ? lists them.
  */
 export function ViewTools({
@@ -41,8 +40,6 @@ export function ViewTools({
   onExploding,
   onExplode,
   onExplodeEnd,
-  looks,
-  onLooks,
   display,
   onDisplay,
   onExportView,
@@ -72,12 +69,9 @@ export function ViewTools({
   onExploding: (on: boolean) => void
   onExplode: (f: number) => void
   onExplodeEnd: () => void
-  /** Parts in their colours and finishes, or a white model; `available`: anything to colour at all; `lines`: a line drawing (no colours). */
-  looks?: { on: boolean; available: boolean; lines?: boolean }
-  onLooks?: (on: boolean) => void
-  /** How the model is drawn (shaded, a line drawing, see-through) and projected (perspective, orthographic). */
-  display?: { style: ViewStyle; projection: Projection }
-  onDisplay?: (d: { style?: ViewStyle; projection?: Projection }) => void
+  /** How the model looks (白模, 彩色, a line drawing, see-through) and is projected; `colours`: any part has a colour to show. */
+  display?: DisplayState
+  onDisplay?: (d: { look?: ViewLook; projection?: Projection }) => void
   /** Save the view as a picture or a line drawing; resolves when it's saved (or the save was cancelled). */
   onExportView?: (o: ExportViewOptions) => Promise<void>
   /** The model has parts: the line drawing can number them. */
@@ -147,20 +141,6 @@ export function ViewTools({
         >
           <Expand />
         </IconButton>
-        {looks && onLooks && (
-          <IconButton
-            label="颜色"
-            tooltip={!looks.available ? "颜色：零件还没有设颜色和质感" : looks.lines ? "颜色：线描不显示颜色，换回着色或半透明再用" : `${looks.on ? "颜色：按零件的颜色和质感显示，单击换成白模" : "颜色：现在是白模，单击按零件的颜色和质感显示"}（A）`}
-            tooltipSide="right"
-            size="icon-sm"
-            aria-pressed={looks.on && looks.available && !looks.lines}
-            className={cn(looks.on && looks.available && !looks.lines && on)}
-            disabled={!looks.available || looks.lines}
-            onClick={() => onLooks(!looks.on)}
-          >
-            <Palette />
-          </IconButton>
-        )}
         <div className="relative">
           <IconButton label="查看变更" tooltip="查看变更：最近一次改动新增和改了哪些面" tooltipSide="right" size="icon-sm" aria-pressed={changes} className={cn(changes && on)} onClick={() => onChanges(!changes)}>
             <GitCompareArrows />
@@ -228,18 +208,25 @@ export function ViewTools({
   )
 }
 
+/** What the 「显示样式」 card shows: the look, the projection, whether any part has a colour, and whether colours can be set here. */
+export type DisplayState = { look: ViewLook; projection: Projection; colours: boolean; canSetColours: boolean }
+
 /**
- * 「显示」: how the model is drawn and projected. Lit when either is not the usual (着色, 透视), so a
- * line drawing or a flat projection never looks like a broken view. W and O switch them without the card.
+ * 「显示」: how the model looks (白模, 彩色, a line drawing, see-through) and is projected. Lit when either
+ * is not the usual, so a line drawing, a flat projection or a white model with colours to show never
+ * looks like a broken view. W, A and O switch them without the card.
  */
-function DisplayButton({ display, onDisplay }: { display: { style: ViewStyle; projection: Projection }; onDisplay: (d: { style?: ViewStyle; projection?: Projection }) => void }) {
-  const changed = display.style !== "shaded" || display.projection !== "perspective"
+function DisplayButton({ display, onDisplay }: { display: DisplayState; onDisplay: (d: { look?: ViewLook; projection?: Projection }) => void }) {
+  const { look, projection, colours } = display
+  const changed = look === "lines" || look === "xray" || (look === "plain" && colours) || projection !== "perspective"
+  // 彩色 with nothing coloured looks just like 白模: say why, and where colours are set.
+  const uncoloured = look === "colour" && !colours
   return (
     <Popover>
       <PopoverTrigger asChild>
         <IconButton
           label="显示样式"
-          tooltip={`显示：${STYLE_WORDS[display.style]} · ${PROJECTION_WORDS[display.projection]}（W 换样式，O 换投影）`}
+          tooltip={`显示：${LOOK_WORDS[look]}${uncoloured ? "（零件还没设颜色）" : ""} · ${PROJECTION_WORDS[projection]}（W 换样式，A 白模 / 彩色，O 换投影）`}
           tooltipSide="right"
           size="icon-sm"
           aria-pressed={changed}
@@ -250,13 +237,7 @@ function DisplayButton({ display, onDisplay }: { display: { style: ViewStyle; pr
       </PopoverTrigger>
       <PopoverContent side="right" align="start" className="grid w-auto grid-cols-[auto_auto_auto] items-center gap-x-3 gap-y-2.5 p-2.5 text-small" aria-label="显示样式">
         <span className="text-muted-foreground">样式</span>
-        <Segmented
-          size="sm"
-          aria-label="样式"
-          value={display.style}
-          onValueChange={(style) => onDisplay({ style })}
-          options={(["shaded", "lines", "xray"] as const).map((v) => ({ value: v, label: STYLE_WORDS[v] }))}
-        />
+        <Segmented size="sm" aria-label="样式" value={look} onValueChange={(look) => onDisplay({ look })} options={VIEW_LOOKS.map((v) => ({ value: v, label: LOOK_WORDS[v] }))} />
         <Kbd>W</Kbd>
         <span className="text-muted-foreground">投影</span>
         <Segmented
@@ -268,6 +249,11 @@ function DisplayButton({ display, onDisplay }: { display: { style: ViewStyle; pr
           options={(["perspective", "orthographic"] as const).map((v) => ({ value: v, label: PROJECTION_WORDS[v] }))}
         />
         <Kbd>O</Kbd>
+        {uncoloured && (
+          <p role="note" className="col-span-3 w-0 min-w-full text-caption text-muted-foreground">
+            零件还没设颜色，所以看起来是白模{display.canSetColours ? "：用零件名旁边或时间线左端的圆点设颜色。" : "。"}
+          </p>
+        )}
       </PopoverContent>
     </Popover>
   )
