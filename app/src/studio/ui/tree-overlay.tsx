@@ -48,7 +48,6 @@ export function TreeOverlay({
   onSelectFeature,
   partsList = true,
   looks = true,
-  footer,
   detailsIn,
   timeline = true,
   onDetails,
@@ -69,8 +68,6 @@ export function TreeOverlay({
   partsList?: boolean
   /** Colour pickers for the part and its parts (off in an assembly: its sidebar has them). */
   looks?: boolean
-  /** At the end of the timeline (the desktop's 「+ 零件」). */
-  footer?: React.ReactNode
   /** Where a step's details go: an empty layer over the host's side panel. */
   detailsIn: HTMLElement | null
   /** Off: no strip of steps, only the selected step's details (an assembly). */
@@ -415,7 +412,6 @@ export function TreeOverlay({
             </span>
           )}
         </div>
-        {footer && <div className="flex shrink-0 items-center border-l px-1">{footer}</div>}
       </div>
     </nav>
   )
