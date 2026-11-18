@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest"
 import type { Feature } from "@/studio/dsl"
 import type { Dim } from "@/studio/kernel/dims"
-import { cardDims, labelLeft, namedStep, stepLine } from "@/studio/step-timeline"
+import { cardDims, labelLeft, namedStep, stepLabel, stepLine } from "@/studio/step-timeline"
 
 const dim = (id: string, feature: string, priority: number, derived = false): Dim => ({
   id,
@@ -42,6 +42,14 @@ describe("the card over a step", () => {
     expect(stepLine(cut, 11)).toBe("第 12 步 · 拉伸 · 切除 · J3 牛角座")
     const plain = { id: "f", op: "fillet", edges: {}, r: 1, suppressed: true } as unknown as Feature
     expect(stepLine(plain, 0)).toBe("第 1 步 · 圆角 · 已压缩")
+  })
+
+  it("is read with the step's state, since the button's aria-label is all a screen reader reads of it", () => {
+    expect(stepLabel("盘体", {})).toBe("盘体")
+    expect(stepLabel("圆角1", { suppressed: true })).toBe("圆角1（已压缩）")
+    expect(stepLabel("盘面草图", {}, "error")).toBe("盘面草图（失败）")
+    expect(stepLabel("孔阵列", {}, "skipped")).toBe("孔阵列（未重建）")
+    expect(stepLabel("孔阵列", { suppressed: true }, "ok")).toBe("孔阵列（已压缩）")
   })
 
   it("shows at most two of the step's own design dimensions, parameters first", () => {

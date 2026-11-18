@@ -345,12 +345,13 @@ test.describe("工作台", () => {
     const d0 = page.getByLabel("d0", { exact: true })
     await d0.fill("130")
     await d0.press("Enter")
-    await expect(page.getByLabel("失败").first(), "the failing feature is marked").toBeVisible()
+    const tree = page.getByRole("navigation", { name: "特征树" })
+    await expect(tree.getByRole("button", { name: /（失败）$/ }).first(), "the failing step is marked, and read as failed").toBeVisible()
     // …and putting it back rebuilds cleanly.
     await page.getByRole("tab", { name: "参数" }).first().click()
     await page.getByLabel("d0", { exact: true }).fill("40")
     await page.getByLabel("d0", { exact: true }).press("Enter")
-    await expect(page.getByLabel("失败")).toHaveCount(0)
+    await expect(tree.getByRole("button", { name: /（失败）$/ })).toHaveCount(0)
   })
 
   test("/studio 特征时间线：从不变大，名字只在指向的那一步下面，停一下才弹出卡片", async ({ page }) => {

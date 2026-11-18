@@ -8,7 +8,7 @@ import { OpIcon } from "@/components/op-icon"
 import { displayName, type Feature } from "../dsl"
 import type { Dim } from "../kernel/dims"
 import { NO_PARTS_VIEW, type Hover, type PartsView } from "../scene"
-import { cardDims, labelLeft, namedStep, stepLine } from "../step-timeline"
+import { cardDims, labelLeft, namedStep, stepLabel, stepLine } from "../step-timeline"
 import { StepPanel } from "./step-panel"
 import { iconOf } from "../feature-icon"
 import type { Annotations } from "../use-annotations"
@@ -355,7 +355,7 @@ export function TreeOverlay({
                           setRenaming(f.id)
                         }}
                         aria-expanded={pinned === f.id}
-                        aria-label={name}
+                        aria-label={stepLabel(name, f, r?.state)}
                         onMouseEnter={() => show(f)}
                         onFocus={() => show(f)}
                         onBlur={hide}
@@ -374,12 +374,11 @@ export function TreeOverlay({
                         >
                           <OpIcon op={iconOf(f)} className="size-4" />
                           {r?.state === "error" ? (
-                            <CircleAlert className="absolute top-0 right-0 size-3 rounded-full bg-background text-destructive" aria-label="失败" />
+                            <CircleAlert className="absolute top-0 right-0 size-3 rounded-full bg-background text-destructive" />
                           ) : r?.state === "skipped" ? (
-                            <CircleDashed className="absolute top-0 right-0 size-3 rounded-full bg-background text-faint-foreground" aria-label="未重建" />
+                            <CircleDashed className="absolute top-0 right-0 size-3 rounded-full bg-background text-faint-foreground" />
                           ) : null}
                         </span>
-                        {f.suppressed && <span className="sr-only">（已压缩）</span>}
                       </button>
                     </TooltipPrimitive.Trigger>
                     <TooltipPrimitive.Portal>

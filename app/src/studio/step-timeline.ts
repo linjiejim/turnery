@@ -22,6 +22,14 @@ export function stepLine(f: Feature, index: number) {
   return [`第 ${index + 1} 步`, OP_NAMES[f.op], "mode" in f && f.mode === "cut" ? "切除" : "", f.part ?? "", f.suppressed ? "已压缩" : ""].filter(Boolean).join(" · ")
 }
 
+/**
+ * What a screen reader says for a step's button: its name and its state, 「圆角1（已压缩）」「拉伸1（失败）」.
+ * The button has an aria-label (its icon is all it shows), and that label is all that is read of it.
+ */
+export function stepLabel(name: string, f: Pick<Feature, "suppressed">, state?: string) {
+  return `${name}${f.suppressed ? "（已压缩）" : ""}${state === "error" ? "（失败）" : state === "skipped" ? "（未重建）" : ""}`
+}
+
 /** The step's own design dimensions worth a glance: at most `max`, parameters first, never the derived ones. */
 export function cardDims(dims: Dim[], feature: string, max = 2) {
   return dims
