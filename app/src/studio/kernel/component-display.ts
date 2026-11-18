@@ -1,7 +1,7 @@
 // Portable component tessellations. Face/edge ordinals cross worker boundaries;
 // OCCT hashes belong only to the kernel that owns the current native shape.
 import type { Shape3D } from "replicad"
-import { meshShape, meshEdges, type Mesh, type EdgeMesh } from "./mesh"
+import { meshBody, meshShape, meshEdges, type Mesh, type EdgeMesh } from "./mesh"
 import { facesOf, edgesOf } from "./topo"
 import type { Rigid } from "./mates"
 
@@ -53,11 +53,17 @@ export function placeDisplay(source: Shape3D, target: Shape3D, { R, t }: Rigid) 
   })
 }
 
-/** Concatenate placed component meshes, retaining their interactive face IDs. */
-export function assemblyDisplay(parts: Shape3D[]): ComponentDisplay | null {
-  const data = parts.map((p) => displays.get(p))
-  if (data.some((d) => !d)) return null
-  const all = data as ComponentDisplay[]
+/**
+ * Concatenate placed component meshes, retaining their interactive face IDs. A part that came without one
+ * (a standard screw, built here) is meshed on its own: meshing the whole assembly again instead took 9 s
+ * and the wasm heap to its 4 GB limit with a vendor's 546-solid board in it.
+ */
+export function assemblyDisplay(parts: Shape3D[]): ComponentDisplay {
+  const all = parts.map((p) => {
+    let d = displays.get(p)
+    if (!d) displays.set(p, (d = meshBody(p)))
+    return d
+  })
   const mesh: Mesh = { vertices: new Float32Array(all.reduce((n, d) => n + d.mesh.vertices.length, 0)), normals: new Float32Array(all.reduce((n, d) => n + d.mesh.normals.length, 0)), triangles: new Uint32Array(all.reduce((n, d) => n + d.mesh.triangles.length, 0)), faceGroups: [] }
   const edges: EdgeMesh = { lines: new Float32Array(all.reduce((n, d) => n + d.edges.lines.length, 0)), edgeGroups: [] }
   let v = 0, tri = 0, line = 0

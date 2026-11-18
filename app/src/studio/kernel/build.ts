@@ -320,7 +320,7 @@ export type ComponentSource = {
   compiled?: CompiledComponent
 }
 
-export type CompiledComponent = { parts: { name: string | null; brep: string; display?: ComponentDisplay; bounds?: [V3, V3]; volume?: number; trail?: Trail; faceColors?: FaceColors }[]; failed: number }
+export type CompiledComponent = { parts: { name: string | null; brep: string; display?: ComponentDisplay; bounds?: [V3, V3]; volume?: number; mass?: Mass; trail?: Trail; faceColors?: FaceColors }[]; failed: number }
 
 /** A STEP file's colours, one per face in facesOf order (null: none set there). */
 export type FaceColors = (string | null)[]
@@ -1075,7 +1075,7 @@ export class Kernel {
 
   /** A step's body meshed, once: assemblies place their parts' meshes rather than meshing the whole again. */
   private meshed(step: Step) {
-    if (step.body && !step.mesh) Object.assign(step, (step.feature.op === "component" && step.parts ? assemblyDisplay(step.parts.map((p) => p.body)) : null) ?? meshBody(step.body))
+    if (step.body && !step.mesh) Object.assign(step, step.feature.op === "component" && step.parts ? assemblyDisplay(step.parts.map((p) => p.body)) : meshBody(step.body))
   }
 
   /** Dimensions of every feature that built (kernel/dims.ts). */
@@ -2058,6 +2058,7 @@ export class Kernel {
     const mates = f.mates?.length ? ` · 贴合 ${f.mates.length} 条` : ""
     // Even a single component stays a named part (measure, checks and hiding go by its name).
     const body = compoundOf(parts.map((p) => p.body))
+    PARTS_OF.set(body, parts.map((p) => p.body))
     const bounds = parts.map((p) => boundsOf(p.body))
     BOUNDS.set(body, [[0, 1, 2].map((k) => Math.min(...bounds.map((b) => b[0][k]))) as V3, [0, 1, 2].map((k) => Math.max(...bounds.map((b) => b[1][k]))) as V3])
     return { body, parts, summary: `零件「${base}」← ${source} · ${size.map(fmt).join(" × ")}${copies}${mates}` }
@@ -2379,6 +2380,7 @@ function buildComponent(src: ComponentSource): Built {
         if (p.display) restoreDisplay(shape, p.display)
         if (p.bounds) BOUNDS.set(shape, p.bounds)
         if (p.volume !== undefined) VOLUMES.set(shape, p.volume)
+        if (p.mass) MASS.set(shape, p.mass)
       }
       built = { parts, failed: src.compiled.failed }
     } catch (e) {
@@ -2428,7 +2430,7 @@ function buildComponent(src: ComponentSource): Built {
 /** Portable OCCT geometry for a component worker/cache; no session-specific face hashes. */
 export function compileComponent(source: ComponentSource): CompiledComponent {
   const built = buildComponent(source)
-  return { parts: built.parts.map((p) => ({ name: p.name, brep: p.shape.serialize(), display: packDisplay(p.shape), bounds: boundsOf(p.shape), volume: volumeOf(p.shape), trail: p.trail, faceColors: p.faceColors })), failed: built.failed }
+  return { parts: built.parts.map((p) => ({ name: p.name, brep: p.shape.serialize(), display: packDisplay(p.shape), bounds: boundsOf(p.shape), volume: volumeOf(p.shape), mass: massOf(p.shape), trail: p.trail, faceColors: p.faceColors })), failed: built.failed }
 }
 
 /** Rotate (in order, about the origin) then move: a component's place in its assembly. */
@@ -2446,6 +2448,12 @@ function placeComponent(source: Shape3D, placement: Placement): Shape3D {
   placeDisplay(source, shape, rigid)
   const volume = VOLUMES.get(source)
   if (volume !== undefined) VOLUMES.set(shape, volume)
+  // Mass and counts don't change when it moves; its centre moves with it.
+  const mass = MASS.get(source)
+  if (mass) {
+    const c = mass.center
+    MASS.set(shape, { ...mass, center: [0, 1, 2].map((k) => rigid.R[k * 3] * c[0] + rigid.R[k * 3 + 1] * c[1] + rigid.R[k * 3 + 2] * c[2] + rigid.t[k]) as V3 })
+  }
   const box = BOUNDS.get(source)
   if (box && rigid.R.every((v) => Math.abs(v) < 1e-10 || Math.abs(Math.abs(v) - 1) < 1e-10)) {
     const corners: V3[] = []
@@ -2846,23 +2854,55 @@ function boundsOf(body: AnyShape): [V3, V3] {
   return bounds
 }
 
+/** Volume, centre of mass and how many solids, faces and edges: what `stats` reports, unrounded. */
+type Mass = { volume: number; center: V3; solids: number; faces: number; edges: number }
+const MASS = new WeakMap<AnyShape, Mass>()
+/** An assembly step's body: the compound of these part bodies (its mass is theirs added up). */
+const PARTS_OF = new WeakMap<AnyShape, Shape3D[]>()
+
+/**
+ * A body's mass properties. An assembly's add up its parts', and a placed component's come with it from
+ * its worker (moved with it): integrating a vendor's 546-solid board twice took 9 s of every rebuild.
+ */
+function massOf(body: Shape3D): Mass {
+  const cached = MASS.get(body)
+  if (cached) return cached
+  let out: Mass | null = null
+  const parts = PARTS_OF.get(body)
+  if (parts?.length) {
+    const ms = parts.map(massOf)
+    const volume = ms.reduce((v, m) => v + m.volume, 0)
+    if (volume > 0) {
+      const center = [0, 1, 2].map((k) => ms.reduce((c, m) => c + m.volume * m.center[k], 0) / volume) as V3
+      out = { volume, center, solids: ms.reduce((n, m) => n + m.solids, 0), faces: ms.reduce((n, m) => n + m.faces, 0), edges: ms.reduce((n, m) => n + m.edges, 0) }
+    }
+  }
+  if (!out) {
+    const props = measureShapeVolumeProperties(body)
+    const c = props.centerOfMass as unknown as V3
+    out = { volume: props.volume, center: [c[0], c[1], c[2]], solids: countOf(body, "solid"), faces: countOf(body, "face"), edges: countOf(body, "edge") }
+    props.delete?.()
+  }
+  MASS.set(body, out)
+  VOLUMES.set(body, out.volume)
+  return out
+}
+
 function stats(body: Shape3D): BodyStats {
   const cached = STATS.get(body)
   if (cached) return cached
   const [a, b] = boundsOf(body)
-  const props = measureShapeVolumeProperties(body)
-  const c = props.centerOfMass as unknown as V3
+  const m = massOf(body)
+  const c = m.center
   const out: BodyStats = {
     bbox: [[r2(a[0]), r2(a[1]), r2(a[2])], [r2(b[0]), r2(b[1]), r2(b[2])]],
     size: [r2(b[0] - a[0]), r2(b[1] - a[1]), r2(b[2] - a[2])],
-    volume: r2(props.volume),
+    volume: r2(m.volume),
     centerOfMass: [r2(c[0]), r2(c[1]), r2(c[2])],
-    faces: countOf(body, "face"),
-    edges: countOf(body, "edge"),
-    solids: countOf(body, "solid"),
+    faces: m.faces,
+    edges: m.edges,
+    solids: m.solids,
   }
-  VOLUMES.set(body, props.volume)
-  props.delete?.()
   STATS.set(body, out)
   return out
 }

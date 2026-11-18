@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest"
 import { exportSTEP, getOC, makeBaseBox, makeCompound, measureShapeVolumeProperties, type Shape3D } from "replicad"
 import { checkText } from "@/studio/apply"
 import type { Tree } from "@/studio/dsl"
-import { Kernel, type ComponentSource } from "@/studio/kernel/build"
+import { Kernel, compileComponent, type ComponentSource } from "@/studio/kernel/build"
 import { initNodeKernel } from "@/studio/kernel/node"
 import { MAX_BOOLEANS } from "@/studio/kernel/pieces"
 
@@ -206,6 +206,45 @@ describe("a many-solid vendor board against its case", () => {
     expect(text).not.toMatch(/选择器写得不对/)
     expect(k.measure([{ kind: "part", name: "板" }, { kind: "part", name: "壳" }])?.between).toEqual([{ name: "最短距离", value: expect.stringMatching(/^太复杂，没有算：/) }])
     expect(booleans.calls).toBe(0)
+    k.dispose()
+  })
+})
+
+describe("an assembly with a vendor board: the rest of the rebuild", () => {
+  it("meshes only a part that came without a mesh (a standard screw), not the whole assembly again", async () => {
+    const board = compileComponent({ file: "vendor/board.step", bytes: await boardStep() })
+    const k = new Kernel()
+    k.setComponents([{ file: "vendor/board.step", bytes: new Uint8Array([1]), compiled: board }])
+    k.rebuild({
+      params: {},
+      features: [
+        { id: "board", op: "component", name: "板", file: "vendor/board.step" },
+        { id: "screw", op: "component", name: "螺丝", standard: { type: "screw", size: "M2", head: "socket", length: 6 }, at: [30, 0, 0] },
+      ],
+    })
+    const meshed = count("ReplicadMeshExtractor")
+    const d = k.display()
+    expect(d.parts?.map((p) => p.name)).toEqual(["板", "螺丝"])
+    // The board (81 boxes, 486 faces) keeps the mesh it came with; only the screw (a few dozen faces) is meshed.
+    expect(meshed.faces.length).toBeGreaterThan(0)
+    expect(Math.max(...meshed.faces)).toBeLessThan(100)
+    expect(d.mesh!.triangles.length).toBeGreaterThan(board.parts[0].display!.mesh.triangles.length)
+    k.dispose()
+  })
+
+  it("adds up an assembly's mass from its parts' instead of integrating the whole board again", async () => {
+    const shell = await caseStep()
+    const { k, tree } = assembly(await boardStep(), shell, undefined, [{ axis: "X", angle: 30 }])
+    const rep = k.rebuild(tree)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = (k as any).lastBuilt(Infinity).body as Shape3D
+    const direct = measureShapeVolumeProperties(body)
+    const c = direct.centerOfMass as unknown as V3
+    expect(rep.body!.volume).toBeCloseTo(direct.volume, 1)
+    rep.body!.centerOfMass.forEach((x, i) => expect(x).toBeCloseTo(c[i], 1))
+    expect(rep.body!.solids).toBe(82)
+    expect(rep.body!.faces).toBe(faceCount(body.wrapped))
+    expect(rep.parts?.map((p) => p.volume)).toEqual([expect.closeTo(40 * 30 * 1.6 + 80 * 8, 1), expect.closeTo(60 * 50 * 20 - 52 * 42 * 18, 1)])
     k.dispose()
   })
 })
