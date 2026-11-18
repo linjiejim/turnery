@@ -87,7 +87,7 @@ export function LookPicker({
           <button
             type="button"
             aria-label={tip}
-            className={cn("grid size-5 shrink-0 place-items-center rounded-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none", className)}
+            className={cn("grid size-5 shrink-0 place-items-center rounded-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40", className)}
             onClick={(e) => e.stopPropagation()}
           >
             <LookDot look={look} mark={mark} />

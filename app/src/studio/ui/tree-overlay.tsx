@@ -1,11 +1,14 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
+import { Tooltip as TooltipPrimitive } from "radix-ui"
 import { CircleAlert, CircleDashed, Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button, IconButton } from "@/components/ui/button"
 import { OpIcon } from "@/components/op-icon"
-import { displayName, OP_NAMES, type Feature } from "../dsl"
+import { displayName, type Feature } from "../dsl"
+import type { Dim } from "../kernel/dims"
 import { NO_PARTS_VIEW, type Hover, type PartsView } from "../scene"
+import { cardDims, labelLeft, namedStep, stepLine } from "../step-timeline"
 import { StepPanel } from "./step-panel"
 import { iconOf } from "../feature-icon"
 import type { Annotations } from "../use-annotations"
@@ -16,18 +19,20 @@ import { setPartLook, type LookChange } from "../appearance"
 import { LookDot, LookPicker } from "./look-picker"
 
 
+/** How long the pointer rests on a step before its card opens (then neighbours open at once). */
+const CARD_DELAY = 400
+
 /**
- * The feature tree as a timeline along the bottom of the 3D view: one step
- * per feature. At rest it is a low, faint strip of icons; pointed at (or with a
- * step open) it lights up and shows the names. Pointing at a step lights up the
- * faces it made and shows a small card above it. Click a step: the model goes
- * back to it and its details open in the side panel (`detailsIn`), live
- * (dimensions, re-pick, delete); click it again, 关闭 or Esc to come back to the
- * latest. `readOnly` (a shared link): look only. `timeline` off (an assembly,
- * whose parts are listed elsewhere): only the details of the selected step.
+ * The feature tree as a timeline along the bottom of the 3D view: one small icon per feature. It never
+ * changes size; pointed at (or with a step open) it only lights up. The step pointed at gets its name
+ * under its icon (none pointed at: the step open or rolled back to), and its faces light up in the
+ * model; resting on it a moment brings a small card over it. Click a step: the model goes back to it
+ * and its details open in the side panel (`detailsIn`), live (dimensions, re-pick, delete); click it
+ * again, 关闭 or Esc to come back to the latest. `readOnly` (a shared link): look only. `timeline` off
+ * (an assembly, whose parts are listed elsewhere): only the details of the selected step.
  *
- * Its height is published on the parent as `--timeline-h`, so what sits above
- * it (the selected parts' toolbar) keeps clear of it.
+ * Its height is published on the parent as `--timeline-h`, so what sits above it (the selected
+ * parts' toolbar) keeps clear of it.
  */
 export function TreeOverlay({
   studio,
@@ -38,7 +43,6 @@ export function TreeOverlay({
   parts = NO_PARTS_VIEW,
   onParts,
   readOnly = false,
-  rowActions,
   selectedFeature,
   locateStep,
   onSelectFeature,
@@ -58,11 +62,9 @@ export function TreeOverlay({
   onParts?: (v: PartsView) => void
   /** A shared link: a click rolls back to that step; nothing to change. */
   readOnly?: boolean
-  /** Buttons under a step (the desktop's assembly: show or hide a part, edit it in place). */
   selectedFeature?: string | null
   locateStep?: { id: string; request: number } | null
   onSelectFeature?: (id: string | null) => void
-  rowActions?: (f: Feature) => React.ReactNode
   /** The list of parts with their eyes over the timeline (off when the steps carry them). */
   partsList?: boolean
   /** Colour pickers for the part and its parts (off in an assembly: its sidebar has them). */
@@ -79,12 +81,17 @@ export function TreeOverlay({
   const { tree, report, rollback } = studio
   const list = React.useRef<HTMLOListElement>(null)
   const nav = React.useRef<HTMLElement>(null)
-  /** The step pointed at, and where its card goes (the middle of the step, from the strip's left edge). */
-  const [peek, setPeek] = React.useState<{ id: string; x: number } | null>(null)
+  /** The strip of steps (not scrolled) and the one name under it. */
+  const strip = React.useRef<HTMLDivElement>(null)
+  const label = React.useRef<HTMLSpanElement>(null)
+  /** The step pointed at (or focused). */
+  const [peek, setPeek] = React.useState<string | null>(null)
   /** The step clicked: the model shows it and the panel stays on it. */
   const [pinned, setPinned] = React.useState<string | null>(null)
   /** A step double-clicked: its details open with the name being edited (cleared once it is). */
   const [renaming, setRenaming] = React.useState<string | null>(null)
+  /** The name under the strip isn't all there (cut short, or its step scrolled away): the card spells it out. */
+  const [nameHidden, setNameHidden] = React.useState(false)
   const rollbackIndex = rollback ? tree.features.findIndex((x) => x.id === rollback) : -1
   const last = tree.features.at(-1)?.id ?? null
 
@@ -114,10 +121,8 @@ export function TreeOverlay({
     step?.focus({ preventScroll: true })
   }, [locateStep])
 
-  const show = (f: Feature, el: HTMLElement) => {
-    const bar = el.closest("[data-timeline-bar]")?.getBoundingClientRect()
-    const box = el.getBoundingClientRect()
-    setPeek({ id: f.id, x: bar ? box.left + box.width / 2 - bar.left : 0 })
+  const show = (f: Feature) => {
+    setPeek(f.id)
     onHover({ ids: f.op === "sketch" ? [] : [f.id], label: "该特征生成的面", feature: f.id })
   }
   const hide = () => {
@@ -141,7 +146,8 @@ export function TreeOverlay({
   React.useEffect(() => {
     if (!pinned && !selectedFeature) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || reselect?.state || (e.target as HTMLElement)?.closest?.("input, textarea, select, [role=menu], [role=alertdialog]")) return
+      // Taken already (the card or a popover closing on this Esc): one Esc closes one thing.
+      if (e.key !== "Escape" || e.defaultPrevented || reselect?.state || (e.target as HTMLElement)?.closest?.("input, textarea, select, [role=menu], [role=alertdialog]")) return
       unpin()
       onSelectFeature?.(null)
     }
@@ -154,7 +160,7 @@ export function TreeOverlay({
   const detailsId = panelIndex >= 0 ? panelId : null
   React.useEffect(() => onDetails?.(detailsId), [onDetails, detailsId])
 
-  // What sits above the strip keeps clear of it: its resting height, on the parent.
+  // What sits above the strip keeps clear of it: its height (it never grows), on the parent.
   React.useLayoutEffect(() => {
     const el = nav.current
     const host = el?.parentElement
@@ -168,6 +174,38 @@ export function TreeOverlay({
       host.style.removeProperty("--timeline-h")
     }
   }, [timeline, tree.features.length])
+
+  // The one name under the strip, centred under its step and kept inside the strip.
+  const named = namedStep({ pointed: peek, pinned, selected: selectedFeature ?? null, rollback })
+  const namedFeature = named ? tree.features.find((f) => f.id === named) : undefined
+  const namedText = namedFeature ? displayName(tree, namedFeature) : ""
+  const hasSteps = timeline && tree.features.length > 0
+  const place = React.useCallback(() => {
+    const el = label.current
+    const box = strip.current
+    if (!el || !box || !named) return
+    const step = list.current?.querySelector<HTMLElement>(`[data-step="${CSS.escape(named)}"]`)
+    if (!step) {
+      el.style.visibility = "hidden"
+      return
+    }
+    const b = box.getBoundingClientRect()
+    const s = step.getBoundingClientRect()
+    const center = s.left + s.width / 2 - b.left
+    el.style.left = `${labelLeft(center, el.offsetWidth, b.width)}px`
+    // Scrolled out of the strip: no name pointing at nothing.
+    const outside = center < 0 || center > b.width
+    el.style.visibility = outside ? "hidden" : ""
+    setNameHidden(outside || el.scrollWidth > el.clientWidth)
+  }, [named])
+  React.useLayoutEffect(place, [place, namedText, tree.features])
+  React.useLayoutEffect(() => {
+    const box = strip.current
+    if (!box) return
+    const ro = new ResizeObserver(() => place())
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [place, hasSteps])
 
   const details =
     detailsIn &&
@@ -190,7 +228,7 @@ export function TreeOverlay({
       />,
       detailsIn,
     )
-  if (!timeline || !tree.features.length) return details || null
+  if (!hasSteps) return details || null
   // ← → move along the steps.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
@@ -204,11 +242,8 @@ export function TreeOverlay({
   // Colours are a tree edit like any other: undoable, and only restyled (nothing rebuilds).
   const setLook = (parts: string[] | undefined, change: LookChange) => void studio.editTree((t) => setPartLook(t, parts, change))
   const canColor = looks && !readOnly
-  // Lit up and named while something on it is open; otherwise only while pointed at or focused.
+  // Lit up while something on it is open; otherwise only while pointed at or focused.
   const open = Boolean(rollback || pinned || selectedFeature)
-  const peekIndex = peek ? tree.features.findIndex((f) => f.id === peek.id) : -1
-  const peekFeature = peekIndex >= 0 ? tree.features[peekIndex] : null
-  const peekResult = peekIndex >= 0 ? report?.features[peekIndex] : undefined
 
   return (
     <nav ref={nav} aria-label="特征树" className="pointer-events-none absolute right-3 bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
@@ -245,26 +280,27 @@ export function TreeOverlay({
           })}
         </ul>
       )}
-      <div className="relative h-9 w-full">
       <div
         data-timeline-bar
         data-open={open}
         className={cn(
-          "pointer-events-auto absolute bottom-0 left-0 flex max-w-full items-stretch rounded-lg border border-transparent bg-background/40 opacity-70",
+          "pointer-events-auto flex h-12 max-w-full items-stretch rounded-lg border border-transparent bg-background/40 opacity-70",
           "transition-[background-color,opacity,border-color,box-shadow] duration-(--duration-fast) ease-out",
           "timeline-lit:border-border timeline-lit:bg-background/90 timeline-lit:opacity-100 timeline-lit:shadow-sm",
         )}
         onMouseLeave={hide}
       >
-        {peekFeature && peek && <StepPeek feature={peekFeature} result={peekResult} index={peekIndex} name={displayName(tree, peekFeature)} x={peek.x} />}
-        <div className="flex shrink-0 flex-col items-start justify-center gap-1 border-r border-transparent px-2 py-1 text-caption text-faint-foreground timeline-lit:border-border">
-          <div className="flex items-center gap-1 whitespace-nowrap">
-            {canColor && studio.display?.mesh && (
+        {/* Two rows of their own: 「回到最新」 appearing moves nothing. */}
+        <div className="flex shrink-0 flex-col justify-center gap-0.5 border-r border-transparent px-2 text-caption text-faint-foreground timeline-lit:border-border">
+          <div className="flex h-5 items-center gap-1 whitespace-nowrap">
+            {/* Kept in place while the step shown has no solid yet (a first sketch), only disabled. */}
+            {canColor && (
               <span className={LIT}>
                 <LookPicker
                   look={{ ...(tree.appearance?.color ? { color: tree.appearance.color } : {}), ...(tree.appearance?.finish ? { finish: tree.appearance.finish } : {}), source: "part" }}
                   label={splitParts ? "整个零件的颜色（各零件自己设的优先）" : "零件的颜色"}
                   onChange={(c) => setLook(undefined, c)}
+                  disabled={!studio.display?.mesh}
                   className="-ml-1"
                 />
               </span>
@@ -276,80 +312,110 @@ export function TreeOverlay({
                 side="top"
                 tips={[
                   "点一步：模型回到这一步，右侧显示它的详情，可以直接改尺寸、在模型上重选面或边。",
-                  "指向一步只看一眼；蓝色是这一步新生成的面，橙色是被它修改的面。",
+                  "指向一步只看一眼：图标下方出现它的名字，停一下上方弹出小卡片；蓝色是这一步新生成的面，橙色是被它修改的面。",
                   "再点一次、点「关闭」或按 Esc，回到最新一步；← → 在各步之间移动；双击一步改名。",
                 ]}
               />
             </span>
           </div>
-          {rollback && (
-            <Button size="sm" variant="secondary" className="h-6 px-2 text-caption" onClick={() => studio.showFeature(null)}>
+          {/* Laid out even when hidden, so the column is as wide with it as without. */}
+          <div className="flex h-5 items-center">
+            <Button size="sm" variant="secondary" className={cn("h-5 px-1.5 text-caption", !rollback && "invisible")} onClick={() => studio.showFeature(null)}>
               回到最新
             </Button>
+          </div>
+        </div>
+        {/* At least a name wide, so a short tree's names aren't cut. */}
+        <div ref={strip} className="relative flex min-w-40">
+          <ol
+            ref={list}
+            className="flex min-w-0 items-stretch gap-0.5 overflow-x-auto overflow-y-hidden overscroll-contain px-1 py-0.5 [scrollbar-width:none]"
+            onKeyDown={onKeyDown}
+            onScroll={place}
+            // A plain wheel scrolls the timeline sideways.
+            onWheel={(e) => {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY
+            }}
+          >
+            {tree.features.map((f, i) => {
+              const r = report?.features[i]
+              const active = rollback === f.id
+              const after = rollbackIndex >= 0 && i > rollbackIndex
+              const name = displayName(tree, f)
+              return (
+                <li key={f.id} className="flex shrink-0">
+                  <TooltipPrimitive.Root delayDuration={CARD_DELAY} disableHoverableContent>
+                    <TooltipPrimitive.Trigger asChild>
+                      <button
+                        type="button"
+                        data-step={f.id}
+                        // The second click of a double-click renames; it doesn't let go of the step again.
+                        onClick={(e) => e.detail < 2 && pin(f)}
+                        onDoubleClick={() => {
+                          // A part of an assembly is renamed in the parts list.
+                          if (readOnly || f.op === "component") return
+                          if (pinned !== f.id) pin(f)
+                          setRenaming(f.id)
+                        }}
+                        aria-expanded={pinned === f.id}
+                        aria-label={name}
+                        onMouseEnter={() => show(f)}
+                        onFocus={() => show(f)}
+                        onBlur={hide}
+                        aria-current={active ? "step" : undefined}
+                        // The icon on top; the row under it is where the name shows (drawn once, for the whole strip).
+                        className={cn("group/step flex w-8 flex-col items-center rounded-md text-muted-foreground", (after || f.suppressed) && "opacity-50")}
+                      >
+                        <span
+                          className={cn(
+                            "relative flex h-7 w-full items-center justify-center rounded-md border border-transparent",
+                            "transition-[background-color,color,border-color] duration-(--duration-fast) ease-out",
+                            "group-hover/step:bg-muted group-hover/step:text-foreground group-focus-visible/step:bg-muted group-focus-visible/step:text-foreground",
+                            peek === f.id && "bg-muted text-foreground",
+                            (active || pinned === f.id || selectedFeature === f.id) && "border-border bg-selected text-foreground",
+                          )}
+                        >
+                          <OpIcon op={iconOf(f)} className="size-4" />
+                          {r?.state === "error" ? (
+                            <CircleAlert className="absolute top-0 right-0 size-3 rounded-full bg-background text-destructive" aria-label="失败" />
+                          ) : r?.state === "skipped" ? (
+                            <CircleDashed className="absolute top-0 right-0 size-3 rounded-full bg-background text-faint-foreground" aria-label="未重建" />
+                          ) : null}
+                        </span>
+                        {f.suppressed && <span className="sr-only">（已压缩）</span>}
+                      </button>
+                    </TooltipPrimitive.Trigger>
+                    <TooltipPrimitive.Portal>
+                      <TooltipPrimitive.Content
+                        side="top"
+                        sideOffset={6}
+                        collisionPadding={8}
+                        className="z-50 w-max max-w-64 rounded-md border bg-popover px-2.5 py-1.5 text-small shadow-popover data-[state=delayed-open]:animate-fade-in data-[state=instant-open]:animate-fade-in"
+                      >
+                        <StepCard feature={f} result={r} index={i} name={name} full={nameHidden && named === f.id} dims={studio.dims} />
+                      </TooltipPrimitive.Content>
+                    </TooltipPrimitive.Portal>
+                  </TooltipPrimitive.Root>
+                </li>
+              )
+            })}
+          </ol>
+          {namedFeature && (
+            <span
+              ref={label}
+              aria-hidden
+              data-step-name
+              className={cn(
+                "pointer-events-none absolute bottom-0 h-4 max-w-[min(10rem,100%)] -translate-x-1/2 truncate text-center text-caption leading-4 whitespace-nowrap",
+                peek ? "text-foreground" : "text-muted-foreground",
+                namedFeature.suppressed && "line-through",
+              )}
+            >
+              {namedText}
+            </span>
           )}
         </div>
-        <ol
-          ref={list}
-          className="flex min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-contain p-1 [scrollbar-width:thin]"
-          onKeyDown={onKeyDown}
-          // A plain wheel scrolls the timeline sideways.
-          onWheel={(e) => {
-            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY
-          }}
-        >
-          {tree.features.map((f, i) => {
-            const r = report?.features[i]
-            const active = rollback === f.id
-            const after = rollbackIndex >= 0 && i > rollbackIndex
-            return (
-              <li key={f.id} className="group/row relative flex shrink-0 flex-col items-center">
-                <button
-                  type="button"
-                  data-step={f.id}
-                  // The second click of a double-click renames; it doesn't let go of the step again.
-                  onClick={(e) => e.detail < 2 && pin(f)}
-                  onDoubleClick={() => {
-                    // A part of an assembly is renamed in the parts list.
-                    if (readOnly || f.op === "component") return
-                    if (pinned !== f.id) pin(f)
-                    setRenaming(f.id)
-                  }}
-                  aria-expanded={pinned === f.id}
-                  aria-label={displayName(tree, f)}
-                  onMouseEnter={(e) => show(f, e.currentTarget)}
-                  onFocus={(e) => show(f, e.currentTarget)}
-                  onBlur={(e) => { if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node | null)) hide() }}
-                  aria-describedby={peek?.id === f.id ? "feature-peek" : undefined}
-                  aria-current={active ? "step" : undefined}
-                  className={cn(
-                    "relative flex w-8 flex-col items-center gap-1 rounded-md border border-transparent px-1 py-1 text-muted-foreground",
-                    "timeline-lit:w-16 timeline-lit:pt-1.5",
-                    "transition-[background-color,color,border-color] duration-(--duration-fast) ease-out",
-                    "hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground",
-                    peek?.id === f.id && "bg-muted text-foreground",
-                    (active || pinned === f.id || selectedFeature === f.id) && "border-border bg-selected text-foreground",
-                    (after || f.suppressed) && "opacity-50",
-                  )}
-                >
-                  <span className="relative">
-                    <OpIcon op={iconOf(f)} className="size-4 timeline-lit:size-5" />
-                    {r?.state === "error" ? (
-                      <CircleAlert className="absolute -top-1 -right-2 size-3 rounded-full bg-background text-destructive" aria-label="失败" />
-                    ) : r?.state === "skipped" ? (
-                      <CircleDashed className="absolute -top-1 -right-2 size-3 rounded-full bg-background text-faint-foreground" aria-label="未重建" />
-                    ) : null}
-                  </span>
-                  <span aria-hidden className={cn("hidden w-full truncate text-center text-caption leading-tight timeline-lit:block", rowActions && "group-hover/row:invisible group-focus-within/row:invisible", f.suppressed && "line-through")}>{displayName(tree, f)}</span>
-                  {f.part && <span className="hidden max-w-full truncate rounded-xs bg-muted px-1 text-caption leading-tight text-faint-foreground timeline-lit:block">{f.part}</span>}
-                  {f.suppressed && <span className="sr-only">（已压缩）</span>}
-                </button>
-                {rowActions && <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100">{rowActions(f)}</div>}
-              </li>
-            )
-          })}
-        </ol>
         {footer && <div className="flex shrink-0 items-center border-l px-1">{footer}</div>}
-      </div>
       </div>
     </nav>
   )
@@ -357,29 +423,40 @@ export function TreeOverlay({
 
 /**
  * Shown only while the timeline is lit up (pointed at, focused, a step or one of these popovers
- * open). It goes a moment after the timeline dims, so a popover fading out keeps its anchor and
- * doesn't jump to the corner of the window.
+ * open), in a place kept for it so nothing moves. It goes a moment after the timeline dims, so a
+ * popover fading out keeps its anchor and doesn't jump to the corner of the window.
  */
-const LIT = "hidden items-center transition-[display] transition-discrete duration-(--duration-base) timeline-lit:inline-flex"
+const LIT = "invisible inline-flex items-center transition-[visibility] duration-(--duration-base) timeline-lit:visible"
 
-/** The card over a step pointed at: what it is and what it did, without taking over the side panel. */
-function StepPeek({ feature: f, result: r, index, name, x }: { feature: Feature; result?: { state: string; message?: string; faces?: { new: number; modified: number }; ms: number }; index: number; name: string; x: number }) {
-  const kind = `${OP_NAMES[f.op]}${"mode" in f && f.mode === "cut" ? " · 切除" : ""}`
+/** The card over a step rested on: what it is, its main numbers and what it did, in a few lines. */
+function StepCard({ feature: f, result: r, index, name, full, dims }: { feature: Feature; result?: { state: string; message?: string; faces?: { new: number; modified: number }; ms: number }; index: number; name: string; full: boolean; dims: Dim[] }) {
+  const shown = cardDims(dims, f.id)
   return (
-    <div
-      id="feature-peek"
-      role="tooltip"
-      className="pointer-events-none absolute bottom-full mb-2 w-max max-w-64 -translate-x-1/2 rounded-md border bg-background px-2.5 py-1.5 text-small shadow-popover"
-      style={{ left: Math.max(80, x) }}
-    >
-      <div className="font-medium">{name}</div>
-      <div className="text-caption text-faint-foreground tabular">
-        第 {index + 1} 步 · {kind}
-        {r?.state === "ok" && r.faces ? ` · 新面 ${r.faces.new}${r.faces.modified ? ` · 改动 ${r.faces.modified}` : ""}` : ""}
-      </div>
-      {r?.state === "error" && <div className="mt-0.5 line-clamp-2 text-caption text-destructive">{r.message ?? "这一步没建成"}</div>}
-      {r?.state === "skipped" && <div className="mt-0.5 text-caption text-faint-foreground">前面的步骤失败了，这一步没有重建</div>}
-      {f.intent && <div className="mt-0.5 line-clamp-2 text-caption text-muted-foreground">{f.intent}</div>}
+    <div className="flex flex-col gap-0.5">
+      {/* The name is under the step already; spelled out here only when it isn't all there. */}
+      {full && <div className="font-medium">{name}</div>}
+      <div className="text-caption text-faint-foreground tabular">{stepLine(f, index)}</div>
+      {shown.length > 0 && (
+        <dl className="text-caption">
+          {shown.map((d) => (
+            <div key={d.id} className="flex items-baseline gap-3">
+              <dt className="min-w-0 flex-1 truncate text-muted-foreground">{d.label}</dt>
+              <dd className="font-mono tabular">{d.text}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {r?.state === "error" ? (
+        <div className="line-clamp-2 text-caption text-destructive">{r.message ?? "这一步没建成"}</div>
+      ) : r?.state === "skipped" ? (
+        <div className="text-caption text-faint-foreground">前面的步骤失败了，这一步没有重建</div>
+      ) : r?.state === "ok" && r.faces ? (
+        <div className="text-caption text-faint-foreground tabular">
+          新面 {r.faces.new}
+          {r.faces.modified ? ` · 改动 ${r.faces.modified}` : ""}
+        </div>
+      ) : null}
+      {f.intent && <div className="truncate text-caption text-muted-foreground">{f.intent}</div>}
     </div>
   )
 }
