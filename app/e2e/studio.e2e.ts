@@ -345,12 +345,13 @@ test.describe("工作台", () => {
     const d0 = page.getByLabel("d0", { exact: true })
     await d0.fill("130")
     await d0.press("Enter")
-    await expect(page.getByLabel("失败").first(), "the failing feature is marked").toBeVisible()
+    const tree = page.getByRole("navigation", { name: "特征树" })
+    await expect(tree.getByRole("button", { name: /（失败）$/ }).first(), "the failing step is marked, and read as failed").toBeVisible()
     // …and putting it back rebuilds cleanly.
     await page.getByRole("tab", { name: "参数" }).first().click()
     await page.getByLabel("d0", { exact: true }).fill("40")
     await page.getByLabel("d0", { exact: true }).press("Enter")
-    await expect(page.getByLabel("失败")).toHaveCount(0)
+    await expect(tree.getByRole("button", { name: /（失败）$/ })).toHaveCount(0)
   })
 
   test("/studio 特征时间线：从不变大，名字只在指向的那一步下面，停一下才弹出卡片", async ({ page }) => {
@@ -404,6 +405,40 @@ test.describe("工作台", () => {
     await expect(back).toHaveCount(0)
     await steps.nth(3).blur()
     await expect(name).toHaveCount(0)
+  })
+
+  test("/studio 颜色弹层：按一次 Esc 就关，圆点的提示不再冒出来", async ({ page }) => {
+    await page.goto("/studio?start=flange")
+    const tree = page.getByRole("navigation", { name: "特征树" })
+    const count = tree.getByText("5 个特征")
+    await expect(count).toBeVisible({ timeout: 90_000 })
+    const panel = page.getByRole("dialog", { name: "零件的颜色" })
+    const dot = tree.getByRole("button", { name: /^零件的颜色/ })
+    // Shown names (a closing one stays in the page for its fade, longer here: SwiftShader keeps the CPU busy).
+    const tips = page.locator('[role="tooltip"]:not([data-state="closed"])')
+    const closedOnce = async () => {
+      await page.keyboard.press("Escape")
+      await expect(panel, "one Esc closes the panel").toHaveCount(0)
+      // The focus comes back to the dot after the fade; its name must not pop up again then.
+      await page.waitForTimeout(600)
+      await expect(tips, "no name left over to press Esc on").toHaveCount(0)
+    }
+    // From the keyboard, with a swatch focused (its name showing).
+    await count.hover()
+    await dot.focus()
+    await page.keyboard.press("Enter")
+    await expect(panel).toBeVisible()
+    await page.keyboard.press("Tab")
+    await expect(tips).toHaveText("白")
+    await closedOnce()
+    await expect(dot).toBeFocused()
+    // With the pointer on a swatch (its name showing).
+    await count.hover()
+    await dot.click()
+    await expect(panel).toBeVisible()
+    await panel.getByRole("button", { name: "橙", exact: true }).hover()
+    await expect(tips).toHaveText("橙")
+    await closedOnce()
   })
 
   test("/studio 的说明：指向 ⓘ 就全部显示，不用点", async ({ page }) => {
