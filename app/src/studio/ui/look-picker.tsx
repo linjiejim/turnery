@@ -64,6 +64,10 @@ export function LookPicker({
   onOpen?: () => void
 }) {
   const [open, setOpen] = React.useState(false)
+  // The dot's name pops up on hover and on focus. Not over the open panel, and not again when the panel
+  // closes and gives the focus back: that would be one more thing to press Esc on.
+  const [tipOpen, setTipOpen] = React.useState(false)
+  const quiet = React.useRef(false)
   const current = paletteOf(look?.color)
   const hex = hexOf(look?.color)
   const [custom, setCustom] = React.useState("")
@@ -71,22 +75,24 @@ export function LookPicker({
   const customOk = !!hexOf(custom.startsWith("#") ? custom : `#${custom}`)
   const pick = (change: LookChange) => void onChange(change)
   const tip = `${label}：${lookTip(look)}${note ? `（${note}）` : ""}`
+  const openPanel = (o: boolean) => {
+    setOpen(o)
+    setTipOpen(false)
+    quiet.current = !o
+    if (o) {
+      setCustom(hex && !current ? hex : "")
+      onOpen?.()
+    }
+  }
   return (
-    <Popover
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o)
-        if (o) {
-          setCustom(hex && !current ? hex : "")
-          onOpen?.()
-        }
-      }}
-    >
-      <Tooltip content={tip}>
+    <Popover open={open} onOpenChange={openPanel}>
+      <Tooltip content={tip} open={tipOpen && !open} onOpenChange={(o) => setTipOpen(o && !quiet.current)}>
         <PopoverTrigger asChild disabled={disabled}>
           <button
             type="button"
             aria-label={tip}
+            onPointerMove={() => (quiet.current = false)}
+            onBlur={() => (quiet.current = false)}
             className={cn("grid size-5 shrink-0 place-items-center rounded-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40", className)}
             onClick={(e) => e.stopPropagation()}
           >
@@ -98,6 +104,12 @@ export function LookPicker({
         className="w-60 space-y-3 p-3"
         onClick={(e) => e.stopPropagation()}
         aria-label={label}
+        // One Esc closes the panel, also while a swatch's name is showing (that name would take the Esc for itself).
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || !open) return
+          e.preventDefault()
+          openPanel(false)
+        }}
         // Focus the panel, not its first swatch: a swatch's name would pop up over the title. Tab goes on into it.
         onOpenAutoFocus={(e) => {
           e.preventDefault()
@@ -153,7 +165,7 @@ export function LookPicker({
           <Button size="sm" variant="ghost" disabled={!isSet(look)} onClick={() => pick({ color: null, finish: null })}>
             清除颜色和质感
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          <Button size="sm" variant="ghost" onClick={() => openPanel(false)}>
             完成
           </Button>
         </div>
