@@ -38,7 +38,8 @@ import { referencesOf } from "../apply"
 import { describeError, explain, InputError } from "./errors"
 import { normalizeText, textDrawing } from "./fonts"
 import { measure, type MeasureResult, type MeasureSpec, type MeasureTarget } from "./measure"
-import { closest, narrowSpot, overlapVolume, relation, TOUCH } from "./proximity"
+import { closest, narrowSpot, TOUCH } from "./proximity"
+import { overlapVolume, Pieces, relation, TooComplex } from "./pieces"
 import { bounded, compoundOf, countOf, edgesOf, facesOf, solidsOf } from "./topo"
 import { dimensionsOf, type Dim, type Frame, type StepGeom } from "./dims"
 import { cylinderAxis, runChecks, type CheckBodies, type CheckResult } from "./check"
@@ -551,20 +552,26 @@ export class Kernel {
     }
     this.overlapJobs = this.steps.flatMap((s) => s.pendingOverlaps ?? [])
     const known = new Map(hooks.interferences?.map((r) => [JSON.stringify([r.feature, r.a, r.b]), r.volume]))
-    for (let i = 0; i < this.overlapJobs.length && !hooks.deferChecks; i++) {
-      const { id, a, b } = this.overlapJobs[i]
-      hooks.progress?.({ stage: "checks", completed: i, total: this.overlapJobs.length, label: `${a.name} · ${b.name}` })
-      const step = this.steps.find((s) => s.feature.id === id)
-      const result = step?.result
-      if (!result || result.state !== "ok") continue
-      try {
-        const overlap = known.get(JSON.stringify([id, a.name, b.name])) ?? overlapVolume(a.body, b.body)
-        const measured = step!.interferences ??= []
-        measured.push({ feature: id, a: a.name, b: b.name, volume: overlap })
-        if (overlap > 1e-6) (result.warnings ??= []).push(`「${a.name}」和「${b.name}」重叠 ${fmt(overlap)} mm³`)
-      } catch (e) {
-        (result.warnings ??= []).push(`「${a.name}」和「${b.name}」的干涉检查失败：${describeError(e)}`)
+    // Parts taken apart into solids once for all the pairs (a vendor's board is in most of them).
+    const pieces = new Pieces()
+    try {
+      for (let i = 0; i < this.overlapJobs.length && !hooks.deferChecks; i++) {
+        const { id, a, b } = this.overlapJobs[i]
+        hooks.progress?.({ stage: "checks", completed: i, total: this.overlapJobs.length, label: `${a.name} · ${b.name}` })
+        const step = this.steps.find((s) => s.feature.id === id)
+        const result = step?.result
+        if (!result || result.state !== "ok") continue
+        try {
+          const overlap = known.get(JSON.stringify([id, a.name, b.name])) ?? overlapVolume(a.body, b.body, pieces)
+          const measured = step!.interferences ??= []
+          measured.push({ feature: id, a: a.name, b: b.name, volume: overlap })
+          if (overlap > 1e-6) (result.warnings ??= []).push(`「${a.name}」和「${b.name}」重叠 ${fmt(overlap)} mm³`)
+        } catch (e) {
+          (result.warnings ??= []).push(e instanceof TooComplex ? `「${a.name}」和「${b.name}」太复杂，没有查干涉：${e.message}。可以换成精简的模型（例如外购件只留包络盒）再查` : `「${a.name}」和「${b.name}」的干涉检查失败：${describeError(e)}`)
+        }
       }
+    } finally {
+      pieces.dispose()
     }
     if (!hooks.deferChecks) this.steps.forEach((s) => { s.pendingOverlaps = undefined })
     this.overlapJobs = []
@@ -661,7 +668,7 @@ export class Kernel {
       refs.set(r.id, r.shape)
       refs.set(r.name, r.shape)
     }
-    return { refs, parts: step.parts ?? [] }
+    return { refs, parts: step.parts ?? [], ...(step.body ? { bounds: boundsOf(step.body) } : {}) }
   }
 
   /** Mesh + per-face status of one step (default: the last that built). */
@@ -1115,7 +1122,13 @@ export class Kernel {
     try {
       const items = two.map((t) => this.targetShape(step, t, owned))
       if (items.length < 2) return { items: [items[0].item], between: [], segment: null }
-      const r = relation(items[0].shape, items[1].shape, items[0].solid && items[1].solid)
+      let r: ReturnType<typeof relation>
+      try {
+        r = relation(items[0].shape, items[1].shape, items[0].solid && items[1].solid)
+      } catch (e) {
+        if (!(e instanceof TooComplex)) throw e
+        return { items: items.map((x) => x.item), between: [{ name: "最短距离", value: `太复杂，没有算：${e.message}` }], segment: null }
+      }
       const between = [{ name: "最短距离", value: r.d <= TOUCH ? "0（接触）" : `${fmt(r.d)} mm` }]
       if (r.overlap > 1e-6) between.push({ name: "重叠体积", value: `${fmt(r.overlap)} mm³（相交）` })
       return { items: items.map((x) => x.item), between, segment: r.segment }
@@ -2188,8 +2201,13 @@ export class Kernel {
         ? prev.parts.map((p) => ({ ...p, owned: false }))
         : [{ name: prev.mainName ?? "主体", body: prev.body!, explode: [0, 0, 0], owned: false, auto: true }]
     for (const p of before) {
-      const r = relation(out.body, p.body, true)
-      if (r.overlap > 1e-6) warnings.push(`新零件「${name}」和「${p.name}」重叠 ${fmt(r.overlap)} mm³`)
+      try {
+        const r = relation(out.body, p.body, true)
+        if (r.overlap > 1e-6) warnings.push(`新零件「${name}」和「${p.name}」重叠 ${fmt(r.overlap)} mm³`)
+      } catch (e) {
+        if (!(e instanceof TooComplex)) throw e
+        warnings.push(`新零件「${name}」和「${p.name}」太复杂，没有查重叠：${e.message}`)
+      }
     }
     const parts: Part[] = [...before, { name, body: out.body, explode: [0, 0, 0], owned: true, auto: true }]
     const named = prev.parts && prev.parts.length > 1 ? "" : prev.mainName ? "" : "；原来的实体叫作「主体」"
