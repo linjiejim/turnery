@@ -1,12 +1,13 @@
 // Requirement checks (dsl.ts `Check`): the learner's numbers, measured on the
 // latest body by the kernel, not taken on the assistant's word.
-import { getOC, makeCompound, measureDistanceBetween, measureShapeVolumeProperties, type AnyShape, type Shape3D } from "replicad"
+import { getOC, makeCompound, measureShapeVolumeProperties, type AnyShape, type Shape3D } from "replicad"
 import type { Check, EdgeSelector, FaceSelector } from "../dsl"
 import type { Scope } from "../expr"
 import { METRIC, type ScrewSize } from "../holes"
 import { measure, positionOf } from "./measure"
 import { meshShape } from "./mesh"
-import { relation, relationText, thinnestWall } from "./proximity"
+import { Pieces, relation, TooComplex } from "./pieces"
+import { relationText, thinnestWall } from "./proximity"
 import { compoundOf } from "./topo"
 import { disposeInfos, edgeInfos, faceInfos, selectEdges, selectFaces, type EdgeInfo, type FaceInfo } from "./select"
 
@@ -21,6 +22,8 @@ export type CheckResult = {
   /** 「80 × 50 × 30」 */
   expected: string
   actual: string
+  /** With `invalid`: the model is too big for this check to be worked out (not a wrong item). */
+  tooComplex?: boolean
   /** Faces / edges measured, to light them up when the row is pointed at. */
   faces: number[]
   edges: number[]
@@ -41,13 +44,20 @@ const MAX_ITEMS = 50
  * What a check can name besides faces and edges: reference bodies (`import`, and the other parts when
  * editing inside an assembly) by id and by name, and the model's parts by name.
  */
-export type CheckBodies = { refs: Map<string, AnyShape>; parts: { name: string; body: Shape3D }[] }
+export type CheckBodies = {
+  refs: Map<string, AnyShape>
+  parts: { name: string; body: Shape3D }[]
+  /** The body's box when the kernel knows it already (an assembly: from its parts' boxes). */
+  bounds?: [V3, V3]
+}
 
 /**
  * Reference bodies whose faces a selector may name with `of` (an imported board, the part next door
  * in an assembly). Their faces are listed once per run, on first use, and freed at the end.
  */
 let REFS: { bodies: CheckBodies; infos: Map<string, { faces: FaceInfo[]; edges: EdgeInfo[] | null }>; used: Set<AnyShape> } | null = null
+/** Parts taken apart into their solids, shared by the checks of one run (an assembly's parts come up in most of them). */
+let PIECES: Pieces | null = null
 
 function refInfos(of: string | undefined) {
   const shape = of ? REFS?.bodies.refs.get(of) : undefined
@@ -72,10 +82,22 @@ function pickEdges(sel: EdgeSelector, edges: EdgeInfo[], faces: FaceInfo[], scop
   return selectEdges(sel, ref.edges, ref.faces, scope)
 }
 
+/** The model's faces and edges, listed on first use. */
+type Topo = () => { faces: FaceInfo[]; edges: EdgeInfo[] }
+
 export function runChecks(body: Shape3D, origins: string[], checks: Check[], scope: Scope, bodies: CheckBodies = { refs: new Map(), parts: [] }): CheckResult[] {
-  const faces = faceInfos(body, origins)
-  const edges = edgeInfos(body, faces)
+  // The body's faces and edges only when a check picks some: an assembly with a vendor's board model has
+  // tens of thousands, and its interference checks never look at them.
+  let infos: { faces: FaceInfo[]; edges: EdgeInfo[] } | null = null
+  const topo: Topo = () => {
+    if (!infos) {
+      const faces = faceInfos(body, origins)
+      infos = { faces, edges: edgeInfos(body, faces) }
+    }
+    return infos
+  }
   REFS = { bodies, infos: new Map(), used: new Set() }
+  PIECES = new Pieces()
   try {
     return checks.map((c) => {
       const base = { id: c.id, said: c.said, faces: [] as number[], edges: [] as number[] }
@@ -86,14 +108,17 @@ export function runChecks(body: Shape3D, origins: string[], checks: Check[], sco
           ...(c.kind === "clearance" || c.kind === "interference"
             ? fit(c, body, bodies)
             : c.kind === "gap"
-              ? gap(c, faces, edges, scope, bodies)
+              ? gap(c, topo, scope, bodies)
               : c.kind === "position"
-                ? position(c, faces, edges, scope)
+                ? position(c, topo().faces, topo().edges, scope)
                 : c.kind === "overhang" || c.kind === "bed" || c.kind === "min_wall"
                   ? printable(c, body, bodies)
-                  : one(c, body, origins, faces, edges, scope)),
+                  : c.kind === "size"
+                    ? size(c, bodies.bounds ?? (body.boundingBox.bounds as [V3, V3]))
+                    : one(c, body, origins, topo().faces, topo().edges, scope)),
         }
       } catch (e) {
+        if (e instanceof TooComplex) return { ...base, pass: false, invalid: true, tooComplex: true, expected: expectedOf(c), actual: `太复杂，没有算：${e.message}` }
         const first = ((e as Error).message || "没找到要量的东西").split("\n")[0].replace(/。?候选：$/, "")
         return { ...base, pass: false, invalid: true, expected: expectedOf(c), actual: first }
       }
@@ -101,7 +126,10 @@ export function runChecks(body: Shape3D, origins: string[], checks: Check[], sco
   } finally {
     for (const r of REFS.infos.values()) disposeInfos(r.faces, r.edges ?? [])
     REFS = null
-    disposeInfos(faces, edges)
+    PIECES.dispose()
+    PIECES = null
+    const listed = infos as { faces: FaceInfo[]; edges: EdgeInfo[] } | null
+    if (listed) disposeInfos(listed.faces, listed.edges)
   }
 }
 
@@ -221,15 +249,14 @@ function printable(c: PrintCheck, body: Shape3D, bodies: CheckBodies): Pick<Chec
 type FitCheck = Extract<Check, { kind: "clearance" | "interference" }>
 type Where = Extract<Check, { kind: "gap" }>["a"]
 
-/** A reference body or a part, by name; with a part, the rest of the model is the other side. */
-function named(name: string, bodies: CheckBodies): { shape: AnyShape; rest: AnyShape | null } | null {
+/** A reference body or a part, by name; with a part, the rest of the model (the other parts) is the other side. */
+function named(name: string, bodies: CheckBodies): { shape: AnyShape; rest: AnyShape[] | null } | null {
   const ref = bodies.refs.get(name)
   if (ref) return { shape: ref, rest: null }
   const k = bodies.parts.findIndex((p) => p.name === name)
   if (k < 0) return null
   const others = bodies.parts.filter((_, i) => i !== k).map((p) => p.body)
-  // compoundOf, not makeCompound: replicad's would free the parts.
-  return { shape: bodies.parts[k].body, rest: others.length ? compoundOf(others) : null }
+  return { shape: bodies.parts[k].body, rest: others.length ? others : null }
 }
 
 const namesOf = (bodies: CheckBodies) => [...new Set([...bodies.refs.keys(), ...bodies.parts.map((p) => p.name)])]
@@ -243,24 +270,20 @@ function fit(c: FitCheck, body: Shape3D, bodies: CheckBodies): Omit<CheckResult,
     throw new Error(`没有参考体或零件「${c.ref}」${names.length ? `：现在有 ${names.join("、")}` : "：要先用 import 导入，ref 写那个特征的 id"}`)
   }
   if (hit.rest === null && bodies.parts.some((p) => p.name === c.ref)) throw new Error(`只有「${c.ref}」一个零件，没有别的可以比`)
-  try {
-    return fitOf(c, expected, (hit.rest ?? body) as Shape3D, hit.shape)
-  } finally {
-    hit.rest?.delete()
-  }
+  return fitOf(c, expected, hit.rest ?? [body], hit.shape)
 }
 
-function fitOf(c: FitCheck, expected: string, other: Shape3D, ref: AnyShape): Omit<CheckResult, "id" | "said"> {
-  const gap = measureDistanceBetween(other, ref)
-  // Apart: no overlap, no boolean needed (they can take seconds on a board with many parts).
-  const overlap = gap > 1e-6 ? 0 : overlapVolume(other, ref)
+function fitOf(c: FitCheck, expected: string, other: AnyShape[], ref: AnyShape): Omit<CheckResult, "id" | "said"> {
+  // Solid by solid (pieces.ts): a vendor's board model is hundreds of solids, and as one compound a
+  // single boolean against it ran for many minutes and out of memory. Apart: no boolean at all.
+  const { d: gap, overlap } = relation(other, ref, true, PIECES ?? undefined)
   const where = overlap > 1e-6 ? `相交 ${fmt(overlap)} mm³` : gap > 1e-6 ? `最小间隙 ${fmt(gap)} mm` : "贴在一起"
   if (c.kind === "interference") return { pass: overlap <= 1e-6, expected, actual: where, faces: [], edges: [] }
   return { pass: overlap <= 1e-6 && gap >= c.min - (c.tol ?? 0.01), expected, actual: where, faces: [], edges: [] }
 }
 
 /** The shape one side of a `gap` stands for (made shapes go into `owned`) and the faces / edges to light up. */
-function whereShape(w: Where, faces: FaceInfo[], edges: EdgeInfo[], scope: Scope, bodies: CheckBodies, owned: AnyShape[]): { shape: AnyShape; solid: boolean; faces: number[]; edges: number[] } {
+function whereShape(w: Where, topo: Topo, scope: Scope, bodies: CheckBodies, owned: AnyShape[]): { shape: AnyShape; solid: boolean; faces: number[]; edges: number[] } {
   if (w.part) {
     const ref = bodies.refs.get(w.part)
     if (ref) return { shape: ref, solid: true, faces: [], edges: [] }
@@ -271,6 +294,7 @@ function whereShape(w: Where, faces: FaceInfo[], edges: EdgeInfo[], scope: Scope
     }
     return { shape: p.body, solid: true, faces: [], edges: [] }
   }
+  const { faces, edges } = topo()
   if (w.feature) {
     const mine = faces.filter((f) => f.origin === w.feature)
     if (!mine.length) throw new Error(`特征「${w.feature}」现在没有面（被后面的特征盖掉了，或者 id 写错了）`)
@@ -292,13 +316,13 @@ function whereShape(w: Where, faces: FaceInfo[], edges: EdgeInfo[], scope: Scope
 }
 
 /** The shortest distance between two places (0 when solids overlap, with the overlap reported). */
-function gap(c: Extract<Check, { kind: "gap" }>, faces: FaceInfo[], edges: EdgeInfo[], scope: Scope, bodies: CheckBodies): Omit<CheckResult, "id" | "said"> {
+function gap(c: Extract<Check, { kind: "gap" }>, topo: Topo, scope: Scope, bodies: CheckBodies): Omit<CheckResult, "id" | "said"> {
   if (c.min === undefined && c.max === undefined) throw new Error("gap 至少写 min 或 max 之一（max: 0 = 必须贴上）")
   const owned: AnyShape[] = []
   try {
-    const a = whereShape(c.a, faces, edges, scope, bodies, owned)
-    const b = whereShape(c.b, faces, edges, scope, bodies, owned)
-    const r = relation(a.shape, b.shape, a.solid && b.solid)
+    const a = whereShape(c.a, topo, scope, bodies, owned)
+    const b = whereShape(c.b, topo, scope, bodies, owned)
+    const r = relation(a.shape, b.shape, a.solid && b.solid, PIECES ?? undefined)
     const tol = c.tol ?? 0.01
     const d = r.overlap > 1e-6 ? 0 : r.d
     const pass = (c.max === undefined || d <= c.max + tol) && (c.min === undefined || (r.overlap <= 1e-6 && d >= c.min - tol))
@@ -335,17 +359,16 @@ function position(c: Extract<Check, { kind: "position" }>, faces: FaceInfo[], ed
   return { pass: Math.abs(v - c.expect) <= tol, expected: expectedOf(c), actual: `${c.axis} = ${fmt(v)}`, ...lit }
 }
 
-function overlapVolume(body: Shape3D, ref: AnyShape): number {
-  if (!("intersect" in ref)) return 0
-  const common = body.intersect(ref as Shape3D)
-  try {
-    return measureShapeVolumeProperties(common).volume
-  } finally {
-    common.delete()
-  }
+/** The whole model's outer size: its box, no faces needed. */
+function size(c: Extract<Check, { kind: "size" }>, [a, b]: [V3, V3]): Omit<CheckResult, "id" | "said"> {
+  const tol = c.tol ?? 0.01
+  const size = sub(b, a)
+  const want = c.axes === "any" ? [...c.expect].sort((x, y) => x - y) : c.expect
+  const got = c.axes === "any" ? [...size].sort((x, y) => x - y) : size
+  return { pass: want.every((w, i) => Math.abs(w - got[i]) <= tol), expected: expectedOf(c), actual: size.map(fmt).join(" × "), faces: [], edges: [] }
 }
 
-function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position" }>, body: Shape3D, origins: string[], faces: FaceInfo[], edges: ReturnType<typeof edgeInfos>, scope: Scope): Omit<CheckResult, "id" | "said"> {
+function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position" | "size" }>, body: Shape3D, origins: string[], faces: FaceInfo[], edges: ReturnType<typeof edgeInfos>, scope: Scope): Omit<CheckResult, "id" | "said"> {
   const tol = c.tol ?? (c.kind === "angle" ? 0.05 : 0.01)
   const expected = expectedOf(c)
   const pickFaces = (sel: FaceSelector) => {
@@ -355,13 +378,6 @@ function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position
     return got
   }
   switch (c.kind) {
-    case "size": {
-      const [a, b] = body.boundingBox.bounds as [V3, V3]
-      const size = sub(b, a)
-      const want = c.axes === "any" ? [...c.expect].sort((x, y) => x - y) : c.expect
-      const got = c.axes === "any" ? [...size].sort((x, y) => x - y) : size
-      return { pass: want.every((w, i) => Math.abs(w - got[i]) <= tol), expected, actual: size.map(fmt).join(" × "), faces: [], edges: [] }
-    }
     case "thickness": {
       const sel = pickFaces(c.faces)
       let best = Infinity

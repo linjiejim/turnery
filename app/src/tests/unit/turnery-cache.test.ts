@@ -29,6 +29,21 @@ describe("desktop content caches", () => {
     }
   })
 
+  it("keys a vendor's STEP by a hash of its bytes, not by spelling them out", () => {
+    // 16 MB, the size of a display board's model: as JSON it was 16 million entries, seconds per key.
+    const bytes = new Uint8Array(16 * 1024 * 1024).map((_, i) => i * 7)
+    const source = { file: "board.step", bytes }
+    const started = performance.now()
+    const key = sourceKey(source)
+    expect(performance.now() - started).toBeLessThan(1000)
+    expect(assemblyKey([source])).toBe(assemblyKey([{ file: "board.step", bytes: bytes.slice() }]))
+    const changed = bytes.slice()
+    changed[changed.length - 1] ^= 1
+    expect(sourceKey({ file: "board.step", bytes: changed })).not.toBe(key)
+    // The same bytes as another kind of array (a mesh) are another thing.
+    expect(assemblyKey([{ data: new Float32Array(bytes.buffer, 0, 4) }])).not.toBe(assemblyKey([{ data: new Uint32Array(bytes.buffer, 0, 4) }]))
+  })
+
   it("retains user parameters named compiled while stripping native payloads on nested sources", () => {
     const source = { file: "part.turnery.json", tree: { params: { compiled: 10 }, features: [] }, compiled: { parts: [], failed: 0 } }
     const changed = { ...source, tree: { ...source.tree, params: { compiled: 20 } } }

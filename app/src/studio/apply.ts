@@ -238,12 +238,14 @@ export function checkText(report: BuildReport) {
   const rows = report.checks ?? []
   if (!rows.length) return "没有核对项。"
   const failed = rows.filter((r) => !r.pass && !r.invalid).length
-  const invalid = rows.filter((r) => r.invalid).length
+  const invalid = rows.filter((r) => r.invalid && !r.tooComplex).length
+  const tooComplex = rows.filter((r) => r.tooComplex).length
   return [
     ...rows.map((r) => (r.invalid ? `? ${r.id}「${r.said}」：量不了，${r.actual}` : `${r.pass ? "✓" : "✗"} ${r.id}「${r.said}」：要求 ${r.expected}，实际 ${r.actual}`)),
     ...(failed ? [`${failed} 项不满足：先确认量的位置对不对（size 是整个零件的外形；局部尺寸用 distance / thickness，选择器要正好选中那个面）。量错了就用同一个 id 改写这一项；确实没做到再用 edit_feature 修模型，然后再核对。不要为了通过去改期望值。`] : []),
     ...(invalid ? [`${invalid} 项量不了：是这一项的选择器写得不对（要正好选中要量的面或边，例如加上 normal、of），用同一个 id 改写这一项，不是改模型。`] : []),
-    ...(!failed && !invalid ? ["全部满足。"] : []),
+    ...(tooComplex ? [`${tooComplex} 项太复杂没有算：不是没满足，也不是写错了，是要精确计算的实体太多。可以把 ref 缩小到具体的零件，或者把外购件换成精简的模型（例如只留包络盒）再核对。`] : []),
+    ...(!failed && !invalid && !tooComplex ? ["全部满足。"] : []),
   ].join("\n")
 }
 
