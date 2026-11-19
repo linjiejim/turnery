@@ -1,14 +1,14 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
-import { CircleAlert, CircleDashed, Eye, EyeOff } from "lucide-react"
+import { ChevronLast, ChevronLeft, ChevronRight, CircleAlert, CircleDashed, Eye, EyeOff, Pause, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Button, IconButton } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/button"
 import { OpIcon } from "@/components/op-icon"
 import { displayName, type Feature } from "../dsl"
 import type { Dim } from "../kernel/dims"
 import { NO_PARTS_VIEW, type Hover, type PartsView } from "../scene"
-import { cardDims, labelLeft, namedStep, stepLabel, stepLine } from "../step-timeline"
+import { cardDims, labelLeft, namedStep, replayFrom, rollbackFor, shownStep, stepLabel, stepLine } from "../step-timeline"
 import { StepPanel } from "./step-panel"
 import { iconOf } from "../feature-icon"
 import type { Annotations } from "../use-annotations"
@@ -21,6 +21,9 @@ import { LookDot, LookPicker } from "./look-picker"
 
 /** How long the pointer rests on a step before its card opens (then neighbours open at once). */
 const CARD_DELAY = 400
+/** Replaying: how long each step stays on screen once drawn, and the longest wait for it to be drawn. */
+const REPLAY_HOLD = 800
+const REPLAY_WAIT = 4000
 
 /**
  * The feature tree as a timeline along the bottom of the 3D view: one small icon per feature. It never
@@ -28,7 +31,9 @@ const CARD_DELAY = 400
  * under its icon (none pointed at: the step open or rolled back to), and its faces light up in the
  * model; resting on it a moment brings a small card over it. Click a step: the model goes back to it
  * and its details open in the side panel (`detailsIn`), live (dimensions, re-pick, delete); click it
- * again, 关闭 or Esc to come back to the latest. `readOnly` (a shared link): look only. `timeline` off
+ * again, 关闭 or Esc to come back to the latest. ‹ ▶ › on its left replay the modelling: one step at a
+ * time, or all of them from the first, each held a moment once drawn, its new faces lit.
+ * `readOnly` (a shared link): look only. `timeline` off
  * (an assembly, whose parts are listed elsewhere): only the details of the selected step.
  *
  * Its height is published on the parent as `--timeline-h`, so what sits above it (the selected
@@ -91,6 +96,8 @@ export function TreeOverlay({
   const [nameHidden, setNameHidden] = React.useState(false)
   const rollbackIndex = rollback ? tree.features.findIndex((x) => x.id === rollback) : -1
   const last = tree.features.at(-1)?.id ?? null
+  /** Replaying the steps one after another (▶). */
+  const [playing, setPlaying] = React.useState(false)
 
   // The view went elsewhere (「回到最新」, a link in the chat, the step deleted): let go of the pinned step.
   if (pinned && rollback !== pinned && !(rollback === null && pinned === last)) setPinned(null)
@@ -132,6 +139,7 @@ export function TreeOverlay({
     studio.showFeature(null)
   }, [reselect, studio])
   const pin = (f: Feature) => {
+    setPlaying(false)
     if (pinned === f.id) return unpin()
     if (reselect?.state) reselect.cancel()
     setPinned(f.id)
@@ -139,18 +147,87 @@ export function TreeOverlay({
     studio.showFeature(f.id === last ? null : f.id)
   }
 
-  // Esc lets go of the pinned step (not while typing, re-picking or in a dialog).
+  // Esc lets go of the pinned step, or stops a replay (not while typing, re-picking or in a dialog).
   React.useEffect(() => {
-    if (!pinned && !selectedFeature) return
+    if (!pinned && !selectedFeature && !playing) return
     const onKey = (e: KeyboardEvent) => {
       // Taken already (the card or a popover closing on this Esc): one Esc closes one thing.
       if (e.key !== "Escape" || e.defaultPrevented || reselect?.state || (e.target as HTMLElement)?.closest?.("input, textarea, select, [role=menu], [role=alertdialog]")) return
+      setPlaying(false)
       unpin()
       onSelectFeature?.(null)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [pinned, selectedFeature, onSelectFeature, reselect?.state, unpin])
+  }, [pinned, selectedFeature, playing, onSelectFeature, reselect?.state, unpin])
+
+  // ‹ ›: one step back or on. With a step open, its details follow; else only the model goes there.
+  const shown = shownStep(rollbackIndex, count)
+  const goTo = (index: number) => {
+    const f = tree.features[Math.max(0, Math.min(count - 1, index))]
+    if (!f) return
+    if (pinned) {
+      if (reselect?.state) reselect.cancel()
+      setPinned(f.id)
+    }
+    studio.showFeature(rollbackFor(tree.features, index))
+  }
+  const stepBy = (by: -1 | 1) => {
+    setPlaying(false)
+    goTo(shown + by)
+  }
+  /** The view on screen when the replay last moved: the next move waits for a new one (the step drawn). */
+  const drawnBefore = React.useRef<unknown>(null)
+  const play = () => {
+    if (playing) return setPlaying(false)
+    if (reselect?.state) reselect.cancel()
+    setPinned(null)
+    onSelectFeature?.(null)
+    drawnBefore.current = studio.display
+    studio.showFeature(rollbackFor(tree.features, replayFrom(rollbackIndex, count)))
+    setPlaying(true)
+  }
+  // The latest of what the replay reads, so a host re-rendering doesn't restart its clock.
+  const live = React.useRef({ features: tree.features, showFeature: studio.showFeature, onHover })
+  React.useLayoutEffect(() => {
+    live.current = { features: tree.features, showFeature: studio.showFeature, onHover }
+  })
+  const { display } = studio
+  React.useEffect(() => {
+    if (!playing) return
+    const { features, onHover: light } = live.current
+    const f = features[shown]
+    if (f) light({ ids: f.op === "sketch" ? [] : [f.id], label: "该特征生成的面", feature: f.id })
+    // Drawn: rest on it a moment. Not yet: wait for it, but not for ever.
+    const drawn = display !== drawnBefore.current
+    const t = window.setTimeout(
+      () => {
+        const { features: now, showFeature } = live.current
+        // The last step (the latest model) had its moment: done.
+        if (shown >= now.length - 1) return setPlaying(false)
+        drawnBefore.current = display
+        showFeature(rollbackFor(now, shown + 1))
+      },
+      drawn ? REPLAY_HOLD : REPLAY_WAIT,
+    )
+    return () => window.clearTimeout(t)
+  }, [playing, shown, display])
+  // Stopped (at the end, by a click, by Esc): the last step's faces don't stay lit.
+  const wasPlaying = React.useRef(false)
+  React.useEffect(() => {
+    if (wasPlaying.current && !playing) live.current.onHover(null)
+    wasPlaying.current = playing
+  }, [playing])
+  // The steps changed under the replay (the agent building, an edit, another part): it stops there.
+  // Not `busy`: on the desktop that is also each step's mesh being presented.
+  const stepIds = tree.features.map((f) => f.id).join("\n")
+  const [playedIds, setPlayedIds] = React.useState(stepIds)
+  if (playedIds !== stepIds) {
+    setPlayedIds(stepIds)
+    if (playing) setPlaying(false)
+  }
+  /** The step the replay is on, the last one included (shown as the latest model, so not a rollback). */
+  const playingAt = playing ? (tree.features[shown]?.id ?? null) : null
 
   const panelId = pinned ?? selectedFeature ?? null
   const panelIndex = panelId ? tree.features.findIndex((f) => f.id === panelId) : -1
@@ -173,7 +250,7 @@ export function TreeOverlay({
   }, [timeline, tree.features.length])
 
   // The one name under the strip, centred under its step and kept inside the strip.
-  const named = namedStep({ pointed: peek, pinned, selected: selectedFeature ?? null, rollback })
+  const named = namedStep({ pointed: peek, pinned, selected: selectedFeature ?? null, rollback: rollback ?? playingAt })
   const namedFeature = named ? tree.features.find((f) => f.id === named) : undefined
   const namedText = namedFeature ? displayName(tree, namedFeature) : ""
   const hasSteps = timeline && tree.features.length > 0
@@ -239,8 +316,8 @@ export function TreeOverlay({
   // Colours are a tree edit like any other: undoable, and only restyled (nothing rebuilds).
   const setLook = (parts: string[] | undefined, change: LookChange) => void studio.editTree((t) => setPartLook(t, parts, change))
   const canColor = looks && !readOnly
-  // Lit up while something on it is open; otherwise only while pointed at or focused.
-  const open = Boolean(rollback || pinned || selectedFeature)
+  // Lit up while something on it is open or it is replaying; otherwise only while pointed at or focused.
+  const open = Boolean(rollback || pinned || selectedFeature || playing)
 
   return (
     <nav ref={nav} aria-label="特征树" className="pointer-events-none absolute right-3 bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
@@ -287,7 +364,7 @@ export function TreeOverlay({
         )}
         onMouseLeave={hide}
       >
-        {/* Two rows of their own: 「回到最新」 appearing moves nothing. */}
+        {/* Two rows of their own: the count, and ‹ ▶ › with 「回到最新」 once rolled back. */}
         <div className="flex shrink-0 flex-col justify-center gap-0.5 border-r border-transparent px-2 text-caption text-faint-foreground timeline-lit:border-border">
           <div className="flex h-5 items-center gap-1 whitespace-nowrap">
             {/* Kept in place while the step shown has no solid yet (a first sketch), only disabled. */}
@@ -311,15 +388,33 @@ export function TreeOverlay({
                   "点一步：模型回到这一步，右侧显示它的详情，可以直接改尺寸、在模型上重选面或边。",
                   "指向一步只看一眼：图标下方出现它的名字，停一下上方弹出小卡片；蓝色是这一步新生成的面，橙色是被它修改的面。",
                   "再点一次、点「关闭」或按 Esc，回到最新一步；← → 在各步之间移动；双击一步改名。",
+                  "‹ › 往前、往后看一步；▶ 从第一步起把建模过程放一遍；›| 回到最新。",
                 ]}
               />
             </span>
           </div>
-          {/* Laid out even when hidden, so the column is as wide with it as without. */}
-          <div className="flex h-5 items-center">
-            <Button size="sm" variant="secondary" className={cn("h-5 px-1.5 text-caption", !rollback && "invisible")} onClick={() => studio.showFeature(null)}>
-              回到最新
-            </Button>
+          <div className="flex h-5 items-center gap-0.5">
+            <IconButton label="上一步" size="icon-sm" className={REPLAY_BUTTON} disabled={shown <= 0} onClick={() => stepBy(-1)}>
+              <ChevronLeft />
+            </IconButton>
+            <IconButton label={playing ? "暂停" : "播放建模过程"} size="icon-sm" className={REPLAY_BUTTON} disabled={count < 2} onClick={play}>
+              {playing ? <Pause /> : <Play />}
+            </IconButton>
+            <IconButton label="下一步" size="icon-sm" className={REPLAY_BUTTON} disabled={shown >= count - 1} onClick={() => stepBy(1)}>
+              <ChevronRight />
+            </IconButton>
+            {/* Laid out even when hidden: it appearing moves nothing. */}
+            <IconButton
+              label="回到最新"
+              size="icon-sm"
+              className={cn(REPLAY_BUTTON, !rollback && "invisible")}
+              onClick={() => {
+                setPlaying(false)
+                studio.showFeature(null)
+              }}
+            >
+              <ChevronLast />
+            </IconButton>
           </div>
         </div>
         {/* At least a name wide, so a short tree's names aren't cut. */}
@@ -336,7 +431,7 @@ export function TreeOverlay({
           >
             {tree.features.map((f, i) => {
               const r = report?.features[i]
-              const active = rollback === f.id
+              const active = (rollback ?? playingAt) === f.id
               const after = rollbackIndex >= 0 && i > rollbackIndex
               const name = displayName(tree, f)
               return (
@@ -422,6 +517,9 @@ export function TreeOverlay({
  * popover fading out keeps its anchor and doesn't jump to the corner of the window.
  */
 const LIT = "invisible inline-flex items-center transition-[visibility] duration-(--duration-base) timeline-lit:visible"
+
+/** ‹ ▶ ›: as tall as the row they sit in. */
+const REPLAY_BUTTON = "size-5 text-muted-foreground [&_svg]:size-3.5"
 
 /** The card over a step rested on: what it is, its main numbers and what it did, in a few lines. */
 function StepCard({ feature: f, result: r, index, name, full, dims }: { feature: Feature; result?: { state: string; message?: string; faces?: { new: number; modified: number }; ms: number }; index: number; name: string; full: boolean; dims: Dim[] }) {

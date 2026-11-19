@@ -24,6 +24,7 @@ import { CodePanel, ParamsPanel } from "@/studio/ui/side-panels"
 import type { Hover } from "@/studio/scene"
 import { StudioViewport } from "@/studio/ui/studio-viewport"
 import { ConnectorOverlay } from "@/studio/ui/connector-overlay"
+import { DesktopBanner } from "@/studio/ui/desktop-banner"
 import { NO_PARTS_VIEW, type PartsView } from "@/studio/scene"
 import { DrawingSheet } from "@/studio/ui/drawing-sheet"
 import { useReselect } from "@/studio/use-reselect"
@@ -155,6 +156,7 @@ export function StudioPage() {
   return (
     <>
     <div className="flex h-dvh flex-col bg-background">
+      <DesktopBanner />
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
         <IconButton label="返回首页" onClick={() => navigate("/")}>
           <ArrowLeft />

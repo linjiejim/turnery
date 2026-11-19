@@ -224,8 +224,8 @@ function Conversation({ chat, usable, onSettings }: { chat: Assistant; usable: b
       {chat.messages.length === 0 ? (
         <div className="pt-6 text-body text-muted-foreground">
           <p className="text-heading font-semibold text-foreground">用说的来建和改</p>
-          <p className="mt-2">说出要做什么，助手在这个零件上一步步做，每一步你都看得到，做完会核对你说的数字。</p>
-          <p className="mt-2">它能用的只有 Turnery 的建模命令：碰不到别的文件，也不能运行程序。</p>
+          <p className="mt-2">说出要做什么，助手在这个零件上一步步做，做完核对你说的数字。</p>
+          <p className="mt-1 text-small text-faint-foreground">它只能用 Turnery 的建模命令，碰不到别的文件。</p>
           {!usable && (
             <Button className="mt-4" variant="primary" onClick={onSettings}>
               先配置模型

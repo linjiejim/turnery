@@ -20,7 +20,7 @@ test.describe("工作台", () => {
     // The feature tree sits over the 3D view; pointing at a step shows a small card of what it is.
     const tree = page.getByRole("navigation", { name: "特征树" })
     await expect(tree.getByText("5 个特征")).toBeVisible()
-    await tree.getByRole("button").nth(2).hover()
+    await tree.locator("[data-step]").nth(2).hover()
     await expect(page.getByRole("tooltip"), "pointing at a step says which it is").toContainText(/第 \d 步/)
     await expect(page.getByRole("status"), "the turn's status line is gone once it's done").toHaveCount(0)
     await page.getByRole("button", { name: "更多" }).click()
@@ -405,6 +405,57 @@ test.describe("工作台", () => {
     await expect(back).toHaveCount(0)
     await steps.nth(3).blur()
     await expect(name).toHaveCount(0)
+  })
+
+  test("/studio 回放建模过程：‹ › 一步步看，▶ 从第一步放到最后", async ({ page }) => {
+    await page.goto("/studio?start=flange")
+    const tree = page.getByRole("navigation", { name: "特征树" })
+    await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
+    const steps = tree.locator("[data-step]")
+    const name = tree.locator("[data-step-name]")
+    const back = tree.getByRole("button", { name: "回到最新" })
+    const prev = tree.getByRole("button", { name: "上一步" })
+    const next = tree.getByRole("button", { name: "下一步" })
+    const play = tree.getByRole("button", { name: "播放建模过程" })
+    await expect(next, "at the latest model there is no step after").toBeDisabled()
+
+    // ‹ from the latest goes to the step before the last; › at the second-to-last comes back to the latest.
+    await prev.click()
+    await expect(steps.nth(3)).toHaveAttribute("aria-current", "step")
+    await expect(name).toHaveText((await steps.nth(3).getAttribute("aria-label"))!)
+    await expect(back).toBeVisible()
+    await prev.click()
+    await prev.click()
+    await prev.click()
+    await expect(steps.nth(0)).toHaveAttribute("aria-current", "step")
+    await expect(prev, "at the first step there is none before").toBeDisabled()
+    await next.click()
+    await expect(steps.nth(1)).toHaveAttribute("aria-current", "step")
+
+    // With a step's details open, ‹ › take the details along.
+    await steps.nth(2).click()
+    await expect(page.getByRole("dialog", { name: "「螺栓孔」" })).toBeVisible()
+    await next.click()
+    await expect(page.getByRole("dialog", { name: "「孔阵列」" }), "the details follow the step").toBeVisible()
+
+    // ▶ from the latest: from the first step to the last, one at a time, then it stops there.
+    await back.click()
+    await expect(back).toHaveCount(0)
+    await play.click()
+    const pause = tree.getByRole("button", { name: "暂停" })
+    await expect(pause).toBeVisible()
+    await expect(steps.nth(0), "it starts at the first step").toHaveAttribute("aria-current", "step")
+    await expect(steps.nth(2)).toHaveAttribute("aria-current", "step", { timeout: 15_000 })
+    await expect(steps.nth(4), "the last step gets its moment too").toHaveAttribute("aria-current", "step", { timeout: 15_000 })
+    await expect(play, "and then it stops at the latest model").toBeVisible({ timeout: 15_000 })
+    await expect(back).toHaveCount(0)
+
+    // A click on a step, or Esc, stops it where it is.
+    await play.click()
+    await expect(pause).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(play).toBeVisible()
+    await expect(back, "Esc stops and comes back to the latest").toHaveCount(0)
   })
 
   test("/studio 颜色弹层：按一次 Esc 就关，圆点的提示不再冒出来", async ({ page }) => {

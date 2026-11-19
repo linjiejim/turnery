@@ -1,8 +1,9 @@
 import * as React from "react"
-import { Check, ChevronRight, CircleHelp, Eye, ImagePlus, ListChecks, Palette, Pencil, Search, SlidersHorizontal, Square, Trash2, TriangleAlert, X, type LucideIcon } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, CircleHelp, Eye, ImagePlus, ListChecks, Palette, Pencil, Search, SlidersHorizontal, Square, Trash2, TriangleAlert, X, type LucideIcon } from "lucide-react"
 import type { FileUIPart, UIMessage } from "ai"
 import { cn } from "@/lib/utils"
 import { Button, IconButton } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Segmented } from "@/components/ui/segmented"
 import { Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
@@ -18,11 +19,12 @@ import type { Annotations, Note } from "../use-annotations"
 import { Markdown } from "./markdown"
 import { Hint } from "@/components/hint"
 
+/** Requests to start from: a short label on the chip, the whole request sent. */
 const EXAMPLES = [
-  "做一个 80×50×30 的小盒子，顶部开口，壁厚 2，竖边 R6 圆角",
-  "做一个外径 80、高 100 的杯子，壁厚 3，杯底外缘 R5 圆角",
-  "做一个法兰盘：外径 120、厚 10，中心孔 ⌀40，在 ⌀90 圆周上均布 6 个 ⌀8 孔",
-  "做一块 100×60×5 的安装板，四角各一个 ⌀6 通孔，离边 8 mm",
+  { label: "80×50×30 小盒子", text: "做一个 80×50×30 的小盒子，顶部开口，壁厚 2，竖边 R6 圆角" },
+  { label: "⌀80 杯子", text: "做一个外径 80、高 100 的杯子，壁厚 3，杯底外缘 R5 圆角" },
+  { label: "6 孔法兰盘", text: "做一个法兰盘：外径 120、厚 10，中心孔 ⌀40，在 ⌀90 圆周上均布 6 个 ⌀8 孔" },
+  { label: "四孔安装板", text: "做一块 100×60×5 的安装板，四角各一个 ⌀6 通孔，离边 8 mm" },
 ]
 
 const TOOL_LABEL: Record<string, { label: string; op?: OpId; icon?: LucideIcon }> = {
@@ -149,7 +151,8 @@ export function ChatPanel({
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
         }}
       >
-        <div ref={content} data-empty={chat.messages.length === 0 || undefined} className="px-4 pt-4 pb-2">
+        {/* Empty, the intro sits in the middle of the conversation; a conversation reads from the top. */}
+        <div ref={content} data-empty={chat.messages.length === 0 || undefined} className="px-4 pt-4 pb-2 data-empty:flex data-empty:min-h-full data-empty:flex-col data-empty:justify-center">
           {chat.messages.length === 0 ? (
             <Intro
               model={model}
@@ -261,9 +264,10 @@ export function ChatPanel({
   )
 }
 
+/** The empty conversation: one line, a few requests to start from, and the ready-made trees behind a menu. */
 function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: string) => void; onLoad: (t: Tree) => void; disabled: boolean; model?: string; practicing?: boolean }) {
   return (
-    <div>
+    <div className="flex flex-col items-center pb-8 text-center">
       <h2 className="flex items-center gap-1.5 text-heading font-semibold">
         用说的来建模
         <Hint
@@ -278,47 +282,42 @@ function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: st
         />
       </h2>
       {practicing ? (
-        <p className="mt-2 text-body text-muted-foreground">说说你打算怎么做，助教会带你一步步建；也可以自己在模型上动手。</p>
+        <p className="mt-2 max-w-72 text-body text-muted-foreground">说说你打算怎么做，助教会带你一步步建。</p>
       ) : (
-        <Examples onPick={onPick} onLoad={onLoad} disabled={disabled} />
+        <>
+          <div className="mt-4 flex max-w-72 flex-wrap justify-center gap-2">
+            {EXAMPLES.map((e) => (
+              <button
+                key={e.label}
+                type="button"
+                disabled={disabled}
+                title={e.text}
+                onClick={() => onPick(e.text)}
+                className="rounded-full border px-3 py-1 text-small text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="mt-3 text-muted-foreground" disabled={disabled}>
+                打开示例模型
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <DropdownMenuLabel>现成的特征树，不用 AI</DropdownMenuLabel>
+              {STARTERS.map((s) => (
+                <DropdownMenuItem key={s.id} onSelect={() => onLoad(s.tree)}>
+                  {s.title}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
       )}
     </div>
-  )
-}
-
-function Examples({ onPick, onLoad, disabled }: { onPick: (t: string) => void; onLoad: (t: Tree) => void; disabled: boolean }) {
-  return (
-    <>
-      <div className="mt-4 text-small text-faint-foreground">试试这些</div>
-      <div className="mt-2 flex flex-col gap-2">
-        {EXAMPLES.map((e) => (
-          <button
-            key={e}
-            type="button"
-            disabled={disabled}
-            onClick={() => onPick(e)}
-            className="rounded-md border px-3 py-2 text-left text-body transition-colors duration-(--duration-fast) hover:bg-accent disabled:opacity-50"
-          >
-            {e}
-          </button>
-        ))}
-      </div>
-      <div className="mt-6 text-small text-faint-foreground">或者从现成的特征树开始（不用 AI）</div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {STARTERS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            disabled={disabled}
-            title={s.note}
-            onClick={() => onLoad(s.tree)}
-            className="rounded-md border px-3 py-2 text-left text-body transition-colors duration-(--duration-fast) hover:bg-accent disabled:opacity-50"
-          >
-            {s.title}
-          </button>
-        ))}
-      </div>
-    </>
   )
 }
 

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest"
 import type { Feature } from "@/studio/dsl"
 import type { Dim } from "@/studio/kernel/dims"
-import { cardDims, labelLeft, namedStep, stepLabel, stepLine } from "@/studio/step-timeline"
+import { cardDims, labelLeft, namedStep, replayFrom, rollbackFor, shownStep, stepLabel, stepLine } from "@/studio/step-timeline"
 
 const dim = (id: string, feature: string, priority: number, derived = false): Dim => ({
   id,
@@ -33,6 +33,30 @@ describe("the name under the timeline", () => {
     expect(labelLeft(10, 40, 300), "the first step: pushed right").toBe(20)
     expect(labelLeft(295, 40, 300), "the last step: pushed left").toBe(280)
     expect(labelLeft(10, 300, 300), "as wide as the strip: centred on it").toBe(150)
+  })
+})
+
+describe("replaying the steps", () => {
+  const steps = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }]
+
+  it("counts the latest model as the last step", () => {
+    expect(shownStep(-1, 4)).toBe(3)
+    expect(shownStep(1, 4)).toBe(1)
+    expect(shownStep(-1, 0), "no steps").toBe(-1)
+  })
+
+  it("plays from the first step at the latest model, else from the step after the one shown", () => {
+    expect(replayFrom(-1, 4)).toBe(0)
+    expect(replayFrom(1, 4)).toBe(2)
+    expect(replayFrom(3, 4), "rolled back to the last step: that is the end, so from the start").toBe(0)
+  })
+
+  it("shows the last step as the latest model, so measuring and notes keep working there", () => {
+    expect(rollbackFor(steps, 0)).toBe("a")
+    expect(rollbackFor(steps, 2)).toBe("c")
+    expect(rollbackFor(steps, 3)).toBeNull()
+    expect(rollbackFor(steps, 9), "past the end: the latest").toBeNull()
+    expect(rollbackFor(steps, -2), "before the start: the first").toBe("a")
   })
 })
 

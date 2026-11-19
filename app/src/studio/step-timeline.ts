@@ -30,6 +30,25 @@ export function stepLabel(name: string, f: Pick<Feature, "suppressed">, state?: 
   return `${name}${f.suppressed ? "（已压缩）" : ""}${state === "error" ? "（失败）" : state === "skipped" ? "（未重建）" : ""}`
 }
 
+/**
+ * The step on screen, as an index: the one rolled back to, else the last (the latest model is the
+ * last step). -1 for an empty tree.
+ */
+export function shownStep(rollbackIndex: number, count: number) {
+  return rollbackIndex >= 0 ? rollbackIndex : count - 1
+}
+
+/** Where 「播放」 starts: from the latest model (or the last step), the first step; else the one after the step shown. */
+export function replayFrom(rollbackIndex: number, count: number) {
+  return rollbackIndex < 0 || rollbackIndex >= count - 1 ? 0 : rollbackIndex + 1
+}
+
+/** The rollback that shows step `index`: the last step is the latest model (null), so measuring and notes keep working. */
+export function rollbackFor(features: readonly { id: string }[], index: number): string | null {
+  const i = Math.max(0, Math.min(features.length - 1, index))
+  return i >= features.length - 1 ? null : features[i].id
+}
+
 /** The step's own design dimensions worth a glance: at most `max`, parameters first, never the derived ones. */
 export function cardDims(dims: Dim[], feature: string, max = 2) {
   return dims
