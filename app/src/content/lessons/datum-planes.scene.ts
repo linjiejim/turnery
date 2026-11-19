@@ -3,6 +3,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
 import { datumPlane, face, label, line, linearDim, tag } from "@/three/build"
 import { arc } from "@/three/geom"
 import { VIEW_DIRS, type Viewer } from "@/three/viewer"
+import { byLocale, t } from "@/lib/i18n"
 import { boxFaces } from "./coordinates.solid"
 import { LessonScene } from "./scene"
 
@@ -29,7 +30,10 @@ export type DatumState = {
   widthChanged: boolean
 }
 
-export const PLANE_NAMES: Record<PlaneId, string> = { XY: "上视基准面", XZ: "前视基准面", YZ: "右视基准面" }
+export const PLANE_NAMES: Record<PlaneId, string> = byLocale(
+  { XY: "上视基准面", XZ: "前视基准面", YZ: "右视基准面" },
+  { XY: "Top plane", XZ: "Front plane", YZ: "Right plane" },
+)
 
 const OFFSET_START = 15
 const PLANE = 80
@@ -72,11 +76,11 @@ export class DatumPlanesScene extends LessonScene<DatumState> {
       this.root.add(p)
     }
     const dot = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 12), v.kit.modelDark)
-    this.originLabel = label("原点", new THREE.Vector3(0, 0, 0), "translate-x-6 border-transparent bg-transparent font-sans text-faint-foreground")
+    this.originLabel = label(t("原点", "Origin"), new THREE.Vector3(0, 0, 0), "translate-x-6 border-transparent bg-transparent font-sans text-faint-foreground")
     this.root.add(dot, this.originLabel)
 
-    this.offsetHandle = this.handle("拖动，改变偏移距离", (e) => this.dragOffset(e))
-    this.angleHandle = this.handle("拖动，改变角度", (e) => this.dragAngle(e))
+    this.offsetHandle = this.handle(t("拖动，改变偏移距离", "Drag to change the offset distance"), (e) => this.dragOffset(e))
+    this.angleHandle = this.handle(t("拖动，改变角度", "Drag to change the angle"), (e) => this.dragAngle(e))
     this.root.add(this.offsetGroup, this.angleGroup, this.block, this.mid, this.offsetHandle, this.angleHandle)
 
     const el = v.renderer.domElement
@@ -233,7 +237,7 @@ export class DatumPlanesScene extends LessonScene<DatumState> {
     const showOffset = s.step === 1 || s.step === 2
     if (showOffset) {
       const z = s.offset
-      const p = datumPlane(kit, "XY", PLANE, "基准面1", [1, 1])
+      const p = datumPlane(kit, "XY", PLANE, t("基准面1", "Plane1"), [1, 1])
       p.position.z = z
       ;(p.children[0] as THREE.Mesh).material = kit.planeHover
       this.offsetGroup.add(p)
@@ -244,7 +248,7 @@ export class DatumPlanesScene extends LessonScene<DatumState> {
         this.offsetGroup.add(line(pts, kit.sketch))
         this.offsetGroup.add(line([new THREE.Vector3(-3, 0, z + 0.05), new THREE.Vector3(3, 0, z + 0.05)], kit.sketchThin))
         this.offsetGroup.add(line([new THREE.Vector3(0, -3, z + 0.05), new THREE.Vector3(0, 3, z + 0.05)], kit.sketchThin))
-        this.offsetGroup.add(tag("草图1", new THREE.Vector3(SKETCH_R + 2, -SKETCH_R, z)))
+        this.offsetGroup.add(tag(t("草图1", "Sketch1"), new THREE.Vector3(SKETCH_R + 2, -SKETCH_R, z)))
       }
     }
     this.offsetHandle.visible = showOffset
@@ -256,14 +260,14 @@ export class DatumPlanesScene extends LessonScene<DatumState> {
     const th = THREE.MathUtils.degToRad(s.angle)
     if (showAngle) {
       const pivot = new THREE.Group()
-      const p = datumPlane(kit, "XY", PLANE, `基准面2 · ${s.angle}°`, [1, 1])
+      const p = datumPlane(kit, "XY", PLANE, t(`基准面2 · ${s.angle}°`, `Plane2 · ${s.angle}°`), [1, 1])
       p.position.y = PLANE / 2
       ;(p.children[0] as THREE.Mesh).material = kit.planeHover
       pivot.add(p)
       pivot.rotation.x = th
       this.angleGroup.add(pivot)
       this.angleGroup.add(line([new THREE.Vector3(-PLANE / 2 - 12, 0, 0), new THREE.Vector3(PLANE / 2 + 12, 0, 0)], kit.construction))
-      this.angleGroup.add(label("参考轴：X 轴", new THREE.Vector3(PLANE / 2 + 14, 0, 0), "border-transparent bg-transparent font-sans text-faint-foreground"))
+      this.angleGroup.add(label(t("参考轴：X 轴", "Reference axis: X axis"), new THREE.Vector3(PLANE / 2 + 14, 0, 0), "border-transparent bg-transparent font-sans text-faint-foreground"))
       if (s.angle > 0) {
         const r = 34
         const pts = arc([0, 0], r, 0, th, 32).map(([y, z]) => new THREE.Vector3(-PLANE / 2, y, z))
@@ -293,7 +297,7 @@ export class DatumPlanesScene extends LessonScene<DatumState> {
       }
       if (s.picked.length === 2) {
         const xm = BLOCK_X0 + s.width / 2
-        const p = datumPlane(kit, "YZ", 70, "基准面3 · 中面", [1, 1])
+        const p = datumPlane(kit, "YZ", 70, t("基准面3 · 中面", "Plane3 · Mid-plane"), [1, 1])
         p.position.set(xm, 0, 15)
         ;(p.children[0] as THREE.Mesh).material = kit.planeHover
         this.mid.add(p)

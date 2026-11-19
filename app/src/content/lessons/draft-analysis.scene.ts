@@ -1,6 +1,7 @@
 import * as THREE from "three"
 import { edges, face, label, line, tag } from "@/three/build"
 import { draftedPrism } from "@/three/geom"
+import { t } from "@/lib/i18n"
 import type { Viewer } from "@/three/viewer"
 import { LessonScene } from "./scene"
 
@@ -381,7 +382,10 @@ export class DraftScene extends LessonScene<DraftState> {
       core.add(plug)
       core.position.z = -drop
       this.mould.add(cavity, core)
-      this.mould.add(tag("型腔 · 定模", V(-w / 2 - pad, -d / 2 - pad, h + pad + lift)), tag("型芯 · 动模", V(-w / 2 - pad, -d / 2 - pad, -pad - drop)))
+      this.mould.add(
+        tag(t("型腔 · 定模", "Cavity · fixed half"), V(-w / 2 - pad, -d / 2 - pad, h + pad + lift)),
+        tag(t("型芯 · 动模", "Core · moving half"), V(-w / 2 - pad, -d / 2 - pad, -pad - drop)),
+      )
       if (s.window) {
         // The steel that fills the window: part of the cavity, or a slider that backs out along +X first.
         const g = new THREE.BoxGeometry(pad + PART.t + 1, WIN.y * 2, WIN.z1 - WIN.z0)
@@ -391,8 +395,11 @@ export class DraftScene extends LessonScene<DraftState> {
         const slide = s.slider ? Math.min(1, s.open / 0.35) * 24 : 0
         pin.position.set(slide, 0, s.slider ? 0 : lift)
         this.mould.add(pin)
-        if (s.slider) this.mould.add(tag("滑块 · 沿 +X 抽出", V(w / 2 + pad + slide, 0, WIN.z1 + 6)))
-        if (s.stuck) this.mould.add(label("型腔被窗口上沿勾住，拔不出来", V(w / 2, 0, h + 14), "border-warning text-warning font-sans"))
+        if (s.slider) this.mould.add(tag(t("滑块 · 沿 +X 抽出", "Slide · pulls out along +X"), V(w / 2 + pad + slide, 0, WIN.z1 + 6)))
+        if (s.stuck) {
+          const msg = t("型腔被窗口上沿勾住，拔不出来", "The cavity catches on the window's top edge and can't pull off")
+          this.mould.add(label(msg, V(w / 2, 0, h + 14), "border-warning text-warning font-sans"))
+        }
       }
       if (s.slider && s.window) {
         // Halves wait until the slider is out.
@@ -406,7 +413,7 @@ export class DraftScene extends LessonScene<DraftState> {
     if (s.showParting) {
       const pl = [V(-w / 2, -d / 2, 0), V(w / 2, -d / 2, 0), V(w / 2, d / 2, 0), V(-w / 2, d / 2, 0), V(-w / 2, -d / 2, 0)]
       this.marks.add(line(pl, kit.sketchDefined))
-      this.marks.add(label("分型线", V(-w / 2, -d / 2, 0), "font-sans"))
+      this.marks.add(label(t("分型线", "Parting line"), V(-w / 2, -d / 2, 0), "font-sans"))
     }
     if (s.step === 6 && s.solidBoss) {
       const ring: THREE.Vector3[] = []
@@ -415,7 +422,8 @@ export class DraftScene extends LessonScene<DraftState> {
         ring.push(V(BOSS.x + Math.cos(a) * 7, BOSS.y + Math.sin(a) * 7, h + 0.1))
       }
       this.marks.add(line(ring, kit.construction))
-      this.marks.add(label("缩痕：厚处最后冷却，表面被拉凹", V(BOSS.x, 0, h + 8), "border-warning text-warning font-sans"))
+      const sink = t("缩痕：厚处最后冷却，表面被拉凹", "Sink mark: the thick area cools last and pulls the surface in")
+      this.marks.add(label(sink, V(BOSS.x, 0, h + 8), "border-warning text-warning font-sans"))
     }
     this.v.invalidate()
   }
@@ -444,6 +452,6 @@ function pullArrows(kit: Viewer["kit"], x: number, h: number) {
     if (dir < 0) g.rotation.x = Math.PI
     out.push(g)
   }
-  out.push(label("开模方向", V(x - 4, 0, h / 2), "border-transparent bg-transparent font-sans text-muted-foreground"))
+  out.push(label(t("开模方向", "Pull direction"), V(x - 4, 0, h / 2), "border-transparent bg-transparent font-sans text-muted-foreground"))
   return out
 }

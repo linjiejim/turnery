@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { edgeLine, edges, face, label, line, tag } from "@/three/build"
 import { extrude, roundedRect } from "@/three/geom"
 import type { Viewer } from "@/three/viewer"
+import { byLocale } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 
 /**
@@ -12,14 +13,24 @@ import { LessonScene } from "./scene"
  * sees it conflict (过定义).
  */
 export type Dof = "tx" | "ty" | "tz" | "rx" | "ry" | "rz"
-export const DOFS: { id: Dof; name: string }[] = [
-  { id: "tx", name: "沿 X 移动" },
-  { id: "ty", name: "沿 Y 移动" },
-  { id: "tz", name: "沿 Z 移动" },
-  { id: "rx", name: "绕 X 转动" },
-  { id: "ry", name: "绕 Y 转动" },
-  { id: "rz", name: "绕 Z 转动" },
-]
+export const DOFS: { id: Dof; name: string }[] = byLocale(
+  [
+    { id: "tx", name: "沿 X 移动" },
+    { id: "ty", name: "沿 Y 移动" },
+    { id: "tz", name: "沿 Z 移动" },
+    { id: "rx", name: "绕 X 转动" },
+    { id: "ry", name: "绕 Y 转动" },
+    { id: "rz", name: "绕 Z 转动" },
+  ],
+  [
+    { id: "tx", name: "Move X" },
+    { id: "ty", name: "Move Y" },
+    { id: "tz", name: "Move Z" },
+    { id: "rx", name: "Rotate X" },
+    { id: "ry", name: "Rotate Y" },
+    { id: "rz", name: "Rotate Z" },
+  ],
+)
 
 export type AsmState = {
   step: number
@@ -119,7 +130,7 @@ export class AssemblyScene extends LessonScene<AsmState> {
     const baseShape = roundedRect(new THREE.Shape(), BASE.w, BASE.d, 0)
     baseShape.holes.push(new THREE.Path().absarc(HOLE.x, HOLE.y, HOLE.r, 0, Math.PI * 2, true))
     const base = face(extrude(baseShape, BASE.h, { curveSegments: 40 }), kit, { role: "modelDark", part: "base" })
-    this.root.add(base, tag("底座 · 固定", new THREE.Vector3(BASE.w / 2 - 6, -BASE.d / 2, BASE.h + 2)))
+    this.root.add(base, tag(byLocale("底座 · 固定", "Base · fixed"), new THREE.Vector3(BASE.w / 2 - 6, -BASE.d / 2, BASE.h + 2)))
 
     // Lever with its pin, built once and moved by the pose.
     for (const target of [this.lever, this.ghost]) {
@@ -336,9 +347,9 @@ export class AssemblyScene extends LessonScene<AsmState> {
     const top = BASE.h + LEVER.t
     if (s.concentric) {
       this.marks.add(line([new THREE.Vector3(HOLE.x, HOLE.y, -6), new THREE.Vector3(HOLE.x, HOLE.y, Math.max(s.pos[2] + 34, 60))], kit.construction))
-      this.marks.add(tag("同心1", new THREE.Vector3(HOLE.x, HOLE.y, Math.max(s.pos[2] + 36, 62))))
+      this.marks.add(tag(byLocale("同心1", "Concentric1"), new THREE.Vector3(HOLE.x, HOLE.y, Math.max(s.pos[2] + 36, 62))))
     }
-    if (s.coincident) this.marks.add(tag("重合1", new THREE.Vector3(HOLE.x - 14, -BASE.d / 2 + 4, BASE.h + 0.5)))
+    if (s.coincident) this.marks.add(tag(byLocale("重合1", "Coincident1"), new THREE.Vector3(HOLE.x - 14, -BASE.d / 2 + 4, BASE.h + 0.5)))
     if (s.angleMate) {
       const r = 46
       const a1 = THREE.MathUtils.degToRad(s.angle)
@@ -352,11 +363,11 @@ export class AssemblyScene extends LessonScene<AsmState> {
       if (pts.length > 1 && s.angle > 0) this.marks.add(line(pts, kit.dimension))
       const mid = a1 / 2
       this.marks.add(
-        label(`角度1 · ${s.angle}°`, new THREE.Vector3(HOLE.x + Math.cos(mid) * (r + 10), HOLE.y + Math.sin(mid) * (r + 10), top + 1), d.conflict ? "border-destructive text-destructive" : ""),
+        label(byLocale(`角度1 · ${s.angle}°`, `Angle1 · ${s.angle}°`), new THREE.Vector3(HOLE.x + Math.cos(mid) * (r + 10), HOLE.y + Math.sin(mid) * (r + 10), top + 1), d.conflict ? "border-destructive text-destructive" : ""),
       )
     }
     if (d.conflict) {
-      this.marks.add(label("平行1 要它在这里", new THREE.Vector3(HOLE.x + LEVER.len + 6, HOLE.y, top + 4), "border-destructive text-destructive font-sans"))
+      this.marks.add(label(byLocale("平行1 要它在这里", "Parallel1 wants it here"), new THREE.Vector3(HOLE.x + LEVER.len + 6, HOLE.y, top + 4), "border-destructive text-destructive font-sans"))
     }
     if (s.step === 0) {
       // Faint drop line so the floating part reads as "above the base".

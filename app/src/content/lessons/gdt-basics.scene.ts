@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
+import { t as tr } from "@/lib/i18n"
 import { face, label, line } from "@/three/build"
 import type { Viewer } from "@/three/viewer"
 import { LessonScene } from "./scene"
@@ -256,7 +257,7 @@ export const FRAME_CELLS: Record<FrameKind, string[]> = {
   perp: ["0.05", "A"],
   pos: ["Ø0.1", "A", "B", "C"],
 }
-export const FRAME_NAME: Record<FrameKind, string> = { flat: "平面度", perp: "垂直度", pos: "位置度" }
+export const FRAME_NAME: Record<FrameKind, string> = { flat: tr("平面度", "Flatness"), perp: tr("垂直度", "Perpendicularity"), pos: tr("位置度", "Position") }
 
 const SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -373,10 +374,10 @@ export class GdtScene extends LessonScene<GdtState> {
     this.own(() => this.badMat.dispose())
     this.own(() => this.dotMat.dispose())
     this.handles = {
-      bulge: this.handle("bulge", "上下拖，改变顶面的起伏"),
-      lean: this.handle("lean", "左右拖，让 B 面倾斜"),
-      hole: this.handle("hole", "拖动孔的位置"),
-      bow: this.handle("bow", "上下拖，把板压弯"),
+      bulge: this.handle("bulge", tr("上下拖，改变顶面的起伏", "Drag up or down to change the bulge in the top face")),
+      lean: this.handle("lean", tr("左右拖，让 B 面倾斜", "Drag left or right to make face B lean")),
+      hole: this.handle("hole", tr("拖动孔的位置", "Drag to move the hole")),
+      bow: this.handle("bow", tr("上下拖，把板压弯", "Drag up or down to bend the plate")),
     }
     this.root.add(this.fixture, this.part, this.zones, this.notes, ...Object.values(this.handles))
   }
@@ -632,7 +633,7 @@ export class GdtScene extends LessonScene<GdtState> {
       const [at, to] = put[kind]
       this.notes.add(line([at, to], kit.dimension))
       const el = frameEl(kind, { active: s.frame === kind, clickable: true })
-      el.title = `${FRAME_NAME[kind]} · 点击查看`
+      el.title = tr(`${FRAME_NAME[kind]} · 点击查看`, `${FRAME_NAME[kind]} · click for details`)
       el.addEventListener("pointerdown", (e) => e.stopPropagation())
       el.addEventListener("click", () => this.showFrame(kind))
       const o = new CSS2DObject(el)
@@ -656,7 +657,7 @@ export class GdtScene extends LessonScene<GdtState> {
       const [p, dir, center] = spots[d]
       const el = datumEl(d, dir, { clickable, done: s.order.includes(d) })
       if (clickable) {
-        el.title = `把基准 ${d} 靠上去`
+        el.title = tr(`把基准 ${d} 靠上去`, `Seat datum ${d}`)
         el.addEventListener("pointerdown", (e) => e.stopPropagation())
         el.addEventListener("click", () => this.seat(d))
       }
@@ -674,7 +675,7 @@ export class GdtScene extends LessonScene<GdtState> {
     const base = (x: number) => t + (MAG * s.tilt * (x - l / 2)) / l
     for (const dz of [0, MAG * TOL.flat]) this.zones.add(...this.quad([v3(-4, -4, base(-4) + dz), v3(l + 4, -4, base(l + 4) + dz), v3(l + 4, w + 4, base(l + 4) + dz), v3(-4, w + 4, base(-4) + dz)]))
     this.frameAt("flat", v3(l + 2, w * 0.5, base(l) + 26), v3(l - 12, w * 0.5, base(l - 12)), flatError(s) <= TOL.flat)
-    const z = label(`公差带 ${TOL.flat}`, v3(l + 4, -4, base(l + 4) + MAG * TOL.flat), "border-transparent bg-transparent font-sans text-muted-foreground")
+    const z = label(tr(`公差带 ${TOL.flat}`, `Tolerance zone ${TOL.flat}`), v3(l + 4, -4, base(l + 4) + MAG * TOL.flat), "border-transparent bg-transparent font-sans text-muted-foreground")
     z.center.set(0, 0.5)
     this.notes.add(z)
   }
@@ -739,9 +740,9 @@ export class GdtScene extends LessonScene<GdtState> {
       n.center.set(0, 1)
       this.fixture.add(n)
     }
-    sim([v3(-10, 0, 0), v3(l + 34, 0, 0), v3(l + 34, w + 24, 0), v3(-10, w + 24, 0)], "A 的模拟体：平台", v3(l + 6, 0, 0))
-    sim([v3(0, 0, 0), v3(0, w + 24, 0), v3(0, w + 24, t + 24), v3(0, 0, t + 24)], "B：靠山", v3(0, w + 24, t + 24))
-    sim([v3(-10, 0, 0), v3(l + 34, 0, 0), v3(l + 34, 0, t + 24), v3(-10, 0, t + 24)], "C：挡块", v3(l + 10, 0, t + 24))
+    sim([v3(-10, 0, 0), v3(l + 34, 0, 0), v3(l + 34, w + 24, 0), v3(-10, w + 24, 0)], tr("A 的模拟体：平台", "Simulator for A: surface plate"), v3(l + 6, 0, 0))
+    sim([v3(0, 0, 0), v3(0, w + 24, 0), v3(0, w + 24, t + 24), v3(0, 0, t + 24)], tr("B：靠山", "B: angle plate"), v3(0, w + 24, t + 24))
+    sim([v3(-10, 0, 0), v3(l + 34, 0, 0), v3(l + 34, 0, t + 24), v3(-10, 0, t + 24)], tr("C：挡块", "C: stop"), v3(l + 10, 0, t + 24))
 
     // Contact points: 3 on the primary, 2 on the secondary, 1 on the tertiary.
     const m = poseMatrix(this.pose)
@@ -764,7 +765,7 @@ export class GdtScene extends LessonScene<GdtState> {
       const a = v3(HOLE.x + MAG * SETUP.ex, HOLE.y + MAG * SETUP.ey, -4).applyMatrix4(m)
       const b = v3(HOLE.x + MAG * SETUP.ex, HOLE.y + MAG * SETUP.ey, t + 4).applyMatrix4(m)
       this.zones.add(line([a, b], kit.sketch))
-      const tag = label(`位置度误差 Ø${setupError(s.order).toFixed(2)} · ${ok ? "合格" : "超差"}`, v3(HOLE.x, HOLE.y, t + 26), ok ? "border-transparent bg-success-subtle text-success font-sans" : "border-destructive text-destructive font-sans")
+      const tag = label(tr(`位置度误差 Ø${setupError(s.order).toFixed(2)} · ${ok ? "合格" : "超差"}`, `Position error Ø${setupError(s.order).toFixed(2)} · ${ok ? "in tolerance" : "out of tolerance"}`), v3(HOLE.x, HOLE.y, t + 26), ok ? "border-transparent bg-success-subtle text-success font-sans" : "border-destructive text-destructive font-sans")
       this.zones.add(tag)
     }
     this.datumSymbols(true)
@@ -779,7 +780,7 @@ export class GdtScene extends LessonScene<GdtState> {
     if (s.standard === "asme") {
       const top = t + MAG * SIZE_TOL
       for (const z of [0, top]) this.zones.add(...this.quad([v3(-4, -4, z), v3(l + 4, -4, z), v3(l + 4, w + 4, z), v3(-4, w + 4, z)]))
-      const n = label(`最大实体边界 ${(t + SIZE_TOL).toFixed(1)}`, v3(l + 4, -4, top), "border-transparent bg-transparent font-sans text-muted-foreground")
+      const n = label(tr(`最大实体边界 ${(t + SIZE_TOL).toFixed(1)}`, `Maximum material boundary ${(t + SIZE_TOL).toFixed(1)}`), v3(l + 4, -4, top), "border-transparent bg-transparent font-sans text-muted-foreground")
       n.center.set(0, 0.5)
       this.notes.add(n)
     } else {
