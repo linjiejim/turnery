@@ -35,9 +35,22 @@ test.describe("English pages", () => {
     await expect(page.locator(`a[href="/en/lesson/${LESSONS[0].id}"]`).first()).toBeAttached()
   })
 
-  test("/en/lesson: an English frame around a lesson that says it is still in Chinese", async ({ page }) => {
+  test("/en/lesson, /en/card, /en/teardown: the course itself is English", async ({ page }) => {
     await page.goto(`/en/lesson/${LESSONS[0].id}`)
-    await expect(page.getByText(/This lesson is in Chinese for now/)).toBeVisible()
+    const text = page.locator("aside").first()
+    await expect(text.getByRole("button", { name: /^(Next|Skip for now)$/ })).toBeVisible({ timeout: 30_000 })
+    expect(await text.innerText(), "the lesson's text has no Chinese left").not.toMatch(CJK)
+    await page.goto("/en/card/0.1.4")
+    await expect(page.getByRole("heading", { level: 1 })).not.toHaveText(CJK)
+    // Links to the sources keep the title of the page they cite (a Chinese help page stays Chinese).
+    const cardText = await page.getByRole("main").evaluate((el) => {
+      const copy = el.cloneNode(true) as HTMLElement
+      copy.querySelectorAll('a[target="_blank"]').forEach((a) => a.remove())
+      return copy.innerText
+    })
+    expect(cardText, "the card has no Chinese left").not.toMatch(CJK)
+    await page.goto("/en/teardown/mug")
+    await expect(page.getByText("Mug", { exact: true }).first()).toBeVisible({ timeout: 30_000 })
   })
 
   test("/en/studio: the workbench in English, an example model and its replay", async ({ page }) => {

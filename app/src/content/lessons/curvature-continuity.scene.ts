@@ -3,6 +3,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
 import { label, line } from "@/three/build"
 import { arc, type V2 } from "@/three/geom"
 import type { Viewer } from "@/three/viewer"
+import { t } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 import { addv, bezierSample, cross, dot, g2CornerBlend, length, sampleBezier, scale, sub, unit, type CurveSample } from "./curvature-continuity.bezier"
 
@@ -203,7 +204,8 @@ export class CurvatureScene extends LessonScene<CurvatureState> {
       this.addComb(loop, s.combScale)
       for (const t of loop.filter((q) => q.joint)) this.marks.add(dot3(P(t.p, 0.1), kit))
       const tl = new THREE.Vector3(0, -RECT.h / 2 - 8, 0)
-      this.marks.add(label(s.corner === "arc" ? "直线 + 1/4 圆弧：G1" : "直线 + G2 混接", tl, "border-transparent bg-transparent font-sans text-muted-foreground"))
+      const caption = s.corner === "arc" ? t("直线 + 1/4 圆弧：G1", "Line + quarter arc: G1") : t("直线 + G2 混接", "Line + G2 blend")
+      this.marks.add(label(caption, tl, "border-transparent bg-transparent font-sans text-muted-foreground"))
     } else {
       const showB = s.step >= 1
       const curves = showB ? [s.a, s.b] : [s.a]
@@ -217,7 +219,7 @@ export class CurvatureScene extends LessonScene<CurvatureState> {
       if (showB) {
         this.marks.add(label("B", P(addv(s.b[3], [6, 4])), "border-transparent bg-transparent font-sans text-muted-foreground"))
         const tone = s.mode === "G0" && s.angleDiff > 0.5 ? "border-warning text-warning" : "border-primary text-primary"
-        this.marks.add(label(`接点 · ${s.mode}`, P(addv(s.a[3], [-24, -14])), tone))
+        this.marks.add(label(t(`接点 · ${s.mode}`, `Joint · ${s.mode}`), P(addv(s.a[3], [-24, -14])), tone))
       }
     }
 
@@ -228,7 +230,11 @@ export class CurvatureScene extends LessonScene<CurvatureState> {
       const p = isA ? s.a[Number(k[1])] : s.b[Number(k[1])]
       h.position.set(p[0], p[1], 0.1)
       h.element.className = handleClass(isA, driven(k))
-      h.element.title = driven(k) ? `由 ${s.mode} 约束：只能沿切线方向移动` : k === "a3" ? "拖动接点" : "拖动控制点"
+      h.element.title = driven(k)
+        ? t(`由 ${s.mode} 约束：只能沿切线方向移动`, `Constrained by ${s.mode}: moves only along the tangent`)
+        : k === "a3"
+          ? t("拖动接点", "Drag the joint")
+          : t("拖动控制点", "Drag the control point")
     }
     this.v.invalidate()
   }

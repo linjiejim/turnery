@@ -23,7 +23,6 @@ import { useAsync } from "@/lib/use-async"
 import { loadGlb, loadIndex, loadManifest, type AssemblyManifest, type Manifest, type ModelIndexEntry, type PartManifest } from "@/three/baked"
 import { BakedAssemblyScene, BakedPartScene, type BakedState, type FaceStats } from "@/three/teardown-scene"
 import type { Viewer } from "@/three/viewer"
-import { ZhOnlyNotice } from "@/components/zh-only"
 import { isEn, t } from "@/lib/i18n"
 import { featureNameEn } from "@/content/ops"
 
@@ -365,7 +364,6 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="step" className="p-4">
-            <ZhOnlyNotice what="This teardown's step text" className="mb-4" />
             <div className="text-small text-muted-foreground">
               {t(`第 ${upto + 1} 步，共 ${m.features.length} 步`, `Step ${upto + 1} of ${m.features.length}`)}
             </div>
@@ -726,7 +724,6 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
       }
       right={
         <div className="p-4">
-          <ZhOnlyNotice what="This teardown's part notes" className="mb-4" />
           {sel ? (
             <>
               <div className="text-small text-muted-foreground">{t(`第 ${sel.order} 个装上`, `Assembly step ${sel.order}`)}</div>

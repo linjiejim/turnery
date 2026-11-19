@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
 import type { LineMaterial } from "three/addons/lines/LineMaterial.js"
+import { t as tr } from "@/lib/i18n"
 import { face, label, line } from "@/three/build"
 import { VIEW_DIRS, type Viewer } from "@/three/viewer"
 import { cap, circle, FRONT, rect, walls, WORLD } from "./coordinates.solid"
@@ -80,8 +81,16 @@ const NODES: Record<Exclude<Axis, "d">, { datum: string; nodes: string[] }> = {
   y: { datum: "y0", nodes: ["y0", "y1"] },
 }
 const NODE_VALUE: Record<string, number> = { x0: 0, xs: P.step, h1: P.h1, h2: P.h2, x1: P.len, z0: 0, zb: P.base, zt: P.hgt, y0: -P.wid / 2, y1: P.wid / 2 }
-const NODE_NAME: Record<string, string> = { xs: "台阶的位置", h1: "孔 1 的位置", h2: "孔 2 的位置", x1: "总长", zb: "底板厚度", zt: "总高", y1: "总宽" }
-export const VIEW_NAME: Record<ViewKey, string> = { front: "主视图", top: "俯视图", side: "左视图" }
+const NODE_NAME: Record<string, string> = {
+  xs: tr("台阶的位置", "step position"),
+  h1: tr("孔 1 的位置", "hole 1 position"),
+  h2: tr("孔 2 的位置", "hole 2 position"),
+  x1: tr("总长", "overall length"),
+  zb: tr("底板厚度", "base thickness"),
+  zt: tr("总高", "overall height"),
+  y1: tr("总宽", "overall width"),
+}
+export const VIEW_NAME: Record<ViewKey, string> = { front: tr("主视图", "front view"), top: tr("俯视图", "top view"), side: tr("左视图", "left view") }
 
 type Cand = { id: DimId; view: ViewKey; axis: Axis; a: string; b: string; text: string; bad?: string }
 
@@ -91,8 +100,24 @@ const CANDS: Cand[] = [
   { id: "L30F", view: "front", axis: "x", a: "x0", b: "xs", text: "30" },
   { id: "L30T", view: "top", axis: "x", a: "x0", b: "xs", text: "30" },
   { id: "L50F", view: "front", axis: "x", a: "xs", b: "x1", text: "50" },
-  { id: "H1F", view: "front", axis: "x", a: "x0", b: "h1", text: "45", bad: "孔 1 的位置标在了主视图的虚线孔上，应标在俯视图里孔的圆心" },
-  { id: "H2F", view: "front", axis: "x", a: "x0", b: "h2", text: "65", bad: "孔 2 的位置标在了主视图的虚线孔上，应标在俯视图里孔的圆心" },
+  {
+    id: "H1F",
+    view: "front",
+    axis: "x",
+    a: "x0",
+    b: "h1",
+    text: "45",
+    bad: tr("孔 1 的位置标在了主视图的虚线孔上，应标在俯视图里孔的圆心", "Hole 1's position is dimensioned to the hidden hole in the front view; dimension it to the hole's center in the top view"),
+  },
+  {
+    id: "H2F",
+    view: "front",
+    axis: "x",
+    a: "x0",
+    b: "h2",
+    text: "65",
+    bad: tr("孔 2 的位置标在了主视图的虚线孔上，应标在俯视图里孔的圆心", "Hole 2's position is dimensioned to the hidden hole in the front view; dimension it to the hole's center in the top view"),
+  },
   { id: "H1T", view: "top", axis: "x", a: "x0", b: "h1", text: "45" },
   { id: "H2T", view: "top", axis: "x", a: "x0", b: "h2", text: "65" },
   { id: "C1T", view: "top", axis: "x", a: "xs", b: "h1", text: "15" },
@@ -101,12 +126,28 @@ const CANDS: Cand[] = [
   { id: "Z30F", view: "front", axis: "z", a: "z0", b: "zt", text: "30" },
   { id: "Z30S", view: "side", axis: "z", a: "z0", b: "zt", text: "30" },
   { id: "Z12F", view: "front", axis: "z", a: "z0", b: "zb", text: "12" },
-  { id: "Z12S", view: "side", axis: "z", a: "z0", b: "zb", text: "12", bad: "底板厚度标在了左视图的虚线上，应标在主视图，那里台阶看得见" },
+  {
+    id: "Z12S",
+    view: "side",
+    axis: "z",
+    a: "z0",
+    b: "zb",
+    text: "12",
+    bad: tr("底板厚度标在了左视图的虚线上，应标在主视图，那里台阶看得见", "The base thickness is on a hidden line in the left view; put it in the front view, where the step is visible"),
+  },
   { id: "Z18F", view: "front", axis: "z", a: "zb", b: "zt", text: "18" },
   { id: "W40T", view: "top", axis: "y", a: "y0", b: "y1", text: "40" },
   { id: "W40S", view: "side", axis: "y", a: "y0", b: "y1", text: "40" },
   { id: "D10T", view: "top", axis: "d", a: "", b: "", text: "2×Ø10" },
-  { id: "D10F", view: "front", axis: "d", a: "", b: "", text: "2×Ø10", bad: "孔径标在了主视图的虚线上，应标在俯视图里投影为圆的地方" },
+  {
+    id: "D10F",
+    view: "front",
+    axis: "d",
+    a: "",
+    b: "",
+    text: "2×Ø10",
+    bad: tr("孔径标在了主视图的虚线上，应标在俯视图里投影为圆的地方", "The hole diameter is on hidden lines in the front view; put it in the top view, where the hole appears as a circle"),
+  },
 ]
 const CAND = Object.fromEntries(CANDS.map((c) => [c.id, c])) as Record<DimId, Cand>
 
@@ -157,7 +198,14 @@ export function analyse(dims: DimId[], refs: DimId[]): Analysis {
       unique.push(list[0])
       if (list.length > 1) {
         for (const c of list) flags[c.id] = "dup"
-        issues.push({ kind: "dup", text: `「${list[0].text}」标了 ${list.length} 次：${list.map((c) => VIEW_NAME[c.view]).join("和")}`, ids: list.map((c) => c.id) })
+        issues.push({
+          kind: "dup",
+          text: tr(
+            `「${list[0].text}」标了 ${list.length} 次：${list.map((c) => VIEW_NAME[c.view]).join("和")}`,
+            `“${list[0].text}” is given ${list.length} times: in the ${list.map((c) => VIEW_NAME[c.view]).join(" and the ")}`,
+          ),
+          ids: list.map((c) => c.id),
+        })
       }
     }
     // Spanning forest; an edge between two nodes already connected closes a chain.
@@ -175,7 +223,14 @@ export function analyse(dims: DimId[], refs: DimId[]): Analysis {
       const path = treePath(tree, c.a, c.b)
       const loop = [...path, c]
       for (const l of loop) if (!flags[l.id]) flags[l.id] = "loop"
-      issues.push({ kind: "loop", text: `${loop.map((l) => l.text).sort((x, y) => Number(x) - Number(y)).join("、")} 首尾相接，围成了封闭尺寸链`, ids: loop.map((l) => l.id) })
+      issues.push({
+        kind: "loop",
+        text: tr(
+          `${loop.map((l) => l.text).sort((x, y) => Number(x) - Number(y)).join("、")} 首尾相接，围成了封闭尺寸链`,
+          `${loop.map((l) => l.text).sort((x, y) => Number(x) - Number(y)).join(", ")} join end to end into a closed dimension chain`,
+        ),
+        ids: loop.map((l) => l.id),
+      })
     }
     for (const n of nodes) {
       if (find(n) !== find(datum)) {
@@ -188,13 +243,20 @@ export function analyse(dims: DimId[], refs: DimId[]): Analysis {
   const holes = active.filter((c) => c.axis === "d")
   if (holes.length === 0) {
     missing++
-    missingNames.push("孔径")
+    missingNames.push(tr("孔径", "hole diameter"))
   }
   if (holes.length > 1) {
     for (const c of holes) flags[c.id] = "dup"
-    issues.push({ kind: "dup", text: `孔径标了 ${holes.length} 次：${holes.map((c) => VIEW_NAME[c.view]).join("和")}`, ids: holes.map((c) => c.id) })
+    issues.push({
+      kind: "dup",
+      text: tr(
+        `孔径标了 ${holes.length} 次：${holes.map((c) => VIEW_NAME[c.view]).join("和")}`,
+        `The hole diameter is given ${holes.length} times: in the ${holes.map((c) => VIEW_NAME[c.view]).join(" and the ")}`,
+      ),
+      ids: holes.map((c) => c.id),
+    })
   }
-  if (missingNames.length) issues.unshift({ kind: "missing", text: `还没定：${missingNames.join("、")}`, ids: [] })
+  if (missingNames.length) issues.unshift({ kind: "missing", text: tr(`还没定：${missingNames.join("、")}`, `Not defined yet: ${missingNames.join(", ")}`), ids: [] })
 
   for (const c of active) {
     if (!c.bad) continue
@@ -272,14 +334,26 @@ const TARGETS: Target[] = [
   { view: "top", cand: "H2T", seg: [[P.h2, TOP.wc - P.r - 3], [P.h2, TOP.wc - P.r]] },
   { view: "top", cand: "H1T", seg: [[P.h1, TOP.wc + P.r], [P.h1, TOP.wc + P.r + 3]] },
   { view: "top", cand: "H2T", seg: [[P.h2, TOP.wc + P.r], [P.h2, TOP.wc + P.r + 3]] },
-  { view: "top", cand: null, seg: [[-4, TOP.wc], [P.len + 4, TOP.wc]], note: "对称中心线：孔在零件的对称面上，宽度方向不用再标位置" },
+  {
+    view: "top",
+    cand: null,
+    seg: [[-4, TOP.wc], [P.len + 4, TOP.wc]],
+    note: tr("对称中心线：孔在零件的对称面上，宽度方向不用再标位置", "Center line of symmetry: the holes lie on the part's plane of symmetry, so they need no location dimension across the width"),
+  },
   // Left view.
   { view: "side", cand: "Z30S", seg: [[SIDE.u0, 0], [SIDE.u0, P.hgt]] },
   { view: "side", cand: "Z30S", seg: [[SIDE.u1, 0], [SIDE.u1, P.hgt]] },
   { view: "side", cand: "W40S", seg: [[SIDE.u0, P.hgt], [SIDE.u1, P.hgt]] },
   { view: "side", cand: "W40S", seg: [[SIDE.u0, 0], [SIDE.u1, 0]] },
   { view: "side", cand: "Z12S", seg: [[SIDE.u0, P.base], [SIDE.u1, P.base]] },
-  ...[-P.r, P.r].map((d): Target => ({ view: "side", cand: null, seg: [[SIDE.uc + d, 0], [SIDE.uc + d, P.base]], note: "孔在左视图里只是虚线，孔径和孔的位置都标在俯视图" })),
+  ...[-P.r, P.r].map(
+    (d): Target => ({
+      view: "side",
+      cand: null,
+      seg: [[SIDE.uc + d, 0], [SIDE.uc + d, P.base]],
+      note: tr("孔在左视图里只是虚线，孔径和孔的位置都标在俯视图", "In the left view the holes are only hidden lines; dimension their diameter and position in the top view"),
+    }),
+  ),
 ]
 
 /** Where an extension line starts for a node in a view (the outermost visible point of that plane). */
@@ -506,7 +580,7 @@ export class DimensioningScene extends LessonScene<DimState> {
       l.center.set(0, 1)
       return l
     }
-    this.drawing.add(name("主视图", [-30, P.hgt + 34]), name("俯视图", [-30, TOP.w1 + 4]), name("左视图", [SIDE.u0, P.hgt + 34]))
+    this.drawing.add(name(tr("主视图", "Front view"), [-30, P.hgt + 34]), name(tr("俯视图", "Top view"), [-30, TOP.w1 + 4]), name(tr("左视图", "Left view"), [SIDE.u0, P.hgt + 34]))
   }
 
   /** A small shaded model in the empty corner, like the axonometric view on a real drawing. */
@@ -632,7 +706,7 @@ export class DimensioningScene extends LessonScene<DimState> {
   private dimLabel(c: Cand, at: Pt, flag: Flag | undefined, ref: boolean, live: boolean) {
     const tone = flag === "dup" || flag === "loop" ? "border-destructive text-destructive" : flag === "bad" ? "border-warning text-warning" : live ? "border-primary text-primary" : ""
     const l = label(ref ? `(${c.text})` : c.text, v3(at, -0.3), `interactive cursor-pointer hover:border-primary ${tone}`)
-    l.element.title = ref ? "参考尺寸 · 点击删除" : "点击删除这个尺寸"
+    l.element.title = ref ? tr("参考尺寸 · 点击删除", "Reference dimension · click to delete") : tr("点击删除这个尺寸", "Click to delete this dimension")
     l.element.addEventListener("pointerdown", (e) => e.stopPropagation())
     l.element.addEventListener("click", () => this.toggle(c.id))
     return l
@@ -661,10 +735,10 @@ export class DimensioningScene extends LessonScene<DimState> {
     }
     const round = t.circle ?? t.centre
     const mid: Pt = t.seg ? [(t.seg[0][0] + t.seg[1][0]) / 2, Math.max(t.seg[0][1], t.seg[1][1])] : [round!.c[0], round!.c[1] + P.r]
-    if (!t.cand) this.hoverGroup.add(tip("这里不标尺寸", mid))
+    if (!t.cand) this.hoverGroup.add(tip(tr("这里不标尺寸", "No dimension here"), mid))
     else {
       const on = this.state.dims.includes(t.cand)
-      this.hoverGroup.add(tip(on ? `删除 ${CAND[t.cand].text}` : `标注 ${CAND[t.cand].text} · ${VIEW_NAME[t.view]}`, mid))
+      this.hoverGroup.add(tip(on ? tr(`删除 ${CAND[t.cand].text}`, `Delete ${CAND[t.cand].text}`) : tr(`标注 ${CAND[t.cand].text} · ${VIEW_NAME[t.view]}`, `Add ${CAND[t.cand].text} · ${VIEW_NAME[t.view]}`), mid))
     }
     this.v.invalidate()
   }
@@ -679,9 +753,9 @@ export class DimensioningScene extends LessonScene<DimState> {
     const w = STRIP
     this.strip.add(line([v3([0, w]), v3([P.len, w])], kit.dimension))
     this.strip.add(line([v3([0, w - 6]), v3([0, w + 6])], kit.sketchDefined))
-    const title = label(`位置误差 · 放大 ${MAG} 倍`, v3([-30, w + 15]), "border-transparent bg-transparent font-sans text-muted-foreground")
+    const title = label(tr(`位置误差 · 放大 ${MAG} 倍`, `Position error · shown ${MAG}× larger`), v3([-30, w + 15]), "border-transparent bg-transparent font-sans text-muted-foreground")
     title.center.set(0, 1)
-    const datum = label("基准", v3([-2, w]), "border-transparent bg-transparent font-sans text-faint-foreground")
+    const datum = label(tr("基准", "Datum"), v3([-2, w]),"border-transparent bg-transparent font-sans text-faint-foreground")
     datum.center.set(1, 0.5)
     this.strip.add(title, datum)
     STACK_NODES.forEach((n, j) => {

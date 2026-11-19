@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { paint, tag } from "@/three/build"
 import { displayStep, loadGlb, loadManifest, stepsOf, variantKey, type FaceInfo, type PartManifest } from "@/three/baked"
 import type { Viewer } from "@/three/viewer"
+import { byLocale, isEn, t } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 
 /**
@@ -29,6 +30,15 @@ export type OrderState = {
 
 const IDS = ["box_fillet_first", "box_shell_first"] as const
 const GAP = 46
+
+/** English pages: the baked models' feature names and failure messages (the manifests have them in Chinese). */
+const NAMES_EN: Record<string, string> = { 草图1: "Sketch1", 拉伸1: "Extrude1", 圆角1: "Fillet1", 抽壳1: "Shell1" }
+const FAILURES_EN: Record<string, string> = {
+  "box_fillet_first/shell1":
+    "The outside fillet equals the wall thickness. The shell has to offset the R fillet inward into an inside fillet of radius “fillet − wall”, and when that radius is exactly zero the kernel can't compute it. Make the fillet clearly larger than the wall and the inside corner is a concentric fillet; make it clearly smaller and the inside corner is sharp.",
+  "box_shell_first/fil1":
+    "The outside fillet cut right through the wall at the corner. When the wall is very thin, the kernel refuses outright. When it only just cuts through, the kernel returns a solid that looks normal but whose inside and outside surfaces pass through each other, and only a self-intersection check finds it. Use a smaller fillet or a thicker wall, or switch to approach A: fillet first, then shell.",
+}
 
 export class FilletShellOrderScene extends LessonScene<OrderState> {
   private manifests: PartManifest[] = []
@@ -137,12 +147,14 @@ export class FilletShellOrderScene extends LessonScene<OrderState> {
   failureText(which: 0 | 1) {
     const m = this.manifests[which]
     const f = which === 0 ? this.state.failA : this.state.failB
-    return f && m ? (m.failures[f] ?? "内核没能完成这一步。") : null
+    if (!f || !m) return null
+    const text = isEn ? (FAILURES_EN[`${m.id}/${f}`] ?? m.failures[f]) : m.failures[f]
+    return text ?? t("内核没能完成这一步。", "The kernel couldn't complete this step.")
   }
 
   protected render() {
     const s = this.state
-    const labels = ["A 先圆角，再抽壳", "B 先抽壳，再圆角"]
+    const labels = byLocale(["A 先圆角，再抽壳", "B 先抽壳，再圆角"], ["A: fillet, then shell", "B: shell, then fillet"])
     for (const which of [0, 1] as const) {
       const g = this.groups[which]
       this.clear(g)
@@ -158,8 +170,10 @@ export class FilletShellOrderScene extends LessonScene<OrderState> {
       g.add(shown)
       const fail = which === 0 ? s.failA : s.failB
       const m = this.manifests[which]
-      const name = m?.features[idx]?.name ?? ""
-      g.add(tag(fail && idx < want ? `${labels[which]} · 停在${name}（下一步失败）` : `${labels[which]} · ${name}`, new THREE.Vector3(0, -26, 31)))
+      const baked = m?.features[idx]?.name ?? ""
+      const name = isEn ? (NAMES_EN[baked] ?? baked) : baked
+      const stopped = byLocale(`${labels[which]} · 停在${name}（下一步失败）`, `${labels[which]} · stopped at ${name} (the next step fails)`)
+      g.add(tag(fail && idx < want ? stopped : `${labels[which]} · ${name}`, new THREE.Vector3(0, -26, 31)))
     }
     this.v.invalidate()
   }

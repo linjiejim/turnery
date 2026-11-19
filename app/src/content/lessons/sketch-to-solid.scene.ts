@@ -3,6 +3,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
 import { datumPlane, edges, face, label, line, linearDim, tag } from "@/three/build"
 import { draftedPrism } from "@/three/geom"
 import { disposeObject, type Viewer } from "@/three/viewer"
+import { byLocale, t } from "@/lib/i18n"
 
 /**
  * Lesson 1.1 「从草图到实体」: plane → sketch → constraints → dimensions →
@@ -41,7 +42,10 @@ export type LessonState = {
 
 const OVERVIEW = new THREE.Vector3(215, -250, 185)
 
-export const PLANE_NAMES: Record<PlaneId, string> = { XY: "上视基准面", XZ: "前视基准面", YZ: "右视基准面" }
+export const PLANE_NAMES: Record<PlaneId, string> = byLocale(
+  { XY: "上视基准面", XZ: "前视基准面", YZ: "右视基准面" },
+  { XY: "Top plane", XZ: "Front plane", YZ: "Right plane" },
+)
 
 const initial = (): LessonState => ({
   step: 0,
@@ -318,7 +322,7 @@ export class SketchToSolid {
 
   private buildOrigin() {
     const dot = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), this.v.kit.modelDark)
-    this.originLabel = label("原点", new THREE.Vector3(0, 0, 0), "translate-x-6 border-transparent bg-transparent font-sans text-faint-foreground")
+    this.originLabel = label(t("原点", "Origin"), new THREE.Vector3(0, 0, 0), "translate-x-6 border-transparent bg-transparent font-sans text-faint-foreground")
     this.origin.add(dot, this.originLabel)
     this.v.helpers.add(this.origin)
   }
@@ -354,7 +358,7 @@ export class SketchToSolid {
       const mat = defined ? kit.sketchDefined : kit.sketch
       if (s.step <= 4 || !s.extruded) this.sketch.add(line(pts, mat))
       if (this.draw >= 1 && s.step <= 4) {
-        if (s.symmetric) this.sketch.add(tag("对称", new THREE.Vector3(0, 0, z)))
+        if (s.symmetric) this.sketch.add(tag(t("对称", "Symmetric"), new THREE.Vector3(0, 0, z)))
         if (s.dimW) this.sketch.add(this.dim("w", new THREE.Vector3(x0, y1, z), new THREE.Vector3(x1, y1, z), new THREE.Vector3(0, 1, 0), 10, x1 - x0))
         if (s.dimH) this.sketch.add(this.dim("h", new THREE.Vector3(x1, y0, z), new THREE.Vector3(x1, y1, z), new THREE.Vector3(1, 0, 0), 10, y1 - y0))
       }
@@ -367,7 +371,7 @@ export class SketchToSolid {
         s.dof === 0
           ? "interactive size-3 rounded-full border-2 border-foreground bg-background cursor-not-allowed"
           : "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-shadow hover:ring-4 hover:ring-primary/25"
-      this.corner.element.title = s.dof === 0 ? "已完全定义：拖不动" : "拖动这个点"
+      this.corner.element.title = s.dof === 0 ? t("已完全定义：拖不动", "Fully defined: can't be dragged") : t("拖动这个点", "Drag this point")
     }
 
     // Body.
@@ -468,7 +472,7 @@ export class SketchToSolid {
     const g = linearDim(this.v.kit, a, b, dir, off, `${Math.round(value)}`, { interactive: true })
     const lbl = g.userData.label as CSS2DObject
     const el = lbl.element
-    el.title = "点击修改"
+    el.title = t("点击修改", "Click to edit")
     el.addEventListener("pointerdown", (e) => e.stopPropagation())
     el.addEventListener("click", () => {
       const input = document.createElement("input")

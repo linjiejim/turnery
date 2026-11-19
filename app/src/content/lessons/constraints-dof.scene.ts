@@ -4,6 +4,7 @@ import type { SketchPrimitive } from "@salusoft89/planegcs"
 import { datumPlane, label, line, linearDim } from "@/three/build"
 import type { V2 } from "@/three/geom"
 import type { Viewer } from "@/three/viewer"
+import { byLocale, t } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 import { loadSolver, type Param, type SolveResult, type Solver } from "./constraints-dof.solver"
 
@@ -57,18 +58,32 @@ const CENTRED: V2[] = [
   [-30, 20],
 ]
 
-export const CONS_NAMES: Record<ConsId, string> = {
-  h: "水平：下边",
-  v: "竖直：左边",
-  par: "平行：上边 ∥ 下边",
-  perp: "垂直：右边 ⊥ 下边",
-  org: "重合：左下角 → 原点",
-  w: `尺寸：宽 ${WIDTH}`,
-  ht: `尺寸：高 ${HEIGHT}`,
-  eq: "相等：左边 = 下边",
-  topSame: `尺寸：上边 ${WIDTH}`,
-  topOther: `尺寸：上边 ${WIDTH + 10}`,
-}
+export const CONS_NAMES: Record<ConsId, string> = byLocale(
+  {
+    h: "水平：下边",
+    v: "竖直：左边",
+    par: "平行：上边 ∥ 下边",
+    perp: "垂直：右边 ⊥ 下边",
+    org: "重合：左下角 → 原点",
+    w: `尺寸：宽 ${WIDTH}`,
+    ht: `尺寸：高 ${HEIGHT}`,
+    eq: "相等：左边 = 下边",
+    topSame: `尺寸：上边 ${WIDTH}`,
+    topOther: `尺寸：上边 ${WIDTH + 10}`,
+  },
+  {
+    h: "Horizontal: bottom side",
+    v: "Vertical: left side",
+    par: "Parallel: top ∥ bottom",
+    perp: "Perpendicular: right ⊥ bottom",
+    org: "Coincident: lower-left corner → origin",
+    w: `Dimension: width ${WIDTH}`,
+    ht: `Dimension: height ${HEIGHT}`,
+    eq: "Equal: left side = bottom side",
+    topSame: `Dimension: top ${WIDTH}`,
+    topOther: `Dimension: top ${WIDTH + 10}`,
+  },
+)
 
 const ALLOWED: ConsId[][] = [
   [],
@@ -163,7 +178,7 @@ export class ConstraintsDofScene extends LessonScene<DofState> {
       tried: [],
     })
     v.setGrid(120, 10)
-    const plane = datumPlane(v.kit, "XY", 200, "上视基准面 XY", [1, -1])
+    const plane = datumPlane(v.kit, "XY", 200, t("上视基准面 XY", "Top plane XY"), [1, -1])
     plane.position.set(20, 10, -0.03)
     const dot = new THREE.Mesh(new THREE.SphereGeometry(1.1, 16, 12), v.kit.modelDark)
     this.root.add(plane, dot, this.sketch)
@@ -300,8 +315,8 @@ export class ConstraintsDofScene extends LessonScene<DofState> {
       const along: Record<string, string[]> = { l1: [], l2: [], l3: [], l4: [] }
       const glyphs: { line: keyof typeof along; text: string; id: ConsId }[] = []
       for (const id of s.cons) {
-        if (id === "h") glyphs.push({ line: "l1", text: "水平", id })
-        if (id === "v") glyphs.push({ line: "l4", text: "竖直", id })
+        if (id === "h") glyphs.push({ line: "l1", text: t("水平", "Horizontal"), id })
+        if (id === "v") glyphs.push({ line: "l4", text: t("竖直", "Vertical"), id })
         if (id === "par") glyphs.push({ line: "l3", text: "∥", id }, { line: "l1", text: "∥", id })
         if (id === "perp") glyphs.push({ line: "l2", text: "⊥", id })
         if (id === "eq") glyphs.push({ line: "l4", text: "=", id }, { line: "l1", text: "=", id })
@@ -319,22 +334,22 @@ export class ConstraintsDofScene extends LessonScene<DofState> {
         const inward = norm([c[0] - m[0], c[1] - m[1]])
         this.sketch.add(this.glyph(g.text, v3([m[0] + inward[0] * 5, m[1] + inward[1] * 5]), tone(g.id)))
       }
-      if (s.cons.includes("org")) this.sketch.add(this.glyph("重合", v3([p[0][0] - 7, p[0][1] - 5]), tone("org")))
+      if (s.cons.includes("org")) this.sketch.add(this.glyph(t("重合", "Coincident"), v3([p[0][0] - 7, p[0][1] - 5]), tone("org")))
       if (s.cons.includes("w")) this.dim(p[0], p[1], [0, -1], 10, `${WIDTH}`, tone("w"))
       if (s.cons.includes("ht")) this.dim(p[1], p[2], [1, 0], 10, `${HEIGHT}`, tone("ht"))
       if (s.cons.includes("topSame")) this.dim(p[3], p[2], [0, 1], 10, `${WIDTH}`, tone("topSame"))
       if (s.cons.includes("topOther")) this.dim(p[3], p[2], [0, 1], s.cons.includes("topSame") ? 20 : 10, `${WIDTH + 10}`, tone("topOther"))
       const showOrigin = !s.cons.includes("org")
-      if (showOrigin) this.sketch.add(label("原点", v3([0, 0]), "translate-x-6 border-transparent bg-transparent font-sans text-faint-foreground"))
+      if (showOrigin) this.sketch.add(label(t("原点", "Origin"), v3([0, 0]), "translate-x-6 border-transparent bg-transparent font-sans text-faint-foreground"))
     } else {
       // Design intent: the starting rectangle stays as a dashed reference.
       this.sketch.add(line([...CENTRED, CENTRED[0]].map((q) => v3(q, 0.02)), kit.construction))
       this.dim(p[0], p[1], [0, -1], s.scheme === "sym" ? 10 : 22, `${s.width}`, "normal")
       const h = p[2][1] - p[1][1]
-      this.dim(p[1], p[2], [1, 0], 10, s.scheme === "ratio" ? `${Math.round(h)} = 宽 × 2/3` : `${HEIGHT}`, "normal")
+      this.dim(p[1], p[2], [1, 0], 10, s.scheme === "ratio" ? t(`${Math.round(h)} = 宽 × 2/3`, `${Math.round(h)} = width × 2/3`) : `${HEIGHT}`, "normal")
       if (s.scheme === "sym") {
         this.sketch.add(line([v3(p[0]), v3(p[2])], kit.construction))
-        this.sketch.add(this.glyph("对称", v3([0, 0]), "normal"))
+        this.sketch.add(this.glyph(t("对称", "Symmetric"), v3([0, 0]), "normal"))
       } else {
         // The corner is dimensioned from the origin: 30 across, 20 down.
         this.sketch.add(line([v3([0, 0]), v3([0, p[0][1]])], kit.construction), line([v3([0, 0]), v3([p[0][0], 0])], kit.construction))
@@ -350,7 +365,7 @@ export class ConstraintsDofScene extends LessonScene<DofState> {
       hd.element.className = defined
         ? "interactive size-3 rounded-full border-2 border-foreground bg-background cursor-not-allowed"
         : "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-shadow hover:ring-4 hover:ring-primary/25"
-      hd.element.title = defined ? "已完全定义：拖不动" : "拖动这个角点"
+      hd.element.title = defined ? t("已完全定义：拖不动", "Fully defined: can't be dragged") : t("拖动这个角点", "Drag this corner")
     })
     this.v.invalidate()
   }

@@ -1,6 +1,7 @@
 import * as THREE from "three"
 import { edges, label, line } from "@/three/build"
 import type { Viewer } from "@/three/viewer"
+import { t } from "@/lib/i18n"
 import { needsSupport, place, supportArea, type Orientation, type Placed } from "./print-overhang.part"
 import { LessonScene } from "./scene"
 
@@ -79,7 +80,7 @@ export class PrintScene extends LessonScene<PrintState> {
     this.mat.customProgramCacheKey = () => "ft-print-cut"
     this.own(() => this.mat.dispose())
     this.root.add(this.part, this.extras)
-    this.root.add(label("打印平台", new THREE.Vector3(42, -26, 0), "border-transparent bg-transparent font-sans text-faint-foreground"))
+    this.root.add(label(t("打印平台", "Build plate"), new THREE.Vector3(42, -26, 0), "border-transparent bg-transparent font-sans text-faint-foreground"))
   }
 
   enter(step: number) {
@@ -130,9 +131,9 @@ export class PrintScene extends LessonScene<PrintState> {
   protected render() {
     const s = this.state
     const kit = this.v.kit
-    const t = this.v.tokens
+    const tk = this.v.tokens
     const p = place(orientationOf(s))
-    this.uCut.value.copy(t.cut)
+    this.uCut.value.copy(tk.cut)
 
     // Colour every triangle: resting grey, warming towards the warning tone near the limit, full warning past it.
     const n = p.alpha.length
@@ -145,7 +146,7 @@ export class PrintScene extends LessonScene<PrintState> {
         if (needsSupport(p, i, s.threshold)) k = 1
         else if (p.alpha[i] > s.threshold - 15) k = 0.35 * ((p.alpha[i] - (s.threshold - 15)) / 15)
       }
-      c.copy(t.model).lerp(t.modified, k)
+      c.copy(tk.model).lerp(tk.modified, k)
       for (let j = 0; j < 3; j++) colors.set([c.r, c.g, c.b], i * 9 + j * 3)
     }
     if (prev) prev.needsUpdate = true
@@ -170,7 +171,10 @@ export class PrintScene extends LessonScene<PrintState> {
     if (cutting && s.step === 0) {
       const contour = this.slice(p, top - 0.01)
       for (let i = 0; i < contour.length; i += 2) this.extras.add(line([contour[i], contour[i + 1]], kit.sketch))
-      if (top > LEDGE_Z && top < FULL) this.extras.add(label("这一层左边下面是空的", new THREE.Vector3(-19, -14, top + 2), "border-scene-modified font-sans"))
+      if (top > LEDGE_Z && top < FULL) {
+        const msg = t("这一层左边下面是空的", "Nothing under the left side of this layer")
+        this.extras.add(label(msg, new THREE.Vector3(-19, -14, top + 2), "border-scene-modified font-sans"))
+      }
     }
     if (s.showOverhang && !cutting && s.step !== 3) this.extras.add(this.supports(p, s.threshold, mesh))
     if (s.step === 3) this.extras.add(...this.load(p))
@@ -248,7 +252,7 @@ export class PrintScene extends LessonScene<PrintState> {
     return [
       line([from, to], kit.sketch),
       line([back.clone().add(wing), to, back.clone().sub(wing)], kit.sketch),
-      label("拉力", to.clone().addScaledVector(dir, 6), "border-primary text-primary font-sans"),
+      label(t("拉力", "Pull"), to.clone().addScaledVector(dir, 6), "border-primary text-primary font-sans"),
     ]
   }
 }
