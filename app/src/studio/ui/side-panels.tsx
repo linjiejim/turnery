@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Check, ChevronRight, CircleHelp, TriangleAlert, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { byLocale, t } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CodeBlock } from "@/components/code-block"
@@ -27,7 +28,7 @@ export function ParamsPanel({ studio, onHover, annotations }: { studio: Studio; 
   if (!entries.length && !checks.length)
     return (
       <p className="flex items-center gap-1 px-4 py-4 text-body text-muted-foreground">
-        还没有参数
+        {t("还没有参数", "No parameters yet")}
         <Hint tips={[words.noParams]} />
       </p>
     )
@@ -36,8 +37,8 @@ export function ParamsPanel({ studio, onHover, annotations }: { studio: Studio; 
       {checks.length > 0 && <Checklist rows={checks} baseline={studio.checkBaseline} rolledBack={!!studio.rollback} onHover={onHover} onFix={annotations?.startMessage} />}
       {entries.length > 0 && (
         <div className="flex h-6 items-center gap-1 px-2 text-caption text-faint-foreground">
-          {entries.length} 个参数
-          <Hint label="参数怎么用" tips={["改完按 Enter，整棵特征树按新参数重算。", "指向一个参数，模型上会标出它的尺寸。"]} />
+          {t(`${entries.length} 个参数`, `${entries.length} ${entries.length === 1 ? "parameter" : "parameters"}`)}
+          <Hint label={t("参数怎么用", "How parameters work")} tips={byLocale(["改完按 Enter，整棵特征树按新参数重算。", "指向一个参数，模型上会标出它的尺寸。"], ["Press Enter after a change: the whole feature tree rebuilds with the new value.", "Point at a parameter to see its dimensions on the model."])} />
         </div>
       )}
       {studio.report?.paramError && <p className="px-2 text-small text-destructive">{studio.report.paramError}</p>}
@@ -51,10 +52,10 @@ export function ParamsPanel({ studio, onHover, annotations }: { studio: Studio; 
             name={k}
             value={v}
             note={tree.paramNotes?.[k]}
-            uses={[...uses.map((u) => describeUse(tree, u)), ...deps.map((d) => `参数 ${d}`)]}
+            uses={[...uses.map((u) => describeUse(tree, u)), ...deps.map((d) => t(`参数 ${d}`, `parameter ${d}`))]}
             computed={studio.report?.params[k]}
             onCommit={(x) => studio.setParam(k, x)}
-            onPoint={(row) => onHover({ ids: driven, label: `受 ${k} 影响的特征`, param: k, row })}
+            onPoint={(row) => onHover({ ids: driven, label: t(`受 ${k} 影响的特征`, `Features driven by ${k}`), param: k, row })}
           />
         )
       })}
@@ -91,14 +92,14 @@ function Checklist({
   const [open, setOpen] = React.useState<boolean | null>(null)
   const shown = open ?? passed < counted
   return (
-    <section aria-label="要求核对" className={cn("mb-2 rounded-md border px-2 py-1.5", rolledBack && "opacity-60")}>
+    <section aria-label={t("要求核对", "Checks")} className={cn("mb-2 rounded-md border px-2 py-1.5", rolledBack && "opacity-60")}>
       <button type="button" className="flex w-full items-center gap-2 text-left text-small" aria-expanded={shown} onClick={() => setOpen(!shown)}>
         <ChevronRight className={cn("size-3.5 shrink-0 transition-transform duration-(--duration-fast)", shown && "rotate-90")} />
-        <span className="font-medium">要求核对</span>
+        <span className="font-medium">{t("要求核对", "Checks")}</span>
         <span className={cn("tabular", passed === counted ? "text-success" : "text-muted-foreground")}>
           {passed}/{counted}
         </span>
-        {rolledBack && <span className="ml-auto text-caption text-faint-foreground">回滚中，按最新一步核对</span>}
+        {rolledBack && <span className="ml-auto text-caption text-faint-foreground">{t("回滚中，按最新一步核对", "Rolled back: checked against the latest step")}</span>}
       </button>
       {shown && (
         <ul className="mt-1 space-y-1">
@@ -108,27 +109,33 @@ function Checklist({
               <li
                 key={r.id}
                 className="rounded-sm px-1 py-0.5 text-small hover:bg-accent"
-                onMouseEnter={() => onHover(r.faces.length || r.edges.length ? { ids: [], label: "核对量的位置", faces: r.faces, edges: r.edges } : null)}
+                onMouseEnter={() => onHover(r.faces.length || r.edges.length ? { ids: [], label: t("核对量的位置", "Where the check measures"), faces: r.faces, edges: r.edges } : null)}
               >
                 <div className="flex items-start gap-1.5">
                   {st === "pass" ? (
-                    <Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-label="满足" />
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-label={t("满足", "Met")} />
                   ) : st === "invalid" ? (
-                    <CircleHelp className="mt-0.5 size-3.5 shrink-0 text-faint-foreground" aria-label="量不了" />
+                    <CircleHelp className="mt-0.5 size-3.5 shrink-0 text-faint-foreground" aria-label={t("量不了", "Can’t measure")} />
                   ) : st === "drift" ? (
-                    <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" aria-label="已偏离" />
+                    <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" aria-label={t("已偏离", "Drifted")} />
                   ) : (
-                    <X className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-label="不满足" />
+                    <X className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-label={t("不满足", "Not met")} />
                   )}
                   <span className="min-w-0 flex-1">
-                    「{r.said}」
+                    {t(`「${r.said}」`, `“${r.said}”`)}
                     <span className="text-muted-foreground">
-                      {st === "pass" ? ` 实际 ${r.actual}` : st === "invalid" ? ` 量不了：${r.actual}（核对项写得不对，不是零件的问题）` : st === "drift" ? ` 已偏离：要求 ${r.expected}，现在 ${r.actual}（你改过参数）` : ` 要求 ${r.expected}，实际 ${r.actual}`}
+                      {st === "pass"
+                        ? t(` 实际 ${r.actual}`, ` actual ${r.actual}`)
+                        : st === "invalid"
+                          ? t(` 量不了：${r.actual}（核对项写得不对，不是零件的问题）`, ` can’t measure: ${r.actual} (the check is written wrong, not the part)`)
+                          : st === "drift"
+                            ? t(` 已偏离：要求 ${r.expected}，现在 ${r.actual}（你改过参数）`, ` drifted: wants ${r.expected}, now ${r.actual} (you changed a parameter)`)
+                            : t(` 要求 ${r.expected}，实际 ${r.actual}`, ` wants ${r.expected}, actual ${r.actual}`)}
                     </span>
                   </span>
                 </div>
                 {st === "fail" && onFix && (
-                  <Button size="sm" variant="ghost" className="mt-0.5 ml-5 h-6 px-2 text-caption" onClick={() => onFix(`核对没通过：「${r.said}」要求 ${r.expected}，现在是 ${r.actual}，请修正。`)}>
+                  <Button size="sm" variant="ghost" className="mt-0.5 ml-5 h-6 px-2 text-caption" onClick={() => onFix(t(`核对没通过：「${r.said}」要求 ${r.expected}，现在是 ${r.actual}，请修正。`, `Check failed: “${r.said}” wants ${r.expected}, now ${r.actual}. Please fix it.`))}>
                     {words.fixCheck}
                   </Button>
                 )}
@@ -210,7 +217,7 @@ function ParamRow({
         />
       </label>
       {error && <span className="mt-1 block text-small text-destructive">{error}</span>}
-      <p className="mt-1 text-caption text-faint-foreground">{uses.length ? `用在：${uses.join("、")}` : "还没有特征用到它"}</p>
+      <p className="mt-1 text-caption text-faint-foreground">{uses.length ? t(`用在：${uses.join("、")}`, `Used in: ${uses.join(", ")}`) : t("还没有特征用到它", "No feature uses it yet")}</p>
     </div>
   )
 }
@@ -218,10 +225,10 @@ function ParamRow({
 /** The same model as build123d code: what the teardowns show, for the learner's own part. */
 export function CodePanel({ studio }: { studio: Studio }) {
   const code = React.useMemo(() => toBuild123d(studio.tree, { body: true }), [studio.tree])
-  if (!studio.tree.features.length) return <p className="px-4 py-4 text-body text-muted-foreground">建出特征后，这里会显示等价的 build123d 代码。</p>
+  if (!studio.tree.features.length) return <p className="px-4 py-4 text-body text-muted-foreground">{t("建出特征后，这里会显示等价的 build123d 代码。", "Once there are features, the same model shows here as build123d code.")}</p>
   return (
     <div className="px-3 py-3">
-      <p className="mb-2 px-1 text-small text-muted-foreground">同一棵特征树写成 build123d 代码。能直接运行的完整文件（含辅助函数）在右上角「导出」里。</p>
+      <p className="mb-2 px-1 text-small text-muted-foreground">{t("同一棵特征树写成 build123d 代码。能直接运行的完整文件（含辅助函数）在右上角「导出」里。", "The same feature tree as build123d code. The full runnable file (with helpers) is under Export, top right.")}</p>
       <CodeBlock code={code} className="text-caption" />
     </div>
   )

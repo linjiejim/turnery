@@ -5,6 +5,7 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { notify } from "@/components/ui/toast"
+import { t } from "@/lib/i18n"
 import { turnery } from "../bridge"
 import type { DocState } from "../core/protocol"
 import { PaletteChoice } from "@/studio/ui/look-picker"
@@ -27,13 +28,13 @@ export function AddPartMenu({ doc }: { doc: DocState }) {
         <DropdownMenuTrigger asChild>
           <Button size="sm" variant="ghost" className="h-7 px-2 text-small text-muted-foreground">
             <Plus />
-            零件
+            {t("零件", "Part")}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          <DropdownMenuItem onSelect={() => setNaming(true)}>新零件…</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void pick("part")}>已有零件或装配…</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void pick("step")}>STEP 参考件…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setNaming(true)}>{t("新零件…", "New part…")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void pick("part")}>{t("已有零件或装配…", "Existing part or assembly…")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void pick("step")}>{t("STEP 参考件…", "STEP reference…")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <NewPartDialog open={naming} onOpenChange={setNaming} onCreate={(name, color) => add({ name, ...(color ? { color } : {}) })} />
@@ -59,7 +60,7 @@ function NewPartDialog({ open, onOpenChange, onCreate }: { open: boolean; onOpen
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">
-        <DialogHeader title="新零件" description="建在 parts/ 下，放进这个装配，然后在装配里编辑它" />
+        <DialogHeader title={t("新零件", "New part")} description={t("建在 parts/ 下，放进这个装配，然后在装配里编辑它", "Created under parts/ and added to this assembly, where you then edit it")} />
         <DialogBody>
           <form
             onSubmit={(e) => {
@@ -67,16 +68,16 @@ function NewPartDialog({ open, onOpenChange, onCreate }: { open: boolean; onOpen
               void submit()
             }}
           >
-            <Input autoFocus placeholder="零件名，例如 笔杆" value={name} onChange={(e) => setName(e.target.value)} aria-label="零件名" />
+            <Input autoFocus placeholder={t("零件名，例如 笔杆", "Part name, e.g. barrel")} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("零件名", "Part name")} />
           </form>
           <div className="mt-4 space-y-2">
-            <div className="text-small text-muted-foreground">颜色（可以以后再改）</div>
+            <div className="text-small text-muted-foreground">{t("颜色（可以以后再改）", "Color (can be changed later)")}</div>
             <PaletteChoice value={color} onChange={setColor} />
           </div>
         </DialogBody>
         <DialogFooter>
           <Button variant="primary" disabled={!name.trim()} loading={busy} onClick={() => void submit()}>
-            新建
+            {t("新建", "Create")}
           </Button>
         </DialogFooter>
       </DialogContent>

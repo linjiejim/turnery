@@ -9,6 +9,7 @@ import type { ModelSettings } from "../../../app/src/desktop/core/protocol"
 import type { ChatRecord } from "../../../app/src/desktop/core/chats"
 import { deleteChat, listChats, readChat, renameChat, saveChat } from "../engine/chats"
 import { currentModel, listModels, setKey, useModel, type SecretBox } from "../engine/models"
+import { tm } from "./lang"
 
 /**
  * Keys are encrypted with the system's store only where that works without nagging: an app that is
@@ -43,10 +44,10 @@ function settings(): ModelSettings {
 
 const friendly = (error: unknown) => {
   const msg = (error as Error)?.message ?? String(error)
-  if (/401|403|unauthor|invalid.*key|api key/i.test(msg)) return `模型的 key 无效或没有权限。（${msg.slice(0, 160)}）`
-  if (/429|rate limit/i.test(msg)) return "模型服务繁忙或额度用完了，稍后再试。"
-  if (/ENOTFOUND|ECONNREFUSED|fetch failed|network/i.test(msg)) return `连不上模型服务：检查地址和网络。（${msg.slice(0, 160)}）`
-  return `模型服务出错了：${msg.slice(0, 240)}`
+  if (/401|403|unauthor|invalid.*key|api key/i.test(msg)) return tm(`模型的 key 无效或没有权限。（${msg.slice(0, 160)}）`, `The model’s key is invalid or not allowed. (${msg.slice(0, 160)})`)
+  if (/429|rate limit/i.test(msg)) return tm("模型服务繁忙或额度用完了，稍后再试。", "The model service is busy or out of quota. Try again later.")
+  if (/ENOTFOUND|ECONNREFUSED|fetch failed|network/i.test(msg)) return tm(`连不上模型服务：检查地址和网络。（${msg.slice(0, 160)}）`, `Can’t reach the model service: check the address and your network. (${msg.slice(0, 160)})`)
+  return tm(`模型服务出错了：${msg.slice(0, 240)}`, `The model service failed: ${msg.slice(0, 240)}`)
 }
 
 /** Wire the assistant's channels. `engineOf` gives the engine of the window that asks. */
@@ -83,7 +84,7 @@ export function wireAssistant(ipcMain: IpcMain, engineOf: (e: IpcMainInvokeEvent
   ipcMain.handle("turnery:chat-rename", (_e, id: string, title: string) => renameChat(String(id), String(title)))
   ipcMain.handle("turnery:chat-delete", (_e, id: string) => deleteChat(String(id)))
 
-  ipcMain.handle("turnery:assistant-send", async (e, id: string, messages: unknown[]) => {
+  ipcMain.handle("turnery:assistant-send", async (e, id: string, messages: unknown[], lang?: unknown) => {
     const wc: WebContents = e.sender
     const send = (chunk: unknown) => !wc.isDestroyed() && wc.send("turnery:assistant", id, chunk)
     const fail = (errorText: string) => {
@@ -91,7 +92,7 @@ export function wireAssistant(ipcMain: IpcMain, engineOf: (e: IpcMainInvokeEvent
       send(null)
     }
     const chosen = currentModel(secretBox())
-    if (!chosen) return fail("还没有选模型：点对话栏上方的模型名来配置。")
+    if (!chosen) return fail(tm("还没有选模型：点对话栏上方的模型名来配置。", "No model chosen yet: click the model name above the chat to set one up."))
     const resolved = languageModel(chosen.config, chosen.key, fetchVia)
     if ("error" in resolved) return fail(resolved.error)
     const engine = engineOf(e)
@@ -103,7 +104,7 @@ export function wireAssistant(ipcMain: IpcMain, engineOf: (e: IpcMainInvokeEvent
     running.set(id, stop)
     wc.once("destroyed", () => stop.abort())
     try {
-      const stream = await assistantStream({ engine, model: resolved.model, messages: messages as never, ctx, vision: resolved.vision, abortSignal: stop.signal, providerOptions: resolved.providerOptions as never, onError: friendly })
+      const stream = await assistantStream({ engine, model: resolved.model, messages: messages as never, ctx, lang: lang === "en" ? "en" : "zh", vision: resolved.vision, abortSignal: stop.signal, providerOptions: resolved.providerOptions as never, onError: friendly })
       const reader = stream.getReader()
       for (;;) {
         const { done, value } = await reader.read()

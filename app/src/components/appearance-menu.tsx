@@ -2,13 +2,14 @@ import { Monitor, Moon, Sun } from "lucide-react"
 import { IconButton } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAppearance, type Appearance } from "@/lib/appearance"
+import { t } from "@/lib/i18n"
 
 export function AppearanceMenu() {
   const { preference, resolved, setAppearance } = useAppearance()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <IconButton label="外观" className="text-muted-foreground">
+        <IconButton label={t("外观", "Appearance")} className="text-muted-foreground">
           {resolved === "dark" ? <Moon /> : <Sun />}
         </IconButton>
       </DropdownMenuTrigger>
@@ -16,15 +17,15 @@ export function AppearanceMenu() {
         <DropdownMenuRadioGroup value={preference} onValueChange={(v) => setAppearance(v as Appearance)}>
           <DropdownMenuRadioItem value="system">
             <Monitor />
-            跟随系统
+            {t("跟随系统", "System")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="light">
             <Sun />
-            浅色
+            {t("浅色", "Light")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">
             <Moon />
-            深色
+            {t("深色", "Dark")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

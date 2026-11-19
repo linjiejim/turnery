@@ -3,6 +3,7 @@ import { createBrowserRouter, Outlet, redirect, RouterProvider, ScrollRestoratio
 import { SiteHeader } from "@/components/site-header"
 import { HomePage } from "@/routes/home"
 import { syncDocumentTitle } from "@/lib/document-title"
+import { routerBase } from "@/lib/i18n"
 
 /** Pages other than home load on demand: each brings only its own code. */
 const lazy =
@@ -54,7 +55,8 @@ const router = createBrowserRouter([
       return import("@/routes/studio-share")
     }, "StudioSharePage"),
   },
-])
+  // English pages are the same routes under /en (lib/i18n.ts).
+], { basename: routerBase })
 
 // Per-route <title>, matching the prerendered HTML (lib/page-meta.ts).
 syncDocumentTitle(router.state.location.pathname)

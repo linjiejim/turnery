@@ -3,6 +3,7 @@ import { Check, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
+import { t } from "@/lib/i18n"
 import type { Viewer } from "@/three/viewer"
 import type { PinNote } from "../pin-notes"
 import { useViewAnchor } from "./use-view-anchor"
@@ -50,7 +51,7 @@ export function PinNoteCard({
         align="start"
         sideOffset={16}
         className="w-80 max-w-[calc(100vw-1rem)]"
-        aria-label={`备注 ${note.n}`}
+        aria-label={t(`备注 ${note.n}`, `Note ${note.n}`)}
         onInteractOutside={(e) => {
           if (viewer.renderer.domElement.contains(e.target as Node)) e.preventDefault()
         }}
@@ -65,7 +66,7 @@ export function PinNoteCard({
           autoFocus
           maxLength={600}
           value={text}
-          placeholder="这里想怎么改？"
+          placeholder={t("这里想怎么改？", "What should change here?")}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -73,25 +74,25 @@ export function PinNoteCard({
               void save()
             }
           }}
-          aria-label="备注"
+          aria-label={t("备注", "Note")}
         />
         {note.reply && (
           <p className="mt-2 rounded-md bg-muted px-2.5 py-1.5 text-small">
-            <span className="font-medium">Agent：</span>
+            <span className="font-medium">{t("Agent：", "Agent: ")}</span>
             {note.reply}
           </p>
         )}
         <div className="mt-3 flex items-center gap-1">
           <Button size="sm" variant="ghost" className="-ml-2 text-muted-foreground" onClick={onRemove}>
             <Trash2 />
-            删除
+            {t("删除", "Delete")}
           </Button>
           <Button size="sm" variant="ghost" onClick={onResolve}>
             <Check />
-            标为已处理
+            {t("标为已处理", "Mark as handled")}
           </Button>
           <Button size="sm" variant="primary" className="ml-auto" loading={saving} disabled={!changed} onClick={() => void save()}>
-            保存
+            {t("保存", "Save")}
           </Button>
         </div>
       </PopoverContent>

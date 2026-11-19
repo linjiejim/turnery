@@ -2,33 +2,39 @@
 // drawn in the 3D view and the agent's pictures, written into 3MF and STEP. Colours are real colours:
 // the same in light and dark mode, unlike the scene palette (turnery-theme.css).
 import { z } from "zod"
+import { t } from "../lib/i18n"
 
 export const FINISHES = ["matte", "metal", "clear"] as const
 export type Finish = (typeof FINISHES)[number]
-export const FINISH_NAMES: Record<Finish, string> = { matte: "哑光", metal: "金属", clear: "透明" }
+/** Finish names in Chinese: what files, the agent's results and the engine's messages say. */
+const FINISH_ZH: Record<Finish, string> = { matte: "哑光", metal: "金属", clear: "透明" }
+/** Finish names as the window shows them (the page's language). */
+export const FINISH_NAMES: Record<Finish, string> = { matte: t("哑光", "Matte"), metal: t("金属", "Metal"), clear: t("透明", "Clear") }
 
 /**
  * The palette: what the window offers and an agent writes by name. Hues stay clear of the view's own
  * signals (the accent blue of a selection, the orange of 「修改」, the teal of hovering).
+ * `zh` is the Chinese name an agent may write and the one files and messages use; `name` is what the
+ * window shows, in the page's language.
  */
 export const PALETTE = [
-  { id: "white", name: "白", hex: "#f5f5f2" }, // design-allow: part colours are data saved in files, not theme
-  { id: "silver", name: "银灰", hex: "#c3c6cb" }, // design-allow: part colour
-  { id: "gray", name: "灰", hex: "#85888d" }, // design-allow: part colour
-  { id: "black", name: "黑", hex: "#2a2b2e" }, // design-allow: part colour
-  { id: "red", name: "红", hex: "#d9473f" }, // design-allow: part colour
-  { id: "orange", name: "橙", hex: "#f39a2b" }, // design-allow: part colour
-  { id: "yellow", name: "黄", hex: "#f2cc3d" }, // design-allow: part colour
-  { id: "green", name: "绿", hex: "#46a05a" }, // design-allow: part colour
-  { id: "teal", name: "青", hex: "#26a69a" }, // design-allow: part colour
-  { id: "blue", name: "蓝", hex: "#3d9be9" }, // design-allow: part colour
-  { id: "purple", name: "紫", hex: "#8a63d2" }, // design-allow: part colour
-  { id: "pink", name: "粉", hex: "#ec82ae" }, // design-allow: part colour
+  { id: "white", zh: "白", name: t("白", "White"), hex: "#f5f5f2" }, // design-allow: part colours are data saved in files, not theme
+  { id: "silver", zh: "银灰", name: t("银灰", "Silver"), hex: "#c3c6cb" }, // design-allow: part colour
+  { id: "gray", zh: "灰", name: t("灰", "Gray"), hex: "#85888d" }, // design-allow: part colour
+  { id: "black", zh: "黑", name: t("黑", "Black"), hex: "#2a2b2e" }, // design-allow: part colour
+  { id: "red", zh: "红", name: t("红", "Red"), hex: "#d9473f" }, // design-allow: part colour
+  { id: "orange", zh: "橙", name: t("橙", "Orange"), hex: "#f39a2b" }, // design-allow: part colour
+  { id: "yellow", zh: "黄", name: t("黄", "Yellow"), hex: "#f2cc3d" }, // design-allow: part colour
+  { id: "green", zh: "绿", name: t("绿", "Green"), hex: "#46a05a" }, // design-allow: part colour
+  { id: "teal", zh: "青", name: t("青", "Teal"), hex: "#26a69a" }, // design-allow: part colour
+  { id: "blue", zh: "蓝", name: t("蓝", "Blue"), hex: "#3d9be9" }, // design-allow: part colour
+  { id: "purple", zh: "紫", name: t("紫", "Purple"), hex: "#8a63d2" }, // design-allow: part colour
+  { id: "pink", zh: "粉", name: t("粉", "Pink"), hex: "#ec82ae" }, // design-allow: part colour
 ] as const
 export type PaletteId = (typeof PALETTE)[number]["id"]
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
-const byKey = new Map<string, (typeof PALETTE)[number]>(PALETTE.flatMap((c) => [[c.id, c], [c.name, c]] as const))
+const byKey = new Map<string, (typeof PALETTE)[number]>(PALETTE.flatMap((c) => [[c.id, c], [c.zh, c]] as const))
 
 /** A palette name (English id or 中文名) or #RRGGBB. */
 export function isColor(s: string) {
@@ -52,15 +58,20 @@ export function paletteOf(color: string | undefined | null) {
   return hex ? PALETTE.find((c) => c.hex === hex) ?? null : null
 }
 
-/** How people read a colour: 「橙」, or the value for one outside the palette. */
+/** How people read a colour: 「橙」, or the value for one outside the palette. Chinese, for files and messages. */
 export function colorName(color: string | undefined | null) {
-  return paletteOf(color)?.name ?? hexOf(color) ?? "未设置"
+  return paletteOf(color)?.zh ?? hexOf(color) ?? "未设置"
+}
+
+/** A colour as the window shows it, in the page's language: 「橙」 / "Orange", or the value. */
+export function colorLabel(color: string | undefined | null) {
+  return paletteOf(color)?.name ?? hexOf(color) ?? t("未设置", "not set")
 }
 
 /** A colour inside a Chinese sentence: 「主要是绿」, 「主要是 #1f6e3a」 (a value gets a space before it). */
 export function colorWord(color: string | undefined | null) {
   const p = paletteOf(color)
-  return p ? p.name : ` ${hexOf(color) ?? "未设置"}`
+  return p ? p.zh : ` ${hexOf(color) ?? "未设置"}`
 }
 
 /** The form saved in files: the palette id when it is one, else lowercase #rrggbb. */
@@ -117,23 +128,28 @@ export function plainOnly(looks: (Look | undefined)[]) {
   return looks.every((l) => !l || (!isSet(l) && l.source === "part"))
 }
 
-/** 「橙 · 金属」 */
-export function lookText(l: Appearance | undefined, unset = "未设置") {
-  if (!l || !isSet(l)) return unset
+/**
+ * 「橙 · 金属」. Chinese (it goes into the agent's results and the engine's messages) unless `shown`:
+ * then in the page's language, for the window.
+ */
+export function lookText(l: Appearance | undefined, unset?: string, shown = false) {
+  if (!l || !isSet(l)) return unset ?? (shown ? t("未设置", "Not set") : "未设置")
   // Matte is the default: named only when it is all that was set.
-  const finish = l.finish && (l.finish !== "matte" || !l.color) ? FINISH_NAMES[l.finish] : null
-  return [l.color ? colorName(l.color) : null, finish].filter(Boolean).join(" · ")
+  const finish = l.finish && (l.finish !== "matte" || !l.color) ? (shown ? FINISH_NAMES : FINISH_ZH)[l.finish] : null
+  return [l.color ? (shown ? colorLabel : colorName)(l.color) : null, finish].filter(Boolean).join(" · ")
 }
 
 /** What drawing it means when nothing is set. */
 export const SOURCE_DEFAULT: Record<LookSource, string> = { part: "白模", standard: "标准件按金属色显示", step: "外购件按深灰显示" }
+const SOURCE_DEFAULT_EN: Record<LookSource, string> = { part: "clay", standard: "standard parts show as metal", step: "bought-in parts show as dark gray" }
 
-/** What a colour dot says when pointed at: 「橙 · 金属」, or that nothing is set and how it shows then. */
+/** What a colour dot says when pointed at: 「橙 · 金属」, or that nothing is set and how it shows then. For the window. */
 export function lookTip(look: Look | Appearance | undefined) {
-  if (look && isSet(look)) return lookText(look)
-  if (look && "fileColor" in look && look.fileColor) return `未设置颜色（按 STEP 文件自带的颜色，主要是${colorWord(look.fileColor)}）`
+  if (look && isSet(look)) return lookText(look, undefined, true)
+  if (look && "fileColor" in look && look.fileColor)
+    return t(`未设置颜色（按 STEP 文件自带的颜色，主要是${colorWord(look.fileColor)}）`, `No color set (the STEP file’s own colors, mostly ${colorLabel(look.fileColor)})`)
   const source = look && "source" in look ? look.source : "part"
-  return `未设置颜色（${SOURCE_DEFAULT[source]}）`
+  return t(`未设置颜色（${SOURCE_DEFAULT[source]}）`, `No color set (${SOURCE_DEFAULT_EN[source]})`)
 }
 
 /** Without what a part looks like: the geometry, for keys that decide when to rebuild. */
@@ -179,7 +195,7 @@ export function changeText(change: LookChange) {
   if (change.color === null) bits.push("清除颜色")
   else if (change.color !== undefined) bits.push(`颜色 ${colorName(change.color)}`)
   if (change.finish === null) bits.push("清除质感")
-  else if (change.finish !== undefined) bits.push(`质感 ${FINISH_NAMES[change.finish]}`)
+  else if (change.finish !== undefined) bits.push(`质感 ${FINISH_ZH[change.finish]}`)
   return bits.join("、")
 }
 

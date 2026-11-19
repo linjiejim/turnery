@@ -2,6 +2,7 @@ import * as React from "react"
 import { StatusDot } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import type { DocState, PickRequest, Snapshot } from "../core/protocol"
 import { AgentStatus } from "./title-bar"
 import { ACTOR_LABEL, ago, useNow } from "./words"
@@ -35,50 +36,51 @@ export function StatusBar({ snapshot, doc, pick, onGo, agentSeen = true, sheet =
   const openNotes = doc?.notes.filter((n) => n.status === "open").length ?? 0
   const last = doc?.changes[0]
   return (
-    <footer className="flex h-7 shrink-0 items-center gap-4 border-t px-3 text-caption text-muted-foreground select-none" aria-label="状态">
-      <Go label={agentSeen ? "看动态" : "接入 Agent"} onClick={() => onGo(agentSeen ? "activity" : "setup")}>
+    <footer className="flex h-7 shrink-0 items-center gap-4 border-t px-3 text-caption text-muted-foreground select-none" aria-label={t("状态", "Status")}>
+      <Go label={agentSeen ? t("看动态", "Show activity") : t("接入 Agent", "Connect an agent")} onClick={() => onGo(agentSeen ? "activity" : "setup")}>
         <AgentStatus snapshot={snapshot} pick={pick} className="text-caption" />
       </Go>
-      {kernel?.phase === "loading" && <Item><Spinner className="size-3" />内核加载中</Item>}
-      {kernel?.phase === "error" && <StatusDot className="text-caption" tone="danger">内核出错</StatusDot>}
+      {kernel?.phase === "loading" && <Item><Spinner className="size-3" />{t("内核加载中", "Loading the kernel")}</Item>}
+      {kernel?.phase === "error" && <StatusDot className="text-caption" tone="danger">{t("内核出错", "Kernel error")}</StatusDot>}
       {doc && (
         <>
           {loading ? (
             <Item>
               <Spinner className="size-3" />
-              {loading.progress?.stage === "checks" ? "正在核对" : "正在重建"}
+              {loading.progress?.stage === "checks" ? t("正在核对", "Checking") : t("正在重建", "Rebuilding")}
             </Item>
           ) : doc.error ? (
-            <StatusDot className="text-caption" tone="danger">文件读不了，显示的是上一版</StatusDot>
+            <StatusDot className="text-caption" tone="danger">{t("文件读不了，显示的是上一版", "Can’t read the file; showing the last version")}</StatusDot>
           ) : failed ? (
-            <Go label="到没建成的那一步" onClick={() => onGo("failed")}>
-              <StatusDot className="text-caption" tone="danger">{failed} 步没建成</StatusDot>
+            <Go label={t("到没建成的那一步", "Go to the failed step")} onClick={() => onGo("failed")}>
+              <StatusDot className="text-caption" tone="danger">{t(`${failed} 步没建成`, failed === 1 ? "1 step failed" : `${failed} steps failed`)}</StatusDot>
             </Go>
           ) : report ? (
-            <StatusDot className="text-caption" tone="success">已重建{report.ms ? ` · ${report.ms < 1000 ? `${Math.round(report.ms)} ms` : `${(report.ms / 1000).toFixed(1)} s`}` : ""}</StatusDot>
+            <StatusDot className="text-caption" tone="success">{t("已重建", "Rebuilt")}{report.ms ? ` · ${report.ms < 1000 ? `${Math.round(report.ms)} ms` : `${(report.ms / 1000).toFixed(1)} s`}` : ""}</StatusDot>
           ) : null}
           {checks.length > 0 && !loading && (
-            <Go label="看核对" onClick={() => onGo("params")}>
+            <Go label={t("看核对", "Show checks")} onClick={() => onGo("params")}>
               <StatusDot className="text-caption" tone={passed === checks.length ? "success" : "warning"}>
-                核对 {passed}/{checks.length}
+                {t(`核对 ${passed}/${checks.length}`, `Checks ${passed}/${checks.length}`)}
               </StatusDot>
             </Go>
           )}
-          {report?.checksPending && <Item><Spinner className="size-3" />后台核对中</Item>}
+          {report?.checksPending && <Item><Spinner className="size-3" />{t("后台核对中", "Checking in the background")}</Item>}
           {openNotes > 0 && (
-            <Go label="看备注" onClick={() => onGo("notes")}>
-              {openNotes} 条备注待处理
+            <Go label={t("看备注", "Show notes")} onClick={() => onGo("notes")}>
+              {t(`${openNotes} 条备注待处理`, openNotes === 1 ? "1 open note" : `${openNotes} open notes`)}
             </Go>
           )}
           <span className="flex-1" />
-          <Go label="看动态" onClick={() => onGo("activity")}>
+          <Go label={t("看动态", "Show activity")} onClick={() => onGo("activity")}>
             <span className="tabular">
-              第 {doc.rev} 版{last ? ` · ${ACTOR_LABEL[last.actor]} ${ago(last.at, now)}` : ""}
+              {t(`第 ${doc.rev} 版`, `Version ${doc.rev}`)}
+              {last ? t(` · ${ACTOR_LABEL[last.actor]} ${ago(last.at, now)}`, ` · ${ACTOR_LABEL[last.actor]}, ${ago(last.at, now)}`) : ""}
             </span>
           </Go>
           {onSheet && (
-            <div role="radiogroup" aria-label="视图" className="-mr-1.5 flex items-center gap-0.5">
-              {([["3D", false], ["工程图", true]] as const).map(([label, on]) => (
+            <div role="radiogroup" aria-label={t("视图", "View")} className="-mr-1.5 flex items-center gap-0.5">
+              {([["3D", false], [t("工程图", "Drawing"), true]] as const).map(([label, on]) => (
                 <button
                   key={label}
                   type="button"

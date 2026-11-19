@@ -44,6 +44,7 @@ ssh jim-server 'ln -sfn /srv/turnery/releases/<sha7> /srv/turnery/current'
 | `dist/<页面>/index.html` | `learn`、`teardown`、`practice`、`atlas`、`glossary`、`studio` |
 | `dist/lesson/<id>/index.html` | 每节已注册的课 |
 | `dist/teardown/<id>/index.html` | 每个烘焙好的模型 |
+| `dist/en/…/index.html` | 上面各个顶层页面的英文版（`/en`、`/en/learn`……），带 `hreflang` 互指；课、拆解、图文卡的英文地址回落到 `/index.html`，由前端切成英文 |
 | `dist/sitemap.xml`、`dist/robots.txt` | 全部上述页面 |
 
 - 标题和描述写在 `app/src/lib/page-meta.ts`，浏览器里的 `document.title` 也用它。

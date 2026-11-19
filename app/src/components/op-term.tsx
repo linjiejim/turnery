@@ -1,6 +1,7 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { SOFTWARE, opById, type OpId } from "@/content/ops"
+import { isEn } from "@/lib/i18n"
 
 /**
  * A modelling term with its name in each package, one click away. The site
@@ -20,12 +21,12 @@ export function OpTerm({ id, className }: { id: OpId; className?: string }) {
           )}
         >
           {op.name}
-          <span className="text-faint-foreground">{op.en}</span>
+          {!isEn && <span className="text-faint-foreground">{op.en}</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80">
         <div className="text-heading font-semibold">
-          {op.name} <span className="font-normal text-muted-foreground">{op.en}</span>
+          {op.name} {!isEn && <span className="font-normal text-muted-foreground">{op.en}</span>}
         </div>
         <p className="mt-1 text-small text-muted-foreground">{op.gist}</p>
         <dl className="mt-3 grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5 text-small">

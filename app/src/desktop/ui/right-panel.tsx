@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Code, History, MessageSquare, PanelRightClose, PanelRightOpen, SlidersHorizontal, SquareMousePointer } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import { IconButton } from "@/components/ui/button"
 import { ResizeHandle } from "@/components/ui/resize-handle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,11 +10,11 @@ import { RIGHT, RAIL } from "../panels"
 export type PanelTab = "details" | "notes" | "params" | "activity" | "code"
 
 const TABS: { value: PanelTab; label: string; icon: React.ReactNode }[] = [
-  { value: "details", label: "详情", icon: <SquareMousePointer /> },
-  { value: "notes", label: "备注", icon: <MessageSquare /> },
-  { value: "params", label: "参数", icon: <SlidersHorizontal /> },
-  { value: "activity", label: "动态", icon: <History /> },
-  { value: "code", label: "代码", icon: <Code /> },
+  { value: "details", label: t("详情", "Details"), icon: <SquareMousePointer /> },
+  { value: "notes", label: t("备注", "Notes"), icon: <MessageSquare /> },
+  { value: "params", label: t("参数", "Parameters"), icon: <SlidersHorizontal /> },
+  { value: "activity", label: t("动态", "Activity"), icon: <History /> },
+  { value: "code", label: t("代码", "Code"), icon: <Code /> },
 ]
 
 /**
@@ -53,8 +54,8 @@ export function RightPanel({
   const badge = (t: PanelTab) => (t === "notes" && openNotes ? String(openNotes) : t === "params" && checksFailing ? "!" : null)
   if (!open)
     return (
-      <nav aria-label="右栏（已收起）" className="flex shrink-0 flex-col items-center gap-1 border-l py-2" style={{ width: RAIL }}>
-        <IconButton label="展开右栏（⌥⌘B）" size="icon-sm" onClick={() => onOpen(true)}>
+      <nav aria-label={t("右栏（已收起）", "Right panel (hidden)")} className="flex shrink-0 flex-col items-center gap-1 border-l py-2" style={{ width: RAIL }}>
+        <IconButton label={t("展开右栏（⌥⌘B）", "Show right panel (⌥⌘B)")} size="icon-sm" onClick={() => onOpen(true)}>
           <PanelRightOpen />
         </IconButton>
         <div className="my-1 h-px w-5 bg-border" />
@@ -84,7 +85,7 @@ export function RightPanel({
     <Tabs value={tab} onValueChange={(v) => onTab(v as PanelTab)} className="relative flex shrink-0 flex-col border-l" style={{ width }}>
       <ResizeHandle
         side="left"
-        label="调整右栏宽度"
+        label={t("调整右栏宽度", "Resize right panel")}
         value={width}
         min={RIGHT.min}
         max={RIGHT.max}
@@ -101,7 +102,7 @@ export function RightPanel({
             </TabsTrigger>
           ))}
         </TabsList>
-        <IconButton label="收起右栏（⌥⌘B）" size="icon-sm" onClick={() => onOpen(false)}>
+        <IconButton label={t("收起右栏（⌥⌘B）", "Hide right panel (⌥⌘B)")} size="icon-sm" onClick={() => onOpen(false)}>
           <PanelRightClose />
         </IconButton>
       </div>

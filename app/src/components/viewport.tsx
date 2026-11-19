@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { IconButton } from "@/components/ui/button"
 import { Viewer, type ViewName, type ViewerOptions } from "@/three/viewer"
 import { ViewerCtx } from "@/components/viewer-context"
+import { isEn, t } from "@/lib/i18n"
 
 /**
  * Hosts one Viewer. `onReady` runs once with the viewer and may return a
@@ -74,12 +75,12 @@ export function Viewport({
 // ------------------------------------------------------------------ view cube
 
 const FACES: { view: ViewName; label: string; n: THREE.Vector3; u: THREE.Vector3; v: THREE.Vector3 }[] = [
-  { view: "front", label: "前", n: new THREE.Vector3(0, -1, 0), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 0, 1) },
-  { view: "back", label: "后", n: new THREE.Vector3(0, 1, 0), u: new THREE.Vector3(-1, 0, 0), v: new THREE.Vector3(0, 0, 1) },
-  { view: "right", label: "右", n: new THREE.Vector3(1, 0, 0), u: new THREE.Vector3(0, 1, 0), v: new THREE.Vector3(0, 0, 1) },
-  { view: "left", label: "左", n: new THREE.Vector3(-1, 0, 0), u: new THREE.Vector3(0, -1, 0), v: new THREE.Vector3(0, 0, 1) },
-  { view: "top", label: "上", n: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) },
-  { view: "bottom", label: "下", n: new THREE.Vector3(0, 0, -1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, -1, 0) },
+  { view: "front", label: t("前", "Front"), n: new THREE.Vector3(0, -1, 0), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 0, 1) },
+  { view: "back", label: t("后", "Back"), n: new THREE.Vector3(0, 1, 0), u: new THREE.Vector3(-1, 0, 0), v: new THREE.Vector3(0, 0, 1) },
+  { view: "right", label: t("右", "Right"), n: new THREE.Vector3(1, 0, 0), u: new THREE.Vector3(0, 1, 0), v: new THREE.Vector3(0, 0, 1) },
+  { view: "left", label: t("左", "Left"), n: new THREE.Vector3(-1, 0, 0), u: new THREE.Vector3(0, -1, 0), v: new THREE.Vector3(0, 0, 1) },
+  { view: "top", label: t("上", "Top"), n: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) },
+  { view: "bottom", label: t("下", "Bottom"), n: new THREE.Vector3(0, 0, -1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, -1, 0) },
 ]
 
 /** World direction → CSS 3D space of the overlay (x right, y down, z towards the viewer). */
@@ -98,6 +99,10 @@ const DRAG_RAD = 0.012
 
 /** A view direction's name: 「前右上」. */
 function dirLabel(d: THREE.Vector3) {
+  if (isEn) {
+    const words = [d.y < 0 ? "front" : d.y > 0 ? "back" : "", d.x > 0 ? "right" : d.x < 0 ? "left" : "", d.z > 0 ? "top" : d.z < 0 ? "bottom" : ""].filter(Boolean).join(" ")
+    return words.charAt(0).toUpperCase() + words.slice(1)
+  }
   return [d.y < 0 ? "前" : d.y > 0 ? "后" : "", d.x > 0 ? "右" : d.x < 0 ? "左" : "", d.z > 0 ? "上" : d.z < 0 ? "下" : ""].join("")
 }
 
@@ -156,7 +161,7 @@ export function ViewCube({ viewer, className }: { viewer: Viewer; className?: st
     <div className={cn("flex flex-col items-center gap-1", className)}>
       <div
         className="relative size-24 cursor-grab touch-none select-none active:cursor-grabbing"
-        aria-label="视图方块：拖动转视角，点面、棱、角切换视图"
+        aria-label={t("视图方块：拖动转视角，点面、棱、角切换视图", "View cube: drag to turn the view; click a face, edge or corner to switch to it")}
         role="group"
         onPointerDown={(e) => {
           if (e.button !== 0) return
@@ -189,20 +194,22 @@ export function ViewCube({ viewer, className }: { viewer: Viewer; className?: st
             ref={(el) => {
               refs.current[i] = el
             }}
-            className="absolute top-1/2 left-1/2 grid rounded-xs border border-input bg-popover/90 text-small font-medium text-muted-foreground"
+            className={cn("absolute top-1/2 left-1/2 grid rounded-xs border border-input bg-popover/90 font-medium text-muted-foreground", isEn ? "text-caption" : "text-small")}
             style={{ width: HALF * 2, height: HALF * 2, margin: -HALF, gridTemplateColumns: `${BAND}px 1fr ${BAND}px`, gridTemplateRows: `${BAND}px 1fr ${BAND}px` }}
           >
             {REGIONS[i].map((r) => (
               <button
                 key={r.key}
                 type="button"
-                aria-label={`${r.view ? f.label : r.label}视图`}
+                aria-label={t(`${r.view ? f.label : r.label}视图`, `${r.view ? f.label : r.label} view`)}
                 tabIndex={r.view ? 0 : -1}
                 onClick={() => go(r)}
                 onPointerEnter={() => !drag.current?.moved && setHot(r.key)}
                 onPointerLeave={() => setHot((h) => (h === r.key ? null : h))}
                 className={cn(
                   "grid min-h-0 min-w-0 place-items-center outline-none transition-colors duration-(--duration-fast) focus-visible:bg-selected",
+                  // English face names are wider than the middle square: centre the overflow, on one line.
+                  isEn && "place-content-center whitespace-nowrap",
                   hot === r.key && "bg-primary/30 text-foreground",
                 )}
               >
@@ -212,7 +219,7 @@ export function ViewCube({ viewer, className }: { viewer: Viewer; className?: st
           </div>
         ))}
       </div>
-      <IconButton label="等轴测视图" size="icon-sm" className="text-muted-foreground" onClick={() => viewer.setView("iso")}>
+      <IconButton label={t("等轴测视图", "Isometric view")} size="icon-sm" className="text-muted-foreground" onClick={() => viewer.setView("iso")}>
         <House />
       </IconButton>
     </div>

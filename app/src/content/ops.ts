@@ -1,8 +1,12 @@
+import { isEn } from "../lib/i18n"
+import { OPS_EN, type OpEn } from "./en/ops"
+
 /**
  * The modelling operations the site teaches, tool-agnostic, with what each
  * major package calls them. Chinese UI names come from the official zh-CN
  * help where it could be checked (research notes, table A/B); NX and a few
  * sub-types are still unverified and need a screenshot from the Chinese UI.
+ * English pages get the English text and English UI names from en/ops.ts.
  */
 export type OpId =
   | "plane"
@@ -58,7 +62,7 @@ export type Op = {
   demo: boolean
 }
 
-export const OPS: Op[] = [
+const OPS_ZH: Op[] = [
   {
     id: "plane",
     name: "基准面",
@@ -472,5 +476,36 @@ export const OPS: Op[] = [
     demo: true,
   },
 ]
+
+/**
+ * An entry in English: the overlay's text over the Chinese, and its UI names over the Chinese ones
+ * package by package; whatever the overlay leaves out stays Chinese. Pure, for tests.
+ */
+export function localizeOp(op: Op, en: Partial<OpEn> | undefined): Op {
+  if (!en) return op
+  return {
+    ...op,
+    name: en.name || op.name,
+    gist: en.gist || op.gist,
+    inputs: en.inputs?.length ? en.inputs : op.inputs,
+    options: en.options?.length ? en.options : op.options,
+    pitfalls: en.pitfalls?.length ? en.pitfalls : op.pitfalls,
+    names: { ...op.names, ...en.names },
+  }
+}
+
+/** The operations in the page's language. */
+export const OPS: Op[] = isEn ? OPS_ZH.map((o) => localizeOp(o, OPS_EN[o.id])) : OPS_ZH
+
+/**
+ * A feature named the way the Chinese data names it (「圆角2」, 「切除1」), as an English CAD package
+ * would ("Fillet2", "Cut1"); anything else unchanged. Looks up the Chinese command names, which stay
+ * Chinese in the data whatever the page's language.
+ */
+export function featureNameEn(name: string) {
+  const m = /^(\D+)(\d+)$/.exec(name)
+  const en = m && (OPS_ZH.find((o) => o.name === m[1])?.en ?? (m[1] === "切除" ? "Cut" : undefined))
+  return m && en ? `${en}${m[2]}` : name
+}
 
 export const opById = (id: OpId) => OPS.find((o) => o.id === id)!

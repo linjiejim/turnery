@@ -1,3 +1,4 @@
+import { t } from "../lib/i18n"
 import type { Tree } from "./dsl"
 import { checkTree } from "./limits"
 
@@ -12,13 +13,13 @@ export type Imported = { ok: true; tree: Tree; name: string } | { ok: false; mes
  * it may come from anyone.
  */
 export async function readTreeFile(file: File): Promise<Imported> {
-  if (!/\.json$/i.test(file.name) && file.type !== "application/json") return { ok: false, message: "只能导入 .json 文件（「导出特征树（JSON）」导出的那种）" }
-  if (file.size > MAX_FILE) return { ok: false, message: `文件太大了（${Math.ceil(file.size / 1024)} KB，最多 ${MAX_FILE / 1024} KB）` }
+  if (!/\.json$/i.test(file.name) && file.type !== "application/json") return { ok: false, message: t("只能导入 .json 文件（「导出特征树（JSON）」导出的那种）", "Only .json files can be imported (the kind “Export feature tree (JSON)” makes)") }
+  if (file.size > MAX_FILE) return { ok: false, message: t(`文件太大了（${Math.ceil(file.size / 1024)} KB，最多 ${MAX_FILE / 1024} KB）`, `File too big (${Math.ceil(file.size / 1024)} KB, at most ${MAX_FILE / 1024} KB)`) }
   let raw: unknown
   try {
     raw = JSON.parse(await file.text())
   } catch (e) {
-    return { ok: false, message: `不是有效的 JSON：${(e as Error).message}` }
+    return { ok: false, message: t(`不是有效的 JSON：${(e as Error).message}`, `Not valid JSON: ${(e as Error).message}`) }
   }
   return parseTreeJson(raw, file.name.replace(/\.json$/i, ""))
 }
@@ -28,7 +29,7 @@ export function parseTreeJson(raw: unknown, fallbackName: string): Imported {
   const snap = wrapped ? (raw as { title?: unknown; tree: unknown }) : null
   const checked = checkTree(snap ? snap.tree : raw)
   if (!checked.ok) return { ok: false, message: checked.message }
-  if (!checked.tree.features.length) return { ok: false, message: "这棵特征树是空的，没有特征" }
+  if (!checked.tree.features.length) return { ok: false, message: t("这棵特征树是空的，没有特征", "This feature tree is empty: no features") }
   const name = snap && typeof snap.title === "string" && snap.title.trim() ? snap.title.trim().slice(0, 60) : fallbackName
   return { ok: true, tree: checked.tree, name }
 }

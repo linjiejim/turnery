@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import type { Viewer } from "@/three/viewer"
+import { t } from "@/lib/i18n"
 import type { RegionPick } from "../region"
 import { regionImage, type Marks, type ViewPoint } from "../region-pick"
 
@@ -100,7 +101,11 @@ export function SketchLayer({
     }
   }
 
-  const covered = pick ? (pick.faces ? `${pick.faces} 个面${pick.parts.length ? ` · ${pick.parts.map((p) => `「${p}」`).join("")}` : ""}` : "没有碰到模型：会按画面位置记下") : ""
+  const covered = pick
+    ? pick.faces
+      ? t(`${pick.faces} 个面${pick.parts.length ? ` · ${pick.parts.map((p) => `「${p}」`).join("")}` : ""}`, `${pick.faces} ${pick.faces === 1 ? "face" : "faces"}${pick.parts.length ? ` · ${pick.parts.map((p) => `“${p}”`).join(" ")}` : ""}`)
+      : t("没有碰到模型：会按画面位置记下", "Missed the model: saved by its place on screen")
+    : ""
   const shown = box ? rectOf(box) : null
   return (
     <div
@@ -119,7 +124,7 @@ export function SketchLayer({
       }}
     >
       <div role="status" className="pointer-events-none absolute top-3 left-1/2 max-w-[calc(100%-12rem)] -translate-x-1/2 rounded-md border border-primary bg-background/95 px-2.5 py-1 text-center text-caption text-foreground">
-        {shape === "box" ? "拖出一个框，框住要说的地方" : "在模型上画，圈出或指出要说的地方，可以画几笔"} · Esc 退出
+        {shape === "box" ? t("拖出一个框，框住要说的地方", "Drag a box around the spot") : t("在模型上画，圈出或指出要说的地方，可以画几笔", "Draw on the model to circle or point at the spot; several strokes are fine")} · {t("Esc 退出", "Esc to exit")}
       </div>
       <svg className="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden>
         {shape === "box" && shown && <rect x={shown[0]} y={shown[1]} width={shown[2] - shown[0]} height={shown[3] - shown[1]} rx={2} className="fill-primary/10 stroke-primary" strokeWidth={2} />}
@@ -139,14 +144,14 @@ export function SketchLayer({
             align="start"
             sideOffset={12}
             className="w-80 max-w-[calc(100vw-1rem)]"
-            aria-label={shape === "box" ? "框选的备注" : "画笔的备注"}
+            aria-label={shape === "box" ? t("框选的备注", "Note on a box") : t("画笔的备注", "Note on a drawing")}
             // More strokes may go on while the card is open; a click on the layer doesn't close it.
             onInteractOutside={(e) => {
               if (layer.current?.contains(e.target as Node)) e.preventDefault()
             }}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <div className="text-body font-medium">{shape === "box" ? "框选的区域" : "画笔圈出的地方"}</div>
+            <div className="text-body font-medium">{shape === "box" ? t("框选的区域", "Boxed area") : t("画笔圈出的地方", "Drawn area")}</div>
             <div className="mt-0.5 text-small text-muted-foreground">{covered}</div>
             <Textarea
               className="mt-3 resize-none"
@@ -154,7 +159,7 @@ export function SketchLayer({
               autoFocus
               maxLength={600}
               value={text}
-              placeholder={shape === "box" ? "这一片想怎么改？例如：这几个孔都改成沉头" : "这里想怎么改？例如：这条边倒 R2"}
+              placeholder={shape === "box" ? t("这一片想怎么改？例如：这几个孔都改成沉头", "What should change here? e.g. make these holes counterbored") : t("这里想怎么改？例如：这条边倒 R2", "What should change here? e.g. an R2 fillet on this edge")}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -162,14 +167,14 @@ export function SketchLayer({
                   void save()
                 }
               }}
-              aria-label="备注"
+              aria-label={t("备注", "Note")}
             />
             <div className="mt-3 flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={clear}>
-                {shape === "box" ? "重新框" : "擦掉重画"}
+                {shape === "box" ? t("重新框", "Redraw box") : t("擦掉重画", "Erase and redraw")}
               </Button>
               <Button size="sm" variant="primary" loading={saving} onClick={() => void save()}>
-                记下备注
+                {t("记下备注", "Save note")}
               </Button>
             </div>
           </PopoverContent>

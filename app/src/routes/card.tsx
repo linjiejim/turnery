@@ -16,6 +16,8 @@ import { CARDS, cardMeta } from "@/content/cards"
 import type { CardDef } from "@/content/cards/types"
 import { lessonById, placeOf } from "@/content/curriculum"
 import { lessonMeta } from "@/content/lessons"
+import { ZhOnlyNotice } from "@/components/zh-only"
+import { isEn, t } from "@/lib/i18n"
 
 /**
  * 图文卡 reader: a curriculum entry that needs no 3D. A few short sections,
@@ -42,7 +44,7 @@ export function CardPage() {
   if (!meta)
     return (
       <div className="grid min-h-[60dvh] place-items-center">
-        <StateView kind="empty" title="没有这张图文卡" action={<Link to="/learn">回到学习路径</Link>} />
+        <StateView kind="empty" title={t("没有这张图文卡", "No such card")} action={<Link to="/learn">{t("回到学习路径", "Back to the learning path")}</Link>} />
       </div>
     )
   if (failed === meta.code)
@@ -50,7 +52,7 @@ export function CardPage() {
       <div className="grid min-h-[60dvh] place-items-center">
         <StateView
           kind="error"
-          description="图文卡没加载出来。"
+          description={t("图文卡没加载出来。", "The card didn't load.")}
           onRetry={() => {
             setFailed(null)
             setAttempt((a) => a + 1)
@@ -62,7 +64,7 @@ export function CardPage() {
   if (!def)
     return (
       <div className="grid min-h-[60dvh] place-items-center">
-        <Spinner label="正在加载图文卡" />
+        <Spinner label={t("正在加载图文卡", "Loading the card")} />
       </div>
     )
   return <CardReader key={def.code} def={def} />
@@ -111,16 +113,16 @@ function CardReader({ def }: { def: CardDef }) {
 
   return (
     <Page width="narrow" className="mx-auto pb-16">
-      <nav aria-label="所在位置" className="flex flex-wrap items-center gap-x-1.5 text-small text-muted-foreground">
+      <nav aria-label={t("所在位置", "Breadcrumb")} className="flex flex-wrap items-center gap-x-1.5 text-small text-muted-foreground">
         <Link to={`/learn#${def.code}`} className="flex items-center gap-1 hover:text-foreground">
           <ArrowLeft className="size-3.5" />
-          学习路径
+          {t("学习路径", "Learning path")}
         </Link>
         {place && (
           <>
             <span className="text-faint-foreground">/</span>
             <span>
-              {place.track.id} {place.track.title.split("：")[0]}
+              {place.track.id} {place.track.title.split(/[：:]/)[0]}
             </span>
             <span className="text-faint-foreground">/</span>
             <span>{place.module.title}</span>
@@ -132,11 +134,12 @@ function CardReader({ def }: { def: CardDef }) {
         <h1 className="text-title-lg font-semibold">{def.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-muted-foreground">
           <span className="font-mono tabular text-faint-foreground">{def.code}</span>
-          <Badge tone="info">图文</Badge>
-          <span>约 {def.minutes} 分钟</span>
-          {done && <Badge tone="success">已完成</Badge>}
+          <Badge tone="info">{t("图文", "Card")}</Badge>
+          <span>{t(`约 ${def.minutes} 分钟`, `About ${def.minutes} min`)}</span>
+          {done && <Badge tone="success">{t("已完成", "Done")}</Badge>}
         </div>
-        {entry && <p className="mt-3 text-body text-muted-foreground">目标：{entry.goal}</p>}
+        {entry && <p className="mt-3 text-body text-muted-foreground">{t("目标：", "Goal: ")}{entry.goal}</p>}
+        <ZhOnlyNotice what="This card" className="mt-4" />
       </header>
 
       {def.sections.map((s, i) => (
@@ -157,7 +160,7 @@ function CardReader({ def }: { def: CardDef }) {
 
       {hasTerms && (
         <section className="mt-8">
-          <div className="mb-2 text-small text-faint-foreground">本卡用到（点开看各软件的叫法）</div>
+          <div className="mb-2 text-small text-faint-foreground">{t("本卡用到（点开看各软件的叫法）", "Used in this card (open one to see what each package calls it)")}</div>
           <div className="flex flex-wrap gap-1.5">
             {def.terms.ops?.map((id) => <OpTerm key={id} id={id} />)}
             {def.terms.concepts?.map((id) => <ConceptTerm key={id} id={id} />)}
@@ -166,15 +169,20 @@ function CardReader({ def }: { def: CardDef }) {
       )}
 
       <section id="quiz" className="mt-10 scroll-mt-16 border-t pt-8">
-        <h2 className="text-title font-semibold">小测</h2>
-        <p className="mt-1 text-body text-muted-foreground">答完就能完成这张卡。每题都有解释，答错的题会在复习里再出现。</p>
+        <h2 className="text-title font-semibold">{t("小测", "Quiz")}</h2>
+        <p className="mt-1 text-body text-muted-foreground">
+          {t(
+            "答完就能完成这张卡。每题都有解释，答错的题会在复习里再出现。",
+            "Answer every question to finish this card. Each one comes with an explanation, and the ones you miss come back in review.",
+          )}
+        </p>
         <Quiz items={def.quiz} onDone={finishQuiz} />
         {quizDone && (
           <div className="mt-6 rounded-lg border p-4">
-            <div className="text-heading font-semibold">要点</div>
+            <div className="text-heading font-semibold">{t("要点", "Takeaways")}</div>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-body text-muted-foreground">
-              {def.takeaways.map((t) => (
-                <li key={t}>{t}</li>
+              {def.takeaways.map((point) => (
+                <li key={point}>{point}</li>
               ))}
             </ul>
           </div>
@@ -184,7 +192,7 @@ function CardReader({ def }: { def: CardDef }) {
       <Related def={def} />
 
       <section className="mt-8">
-        <h2 className="text-heading font-semibold">参考来源</h2>
+        <h2 className="text-heading font-semibold">{t("参考来源", "Sources")}</h2>
         <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-small text-muted-foreground">
           {def.sources.map((s) => (
             <li key={s.url}>
@@ -201,7 +209,12 @@ function CardReader({ def }: { def: CardDef }) {
             </li>
           ))}
         </ol>
-        <p className="mt-3 text-small text-faint-foreground">命令名取自各软件的官方中文帮助，不同版本的叫法可能略有出入。发现错误欢迎在 GitHub 提 Issue。</p>
+        <p className="mt-3 text-small text-faint-foreground">
+          {t(
+            "命令名取自各软件的官方中文帮助，不同版本的叫法可能略有出入。发现错误欢迎在 GitHub 提 Issue。",
+            "Command names come from each package's official Chinese help and can differ a little between versions. Found a mistake? Open an issue on GitHub.",
+          )}
+        </p>
       </section>
 
       <footer className="mt-10 border-t pt-6">
@@ -216,9 +229,9 @@ function CardReader({ def }: { def: CardDef }) {
               navigate(next ? `/card/${next}` : `/learn#${def.code}`)
             }}
           >
-            {next ? "完成，下一张" : "完成本卡"}
+            {next ? t("完成，下一张", "Done, next card") : t("完成本卡", "Finish this card")}
           </Button>
-          {!quizDone && <span className="text-small text-muted-foreground">答完小测后可以完成</span>}
+          {!quizDone && <span className="text-small text-muted-foreground">{t("答完小测后可以完成", "Finish the quiz first")}</span>}
         </div>
         {(prev || next) && (
           <div className="mt-6 grid grid-cols-2 gap-3 max-sm:grid-cols-1">
@@ -276,7 +289,7 @@ function Pager({ code, dir }: { code: string; dir: "prev" | "next" }) {
     >
       <span className="flex items-center gap-1 text-small text-muted-foreground">
         {dir === "prev" && <ArrowLeft className="size-3.5" />}
-        {dir === "prev" ? "上一张" : "下一张"}
+        {dir === "prev" ? t("上一张", "Previous") : t("下一张", "Next")}
         {dir === "next" && <ArrowRight className="size-3.5" />}
       </span>
       <span className="text-body font-medium">
@@ -292,25 +305,25 @@ function Related({ def }: { def: CardDef }) {
   const items = [
     ...(def.related?.lessons ?? []).flatMap((id) => {
       const l = lessonMeta(id)
-      return l ? [{ to: `/lesson/${l.id}`, label: "互动课", title: l.title }] : []
+      return l ? [{ to: `/lesson/${l.id}`, label: t("互动课", "Lesson"), title: l.title }] : []
     }),
     ...(def.related?.teardowns ?? []).flatMap((id) => {
       const m = models.find((x) => x.id === id)
-      return m ? [{ to: `/teardown/${m.id}`, label: "拆解", title: m.title }] : []
+      return m ? [{ to: `/teardown/${m.id}`, label: t("拆解", "Teardown"), title: m.title }] : []
     }),
     ...(def.related?.cards ?? []).flatMap((code) => {
       const l = lessonById(code)
-      return l ? [{ to: `/card/${code}`, label: "图文", title: l.title }] : []
+      return l ? [{ to: `/card/${code}`, label: t("图文", "Card"), title: l.title }] : []
     }),
   ]
   if (!items.length) return null
   return (
     <section className="mt-8">
-      <h2 className="text-heading font-semibold">接着看</h2>
+      <h2 className="text-heading font-semibold">{t("接着看", "Read next")}</h2>
       <div className="mt-2 flex flex-col gap-1">
         {items.map((it) => (
           <Link key={it.to} to={it.to} className="-mx-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-accent">
-            <Badge tone="info" className="w-12 justify-center">
+            <Badge tone="info" className={cn("justify-center", isEn ? "w-20" : "w-12")}>
               {it.label}
             </Badge>
             {it.title}

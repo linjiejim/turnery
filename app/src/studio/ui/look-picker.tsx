@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -74,7 +75,7 @@ export function LookPicker({
   const finish = look?.finish ?? defaultFinish(look)
   const customOk = !!hexOf(custom.startsWith("#") ? custom : `#${custom}`)
   const pick = (change: LookChange) => void onChange(change)
-  const tip = `${label}：${lookTip(look)}${note ? `（${note}）` : ""}`
+  const tip = t(`${label}：${lookTip(look)}${note ? `（${note}）` : ""}`, `${label}: ${lookTip(look)}${note ? ` (${note})` : ""}`)
   const openPanel = (o: boolean) => {
     setOpen(o)
     setTipOpen(false)
@@ -120,7 +121,7 @@ export function LookPicker({
           <span className="font-medium">{label}</span>
           <span className="text-caption text-muted-foreground">{lookTip(look)}</span>
         </div>
-        <div role="group" aria-label="颜色" className="grid grid-cols-6 gap-1.5">
+        <div role="group" aria-label={t("颜色", "Color")} className="grid grid-cols-6 gap-1.5">
           {PALETTE.map((c) => (
             <Tooltip key={c.id} content={c.name}>
               <button
@@ -143,16 +144,16 @@ export function LookPicker({
             if (customOk) pick({ color: custom.startsWith("#") ? custom : `#${custom}` })
           }}
         >
-          <Input aria-label="自定义颜色（#RRGGBB）" placeholder="#RRGGBB" value={custom} onChange={(e) => setCustom(e.target.value.trim())} className="h-(--control-sm) min-w-0 flex-1 font-mono text-small" />
+          <Input aria-label={t("自定义颜色（#RRGGBB）", "Custom color (#RRGGBB)")} placeholder="#RRGGBB" value={custom} onChange={(e) => setCustom(e.target.value.trim())} className="h-(--control-sm) min-w-0 flex-1 font-mono text-small" />
           <Button type="submit" size="sm" variant="secondary" disabled={!customOk}>
-            用这个
+            {t("用这个", "Use")}
           </Button>
         </form>
         <div className="flex items-center gap-2">
-          <span className="text-small text-muted-foreground">质感</span>
+          <span className="text-small text-muted-foreground">{t("质感", "Finish")}</span>
           <Segmented
             size="sm"
-            aria-label="质感"
+            aria-label={t("质感", "Finish")}
             className="ml-auto"
             value={finish}
             // Always the finish chosen: null would fall back to an inherited one (a metal whole part), not to matte.
@@ -163,10 +164,10 @@ export function LookPicker({
         {extra}
         <div className="flex justify-between border-t pt-2">
           <Button size="sm" variant="ghost" disabled={!isSet(look)} onClick={() => pick({ color: null, finish: null })}>
-            清除颜色和质感
+            {t("清除颜色和质感", "Clear color and finish")}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => openPanel(false)}>
-            完成
+            {t("完成", "Done")}
           </Button>
         </div>
       </PopoverContent>
@@ -177,13 +178,13 @@ export function LookPicker({
 /** The palette as a row of choices, for a form (the new part dialog): one colour or none. */
 export function PaletteChoice({ value, onChange }: { value: string | null; onChange: (color: string | null) => void }) {
   return (
-    <div role="radiogroup" aria-label="颜色" className="flex flex-wrap gap-1.5">
-      <Tooltip content="不设颜色（白模）">
+    <div role="radiogroup" aria-label={t("颜色", "Color")} className="flex flex-wrap gap-1.5">
+      <Tooltip content={t("不设颜色（白模）", "No color (clay)")}>
         <button
           type="button"
           role="radio"
           aria-checked={value === null}
-          aria-label="不设颜色"
+          aria-label={t("不设颜色", "No color")}
           className={cn("size-6 rounded-full border border-dashed border-faint-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring", value === null && "ring-2 ring-primary ring-offset-1 ring-offset-background")}
           onClick={() => onChange(null)}
         />

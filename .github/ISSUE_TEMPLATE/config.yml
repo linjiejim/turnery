@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: 贡献说明
+  - name: Contributing · 贡献说明
     url: https://github.com/linjiejim/turnery/blob/main/CONTRIBUTING.md
-    about: 怎么跑起来、怎么写一节课、内容纠错怎么给出处。
+    about: How to run it, write a lesson, and cite sources for content fixes · 怎么跑起来、怎么写一节课、内容纠错怎么给出处。
+  - name: Security issue · 安全问题
+    url: https://github.com/linjiejim/turnery/security/advisories/new
+    about: Report privately, not in a public issue · 私下报告，不要发公开 Issue。

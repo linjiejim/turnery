@@ -4,7 +4,7 @@
 
 **Parametric CAD that your coding agent builds and you can read, check and change.**
 
-[简体中文](README.zh-CN.md) · [Download for macOS](https://github.com/linjiejim/turnery/releases/latest) · [Website and course](https://turnery.linjiejim.com) · [Example](examples/sensor-enclosure)
+[简体中文](README.zh-CN.md) · [Download for macOS](https://github.com/linjiejim/turnery/releases/latest) · [Website and course](https://turnery.linjiejim.com/en) · [Try it in the browser](https://turnery.linjiejim.com/en/studio) · [Example](examples/sensor-enclosure)
 
 ![Every number in the request lands on the part, then in a check the kernel measures](docs/media/turnery-intro-en.gif)
 
@@ -22,7 +22,7 @@ Ask a model for a 3D part today and you usually get one of two things.
 | --- | --- |
 | A mesh (text-to-3D) | Nothing to edit. Generate again and hope the rest stays the same. |
 | A script (OpenSCAD, CadQuery, KCL…) | Editable, if you read the code and it still runs. Nothing tells you the holes are still where you asked. |
-| **An Turnery feature tree** | Change `t` from 2 to 3. Everything that referenced it follows, and the check "wall 2 mm" turns red because that is not what you asked for. |
+| **A Turnery feature tree** | Change `t` from 2 to 3. Everything that referenced it follows, and the check "wall 2 mm" turns red because that is not what you asked for. |
 
 The design choices behind that:
 
@@ -56,7 +56,7 @@ Fifteen tool calls later:
 ✓ seat     lid sits on the base, no gap  measured contact (0 mm)
 ```
 
-What you see in the window when the wall is changed to 3 mm: the part follows, and the request "wall 2" is flagged (the interface is in Chinese for now).
+What you see in the window when the wall is changed to 3 mm: the part follows, and the request "wall 2" is flagged. (Shown in Chinese; the window also comes in English and follows your system language.)
 
 ![The Turnery window: the check list flags the wall that no longer matches the request](docs/media/window-check.png)
 
@@ -125,7 +125,7 @@ No agent yet? The first time Turnery starts it opens the example above. Change `
 
 ### Or use the built-in assistant
 
-The 对话 (chat) tab in the window runs the same tools with a model you pick: DeepSeek, OpenRouter, Anthropic, OpenAI, Gemini, Moonshot, Zhipu, DashScope, SiliconFlow, a local Ollama, or any OpenAI-compatible endpoint. It can call Turnery's modeling commands and nothing else: no other files, no shell. Your key stays on your machine, outside the project folder.
+The Chat button in the window's title bar opens the built-in assistant, which runs the same tools with a model you pick: DeepSeek, OpenRouter, Anthropic, OpenAI, Gemini, Moonshot, Zhipu, DashScope, SiliconFlow, a local Ollama, or any OpenAI-compatible endpoint. It can call Turnery's modeling commands and nothing else: no other files, no shell. Your key stays on your machine, outside the project folder.
 
 ![The built-in assistant widening an opening and re-running the checks](docs/media/window-assistant.png)
 
@@ -166,16 +166,16 @@ Claude Code / Codex ──MCP (stdio)──► turnery mcp ──HTTP 127.0.0.1�
 | Checking and delivering | `check` · `export` (STEP, STL, build123d Python, JSON, bill of materials) |
 | Working with you | `get_notes` `resolve_note` `request_pick` `show` |
 
-Full reference, the CLI and the internals: [`desktop/README.md`](desktop/README.md) (Chinese).
+Full reference, the CLI and the internals: [`desktop/README.md`](desktop/README.md) ([中文](desktop/README.zh-CN.md)).
 
 ## Where it stands
 
-Turnery is at 0.5 and moving fast. What works today: single parts and multi-part assemblies with shared parameters, standard fasteners, real thread geometry, STEP import for building around a board, engineering drawings, and the check list described above.
+Turnery is young (0.11) and moving fast. What works today: single parts and multi-part assemblies with shared parameters, standard fasteners, real thread geometry, STEP import for building around a board, engineering drawings, the check list described above, and a timeline that replays the model feature by feature.
 
 What does not, yet:
 
 - **macOS only**, and unsigned. Windows and Linux builds are planned.
-- **The interface is in Chinese**: window, tool descriptions, kernel messages and the agent guide. Tool names and JSON schemas are English. An English interface is the first thing on the roadmap.
+- **English, but not everywhere yet.** The window and the website come in English and Chinese. What the agent reads (the guide, tool descriptions, kernel messages) is still Chinese, which agents read fine; tool names and JSON schemas are English. The course's lesson bodies are Chinese too. See [`docs/i18n.md`](docs/i18n.md).
 - **No sketch constraint solver in the modeling tools.** Sketches are written with parameters and expressions.
 - **No free-form "code feature"** for shapes the tree cannot express.
 - **Mates place parts once, in order.** They are not a constraint system and there is no motion.
@@ -195,7 +195,9 @@ What we have not found elsewhere in one tool: semantic selectors, a persistent r
 
 ## Also in this repository: the course
 
-[turnery.linjiejim.com](https://turnery.linjiejim.com) is a Chinese-language, software-neutral course on mechanical CAD built on the same kernel and file format: 21 interactive lessons, 17 illustrated cards, 9 teardowns of real parts that replay feature by feature, a command atlas across 8 CAD packages, and a browser workbench with an AI tutor. The desktop app is for making things; the site is for learning why they are made that way.
+[turnery.linjiejim.com](https://turnery.linjiejim.com/en) is a software-neutral course on mechanical CAD built on the same kernel and file format: 21 interactive lessons, 17 illustrated cards, 9 teardowns of real parts that replay feature by feature, a command atlas across 8 CAD packages, and a browser workbench with an AI tutor. The desktop app is for making things; the site is for learning why they are made that way.
+
+The site's interface, learning path, command atlas and glossary are in English and Chinese; the lesson and card text itself is written in Chinese for now.
 
 ## Develop
 
@@ -208,7 +210,14 @@ cd ../desktop && npm install
 npm run build && npm start     # the desktop app from source
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md), and [`README.zh-CN.md`](README.zh-CN.md) for the full developer notes: end-to-end tests, baking teardown models, the layout of the repository.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for checks, end-to-end tests, writing lessons, baking teardown models and the two languages, and [`README.zh-CN.md`](README.zh-CN.md) for the layout of the repository.
+
+## Community
+
+- Questions, bugs and ideas: [issues](https://github.com/linjiejim/turnery/issues). Corrections to course content need a source; the template asks for it.
+- Security problems: privately, see [`SECURITY.md`](SECURITY.md).
+- Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+- Releases and what changed in each: [Releases](https://github.com/linjiejim/turnery/releases).
 
 ## License
 

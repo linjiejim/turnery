@@ -229,8 +229,10 @@ export interface TurneryBridge {
   /** Choose a preset and what to use from it. `key`: left out = keep the stored one; a string replaces it ("" forgets it). */
   saveModel(input: { preset: string; model?: string; baseURL?: string; vision?: boolean | null; key?: string }): Promise<ModelSettings>
   /** Start a turn of the built-in assistant; its stream arrives through onAssistant under the same id. */
-  assistantSend(id: string, messages: unknown[]): Promise<void>
+  assistantSend(id: string, messages: unknown[], lang?: "zh" | "en"): Promise<void>
   assistantStop(id: string): Promise<void>
+  /** The window's language, so the app's menus and dialogs speak it too. */
+  setLanguage(lang: "zh" | "en"): Promise<void>
   /** Chunks of a turn's UI message stream; `null` ends it. */
   onAssistant(listener: (id: string, chunk: unknown | null) => void): () => void
   /** Saved conversations, newest first: `here` = held in this window's project (or among loose parts). */

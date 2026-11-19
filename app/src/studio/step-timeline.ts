@@ -1,6 +1,7 @@
 // The feature timeline under the 3D view (ui/tree-overlay.tsx), the parts that are plain logic: which
 // step's name it shows, where that name sits, and what the small card over a step says.
-import { OP_NAMES, type Feature } from "./dsl"
+import { t } from "../lib/i18n"
+import { opLabel, type Feature } from "./dsl"
 import type { Dim } from "./kernel/dims"
 
 /** The one step named under the strip: the one pointed at, else the one open, else the one rolled back to. */
@@ -19,7 +20,15 @@ export function labelLeft(center: number, width: number, box: number) {
 
 /** The card's first line: 「第 12 步 · 拉伸 · 切除 · J3 牛角座」. */
 export function stepLine(f: Feature, index: number) {
-  return [`第 ${index + 1} 步`, OP_NAMES[f.op], "mode" in f && f.mode === "cut" ? "切除" : "", f.part ?? "", f.suppressed ? "已压缩" : ""].filter(Boolean).join(" · ")
+  return [
+    t(`第 ${index + 1} 步`, `Step ${index + 1}`),
+    opLabel(f.op),
+    "mode" in f && f.mode === "cut" ? t("切除", "cut") : "",
+    f.part ?? "",
+    f.suppressed ? t("已压缩", "suppressed") : "",
+  ]
+    .filter(Boolean)
+    .join(" · ")
 }
 
 /**
@@ -27,7 +36,7 @@ export function stepLine(f: Feature, index: number) {
  * The button has an aria-label (its icon is all it shows), and that label is all that is read of it.
  */
 export function stepLabel(name: string, f: Pick<Feature, "suppressed">, state?: string) {
-  return `${name}${f.suppressed ? "（已压缩）" : ""}${state === "error" ? "（失败）" : state === "skipped" ? "（未重建）" : ""}`
+  return `${name}${f.suppressed ? t("（已压缩）", " (suppressed)") : ""}${state === "error" ? t("（失败）", " (failed)") : state === "skipped" ? t("（未重建）", " (not rebuilt)") : ""}`
 }
 
 /**

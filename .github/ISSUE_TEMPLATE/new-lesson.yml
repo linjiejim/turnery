@@ -1,55 +1,57 @@
-name: 新课建议
-description: 想学但还没有的概念、命令或案例
+name: Lesson idea · 新课建议
+description: A concept, command or part you want to learn that isn't here yet · 想学但还没有的概念、命令或案例
 title: "[新课建议] "
 labels: ["lesson"]
 body:
   - type: markdown
     attributes:
       value: |
+        The learning path (/learn) has an outline of 96 lessons; ideas for the planned ones are welcome here too.
+
         学习路径（/learn）里有 96 节课的大纲，「规划中」的课也欢迎在这里催更或补充想法。
   - type: input
     id: topic
     attributes:
-      label: 想学什么
-      placeholder: 尺寸公差与配合；卡扣怎么设计；带螺纹的瓶盖拆解
+      label: What you want to learn · 想学什么
+      placeholder: Tolerances and fits; designing snap fits; a threaded bottle cap teardown · 尺寸公差与配合；卡扣怎么设计
     validations:
       required: true
   - type: input
     id: code
     attributes:
-      label: 对应大纲里的课号（有的话）
+      label: Its number in the outline, if any · 对应大纲里的课号（有的话）
       placeholder: 3.2.1
   - type: dropdown
     id: kind
     attributes:
-      label: 形式
+      label: Form · 形式
       options:
-        - 互动课（在 3D 里动手）
-        - 图文卡（讲清楚就行）
-        - 案例拆解（真实零件按特征树重建）
-        - 练习
-        - 不确定
+        - Interactive lesson (hands-on in 3D) · 互动课（在 3D 里动手）
+        - Card (explained clearly is enough) · 图文卡（讲清楚就行）
+        - Teardown (a real part rebuilt feature by feature) · 案例拆解
+        - Exercise · 练习
+        - Not sure · 不确定
     validations:
       required: true
   - type: textarea
     id: why
     attributes:
-      label: 卡在哪里
-      description: 你在实际建模时遇到了什么问题，现有的教程哪里没讲清楚。
+      label: Where you got stuck · 卡在哪里
+      description: What went wrong when you modeled it, and what existing tutorials don't explain. · 你在实际建模时遇到了什么问题，现有的教程哪里没讲清楚。
     validations:
       required: true
   - type: textarea
     id: interaction
     attributes:
-      label: 想怎么学
-      description: 希望在 3D 里拖什么、看什么。可选。
+      label: How you'd like to learn it · 想怎么学
+      description: What to drag or look at in 3D. Optional. · 希望在 3D 里拖什么、看什么。可选。
   - type: dropdown
     id: role
     attributes:
-      label: 你是
+      label: You are · 你是
       options:
-        - 学生
-        - 工程师或设计师
-        - 做 3D 打印或硬件的爱好者
-        - 老师
-        - 其他
+        - A student · 学生
+        - An engineer or designer · 工程师或设计师
+        - A 3D printing or hardware hobbyist · 做 3D 打印或硬件的爱好者
+        - A teacher · 老师
+        - Other · 其他

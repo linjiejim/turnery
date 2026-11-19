@@ -11,6 +11,10 @@ import { availableFor, lessonById, PERSONAS, PROJECTS, TRACKS, type Lesson } fro
 import { cardQuizKey, reviewDue, useContinue, type ReviewItem } from "@/lib/progress"
 import { LESSONS } from "@/content/lessons"
 import { CARDS } from "@/content/cards"
+import { byLocale, isEn, t } from "@/lib/i18n"
+
+/** English names of what a curriculum entry opens as (the Chinese label comes from the curriculum). */
+const KIND_EN = { lesson: "Lesson", teardown: "Teardown", card: "Card" } as const
 
 export function LearnPage() {
   const progress = useProgress()
@@ -28,8 +32,11 @@ export function LearnPage() {
   return (
     <Page width="wide" className="mx-auto">
       <PageHeader
-        title="学习路径"
-        info="一条公共地基加五条主轨。每节课一个概念：要动手的做成 3D 互动课，读懂就够的做成图文卡，学完都有小测。课程大纲依据各厂商官方课程、认证考纲和 DFM 设计指南整理。"
+        title={t("学习路径", "Learning path")}
+        info={t(
+          "一条公共地基加五条主轨。每节课一个概念：要动手的做成 3D 互动课，读懂就够的做成图文卡，学完都有小测。课程大纲依据各厂商官方课程、认证考纲和 DFM 设计指南整理。",
+          "One shared foundation and five main tracks. Each lesson covers one concept: what you have to try with your hands is a 3D lesson, what you only need to understand is a card, and every one ends with a quiz. The syllabus follows the vendors' official courses, certification exams and DFM design guides.",
+        )}
         actions={
           <Button asChild variant="primary">
             <Link to={next.to}>{next.label}</Link>
@@ -39,21 +46,35 @@ export function LearnPage() {
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-small text-muted-foreground">
         <span>
-          已完成 <span className="font-medium tabular text-foreground">{done}</span> / <span className="tabular">{total}</span> 节
+          {byLocale(
+            <>
+              已完成 <span className="font-medium tabular text-foreground">{done}</span> / <span className="tabular">{total}</span> 节
+            </>,
+            <>
+              <span className="font-medium tabular text-foreground">{done}</span> / <span className="tabular">{total}</span> done
+            </>,
+          )}
         </span>
         <span className="flex items-center gap-1.5">
           <Box className="size-3.5" />
-          标 3D 的课，交互是必需的：自由度、特征依赖、剖视这类概念看视频学不会
+          {t("标 3D 的课，交互是必需的：自由度、特征依赖、剖视这类概念看视频学不会", "Lessons marked 3D need the interaction: degrees of freedom, feature dependencies and sections don't come across in a video")}
         </span>
         <span className="flex items-center gap-1.5">
           <FileText className="size-3.5" />
-          图文卡：读 3–5 分钟，配示意图和小测，共 <span className="tabular">{CARDS.length}</span> 张
+          {byLocale(
+            <>
+              图文卡：读 3–5 分钟，配示意图和小测，共 <span className="tabular">{CARDS.length}</span> 张
+            </>,
+            <>
+              Cards: a 3–5 minute read with diagrams and a quiz, <span className="tabular">{CARDS.length}</span> in all
+            </>,
+          )}
         </span>
       </div>
 
       <ReviewList due={reviewDue(progress)} />
 
-      <Section title="按你的背景选入口" className="mt-8">
+      <Section title={t("按你的背景选入口", "Where to start, by background")} className="mt-8">
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
           {PERSONAS.map((p) => (
             <div key={p.name} className="rounded-lg border p-3">
@@ -92,7 +113,7 @@ export function LearnPage() {
         </Section>
       ))}
 
-      <Section title="贯穿项目">
+      <Section title={t("贯穿项目", "Projects through the course")}>
         <div className="grid grid-cols-3 gap-3 max-md:grid-cols-1">
           {PROJECTS.map((p) => (
             <div key={p.id} className="rounded-lg border p-3">
@@ -100,7 +121,7 @@ export function LearnPage() {
                 <span className="font-mono text-caption text-faint-foreground">{p.id}</span>
                 <span className="text-body font-medium">{p.title}</span>
               </div>
-              <div className="mt-1 text-caption text-muted-foreground">先修：{p.prereq}</div>
+              <div className="mt-1 text-caption text-muted-foreground">{t("先修：", "Prerequisites: ")}{p.prereq}</div>
             </div>
           ))}
         </div>
@@ -118,18 +139,18 @@ function LessonRow({ lesson: l, done, current }: { lesson: Lesson; done: boolean
       <span className="min-w-0 shrink-0 text-body max-md:flex-1 max-md:shrink max-md:truncate">{l.title}</span>
       <span className="min-w-0 flex-1 truncate text-small text-muted-foreground max-md:hidden">{l.goal}</span>
       {l.interactive === 2 && (
-        <Tooltip content={l.interactiveNote ? `3D 交互：${l.interactiveNote}` : "3D 交互是这节课的核心"}>
+        <Tooltip content={l.interactiveNote ? t(`3D 交互：${l.interactiveNote}`, `3D interaction: ${l.interactiveNote}`) : t("3D 交互是这节课的核心", "This lesson is built around 3D interaction")}>
           <span className="flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
             <Box className="size-3.5" />
             3D
           </span>
         </Tooltip>
       )}
-      <span className="w-16 shrink-0 text-right">
+      <span className={cn("shrink-0 text-right", isEn ? "w-20" : "w-16")}>
         {avail ? (
-          <Badge tone="info">{avail.label}</Badge>
+          <Badge tone="info">{isEn ? KIND_EN[avail.kind] : avail.label}</Badge>
         ) : (
-          <span className="text-caption text-faint-foreground">规划中</span>
+          <span className="text-caption text-faint-foreground">{t("规划中", "Planned")}</span>
         )}
       </span>
     </>
@@ -157,13 +178,13 @@ function ReviewList({ due }: { due: ReviewItem[] }) {
   })
   if (!items.length) return null
   return (
-    <Section title="该复习了" className="mt-8">
+    <Section title={t("该复习了", "Due for review")} className="mt-8">
       <div className="overflow-hidden rounded-lg border">
         {items.map((d) => (
           <Link key={d.lessonId} to={d.to} className="flex h-10 items-center gap-3 border-t px-3 first:border-t-0 hover:bg-accent">
             <span className="min-w-0 truncate text-body">{d.title}</span>
             <span className="shrink-0 text-small text-muted-foreground max-sm:hidden">{d.reason}</span>
-            <span className="ml-auto shrink-0 text-small font-medium">重做小测</span>
+            <span className="ml-auto shrink-0 text-small font-medium">{t("重做小测", "Retake the quiz")}</span>
           </Link>
         ))}
       </div>

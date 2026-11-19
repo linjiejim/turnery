@@ -8,6 +8,7 @@ import { Segmented } from "@/components/ui/segmented"
 import { Spinner } from "@/components/ui/spinner"
 import { Markdown } from "@/studio/ui/markdown"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import { turnery } from "../bridge"
 import type { TurnUsage } from "../core/assistant"
 import type { ModelSettings } from "../core/protocol"
@@ -43,7 +44,7 @@ export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<
         <ChatTitle chat={chat} />
         <span className="flex-1" />
         <HistoryButton chat={chat} />
-        <IconButton label="新对话" size="icon-sm" disabled={chat.busy || chat.messages.length === 0} onClick={chat.newChat}>
+        <IconButton label={t("新对话", "New chat")} size="icon-sm" disabled={chat.busy || chat.messages.length === 0} onClick={chat.newChat}>
           <SquarePen />
         </IconButton>
         {head.actions}
@@ -63,8 +64,8 @@ export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<
             rows={3}
             value={text}
             disabled={!usable}
-            aria-label="对助手说"
-            placeholder={usable ? "例如：把壁厚改成 3，再核对一遍" : "先配置模型"}
+            aria-label={t("对助手说", "Message the assistant")}
+            placeholder={usable ? t("例如：把壁厚改成 3，再核对一遍", "For example: make the walls 3 mm thick, then check again") : t("先配置模型", "Set up a model first")}
             className="resize-none pr-11"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -76,11 +77,11 @@ export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<
           />
           <div className="absolute right-1.5 bottom-1.5">
             {chat.busy ? (
-              <IconButton label="停止" variant="secondary" size="icon-sm" onClick={() => void chat.stop()}>
+              <IconButton label={t("停止", "Stop")} variant="secondary" size="icon-sm" onClick={() => void chat.stop()}>
                 <Square />
               </IconButton>
             ) : (
-              <IconButton label="发送" variant="primary" size="icon-sm" type="submit" disabled={!usable || !text.trim()}>
+              <IconButton label={t("发送", "Send")} variant="primary" size="icon-sm" type="submit" disabled={!usable || !text.trim()}>
                 <ArrowUp />
               </IconButton>
             )}
@@ -92,7 +93,7 @@ export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<
           onClick={() => setSettingsOpen(true)}
         >
           <Settings2 className="size-3.5 shrink-0" />
-          <span className="truncate">{current ? `${current.name} · ${current.model || current.defaultModel || "还没填模型名"}` : "配置模型"}</span>
+          <span className="truncate">{current ? `${current.name} · ${current.model || current.defaultModel || t("还没填模型名", "No model name yet")}` : t("配置模型", "Set up model")}</span>
         </button>
       </form>
       <ModelSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={setSettings} />
@@ -108,7 +109,7 @@ function ChatTitle({ chat }: { chat: Assistant }) {
     return (
       <Input
         autoFocus
-        aria-label="对话名称"
+        aria-label={t("对话名称", "Chat name")}
         value={draft}
         className="h-7 min-w-0 flex-1 text-small"
         onChange={(e) => setDraft(e.target.value)}
@@ -128,7 +129,7 @@ function ChatTitle({ chat }: { chat: Assistant }) {
   return (
     <button
       type="button"
-      title="改名"
+      title={t("改名", "Rename")}
       className="min-w-0 truncate rounded-md px-1 py-0.5 text-left text-small font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
       onClick={() => {
         setDraft(chat.title)
@@ -147,29 +148,29 @@ function HistoryButton({ chat }: { chat: Assistant }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <IconButton label="历史对话" size="icon-sm">
+        <IconButton label={t("历史对话", "Past chats")} size="icon-sm">
           <History />
         </IconButton>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
         <div className="flex items-center gap-2 border-b px-3 py-2">
-          <span className="text-small font-medium">历史对话</span>
+          <span className="text-small font-medium">{t("历史对话", "Past chats")}</span>
           <span className="flex-1" />
           <Segmented
             size="sm"
-            aria-label="范围"
+            aria-label={t("范围", "Scope")}
             value={chat.scope}
             onValueChange={(v) => chat.setScope(v as "here" | "all")}
             options={[
-              { value: "here", label: "这个项目" },
-              { value: "all", label: "全部" },
+              { value: "here", label: t("这个项目", "This project") },
+              { value: "all", label: t("全部", "All") },
             ]}
           />
         </div>
         {chat.history.length === 0 ? (
-          <p className="px-3 py-6 text-center text-small text-muted-foreground">还没有保存的对话。每一轮回答完都会自动保存。</p>
+          <p className="px-3 py-6 text-center text-small text-muted-foreground">{t("还没有保存的对话。每一轮回答完都会自动保存。", "No saved chats yet. Each chat is saved after every answer.")}</p>
         ) : (
-          <ul className="max-h-80 overflow-y-auto py-1" aria-label="历史对话">
+          <ul className="max-h-80 overflow-y-auto py-1" aria-label={t("历史对话", "Past chats")}>
             {chat.history.map((c) => (
               <li key={c.id} className="group flex items-center">
                 <button
@@ -183,10 +184,11 @@ function HistoryButton({ chat }: { chat: Assistant }) {
                 >
                   <span className="truncate text-small">{c.title}</span>
                   <span className="truncate text-caption text-faint-foreground">
-                    {ago(c.updatedAt, now)} · {c.count} 条{chat.scope === "all" && c.project ? ` · ${c.project.split(/[\\/]/).pop()}` : ""}
+                    {ago(c.updatedAt, now)} · {t(`${c.count} 条`, c.count === 1 ? "1 message" : `${c.count} messages`)}
+                    {chat.scope === "all" && c.project ? ` · ${c.project.split(/[\\/]/).pop()}` : ""}
                   </span>
                 </button>
-                <IconButton label="删除这段对话" size="icon-sm" className="mr-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" disabled={chat.busy && c.id === chat.id} onClick={() => void chat.remove(c.id)}>
+                <IconButton label={t("删除这段对话", "Delete this chat")} size="icon-sm" className="mr-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" disabled={chat.busy && c.id === chat.id} onClick={() => void chat.remove(c.id)}>
                   <Trash2 />
                 </IconButton>
               </li>
@@ -214,7 +216,7 @@ function Conversation({ chat, usable, onSettings }: { chat: Assistant; usable: b
     <div
       ref={box}
       className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
-      aria-label="和助手的对话"
+      aria-label={t("和助手的对话", "Chat with the assistant")}
       role="log"
       onScroll={(e) => {
         const el = e.currentTarget
@@ -223,12 +225,12 @@ function Conversation({ chat, usable, onSettings }: { chat: Assistant; usable: b
     >
       {chat.messages.length === 0 ? (
         <div className="pt-6 text-body text-muted-foreground">
-          <p className="text-heading font-semibold text-foreground">用说的来建和改</p>
-          <p className="mt-2">说出要做什么，助手在这个零件上一步步做，做完核对你说的数字。</p>
-          <p className="mt-1 text-small text-faint-foreground">它只能用 Turnery 的建模命令，碰不到别的文件。</p>
+          <p className="text-heading font-semibold text-foreground">{t("用说的来建和改", "Build and change by talking")}</p>
+          <p className="mt-2">{t("说出要做什么，助手在这个零件上一步步做，做完核对你说的数字。", "Say what you want. The assistant works on this part step by step, then checks the numbers you gave.")}</p>
+          <p className="mt-1 text-small text-faint-foreground">{t("它只能用 Turnery 的建模命令，碰不到别的文件。", "It can only use Turnery’s modeling commands and can’t touch other files.")}</p>
           {!usable && (
             <Button className="mt-4" variant="primary" onClick={onSettings}>
-              先配置模型
+              {t("先配置模型", "Set up a model first")}
             </Button>
           )}
         </div>
@@ -283,7 +285,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
       <div className="text-small text-faint-foreground">
         <div className="flex items-center gap-1">
           <Spinner className="size-3" />
-          思考中
+          {t("思考中", "Thinking")}
         </div>
         <div ref={tail} className="mt-1 max-h-24 overflow-hidden border-l pl-3 whitespace-pre-wrap">
           {text.trim()}
@@ -294,7 +296,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
     <details className="group text-small text-faint-foreground">
       <summary className="flex cursor-pointer list-none items-center gap-1 select-none hover:text-muted-foreground">
         <ChevronRight className="size-3.5 transition-transform duration-(--duration-fast) group-open:rotate-90" />
-        思考过程
+        {t("思考过程", "Reasoning")}
       </summary>
       <div className="mt-1 border-l pl-3 whitespace-pre-wrap">{text.trim()}</div>
     </details>
@@ -320,11 +322,11 @@ function ToolRow({ part }: { part: ToolPart }) {
       {part.output?.images?.length ? (
         <div className="mt-1.5 flex gap-1.5 overflow-x-auto">
           {part.output.images.map((src, i) => (
-            <img key={i} src={src} alt={`视图 ${i + 1}`} className="h-24 rounded border bg-card" />
+            <img key={i} src={src} alt={t(`视图 ${i + 1}`, `View ${i + 1}`)} className="h-24 rounded border bg-card" />
           ))}
         </div>
       ) : part.output?.imagesDropped ? (
-        <p className="mt-1 text-caption text-faint-foreground">{part.output.imagesDropped} 张视图没有保存</p>
+        <p className="mt-1 text-caption text-faint-foreground">{t(`${part.output.imagesDropped} 张视图没有保存`, part.output.imagesDropped === 1 ? "1 view wasn’t saved" : `${part.output.imagesDropped} views weren’t saved`)}</p>
       ) : null}
     </div>
   )
@@ -334,11 +336,12 @@ const k = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(0)}k` : n >= 1000 
 
 function UsageLine({ usage }: { usage: TurnUsage }) {
   if (!usage.input && !usage.output) return null
-  const cached = usage.input && usage.cached ? `（缓存 ${Math.round((usage.cached / usage.input) * 100)}%）` : ""
+  const cached = usage.input && usage.cached ? t(`（缓存 ${Math.round((usage.cached / usage.input) * 100)}%）`, ` (${Math.round((usage.cached / usage.input) * 100)}% cached)`) : ""
   return (
     <p className="text-caption text-faint-foreground tabular">
-      输入 {k(usage.input)}
-      {cached} · 输出 {k(usage.output)} tokens
+      {t(`输入 ${k(usage.input)}`, `Input ${k(usage.input)}`)}
+      {cached}
+      {t(` · 输出 ${k(usage.output)} tokens`, ` · output ${k(usage.output)} tokens`)}
     </p>
   )
 }
@@ -352,7 +355,7 @@ function TurnStatus({ chat }: { chat: Assistant }) {
     <div role="status" className="mt-3 flex items-center gap-2 text-small text-muted-foreground">
       <Spinner className="size-3.5" />
       <span className="truncate">{activity(chat)}…</span>
-      {seconds >= 3 && <span className="ml-auto shrink-0 text-caption text-faint-foreground tabular">{seconds} 秒</span>}
+      {seconds >= 3 && <span className="ml-auto shrink-0 text-caption text-faint-foreground tabular">{t(`${seconds} 秒`, `${seconds} s`)}</span>}
     </div>
   )
 }

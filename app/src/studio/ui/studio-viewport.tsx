@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner"
 import { notify } from "@/components/ui/toast"
+import { t } from "@/lib/i18n"
 import { Viewport } from "@/components/viewport"
 import { disposeObject, type Projection, type Viewer } from "@/three/viewer"
 import type { ViewStyle } from "@/three/materials"
@@ -36,7 +37,7 @@ import { DimEditor } from "./dim-editor"
 import { MeasurePanel, ViewTools, type ExportViewOptions } from "./viewport-tools"
 import { renderPicture } from "../figure"
 import { lineFigure } from "../figure-lines"
-import { VIEW_KEYS, type KeyRow, type ViewTool } from "../view-keys"
+import { DRAG_ARROWS, VIEW_KEYS, type KeyRow, type ViewTool } from "../view-keys"
 import { colourKey, drawsColours, lookPrefs, nextLook, viewLook, type ViewLook } from "../view-look"
 import { useWords } from "./host-words"
 
@@ -104,7 +105,7 @@ async function downloadFigure(f: SavedFigure) {
   const a = document.createElement("a")
   const url = f.format === "png" ? f.data : URL.createObjectURL(new Blob([f.data], { type: "image/svg+xml" }))
   a.href = url
-  a.download = f.format === "png" ? "视图.png" : "线稿.svg"
+  a.download = f.format === "png" ? t("视图.png", "view.png") : t("线稿.svg", "line-drawing.svg")
   a.click()
   if (f.format === "svg") setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
@@ -609,7 +610,7 @@ export function StudioViewport({
         el.classList.add("interactive", "cursor-pointer")
         el.title = note.text || note.about
         el.setAttribute("role", "button")
-        el.setAttribute("aria-label", `备注 ${p.n}：${note.text || note.about}`)
+        el.setAttribute("aria-label", t(`备注 ${p.n}：${note.text || note.about}`, `Note ${p.n}: ${note.text || note.about}`))
         el.addEventListener("pointerdown", (e) => e.stopPropagation())
         el.addEventListener("click", (e) => {
           e.stopPropagation()
@@ -671,7 +672,7 @@ export function StudioViewport({
   // ---------------------------------------------------------------- clicking
 
   const words = useWords()
-  const busyText = copy?.busy ?? `${words.helper}正在改模型，这一轮结束后再标注`
+  const busyText = copy?.busy ?? t(`${words.helper}正在改模型，这一轮结束后再标注`, `The ${words.helper} is changing the model. Add notes once this turn ends.`)
   const latest = React.useRef({ studio, busy, busyText, display, open: annotations.open, cancel: annotations.cancel, measuring, plane, reselect, readOnly, annotation, onPointFeature, onSelectFeature, view, onOpenPart, sketching })
   const pickRevision = React.useRef(0)
   React.useEffect(() => { pickRevision.current++ }, [annotation, measuring, display, view, busy])
@@ -704,25 +705,25 @@ export function StudioViewport({
         return
       }
       if (isBusy) return notify(whyBusy)
-      if (isMeasuring && (latest.current.view.explode > 0 || hasMoves(latest.current.view))) return notify("测量用的是装配位置：先把爆炸拖回 0、挪开的零件移回原位。分开时仍可选件和标注。")
+      if (isMeasuring && (latest.current.view.explode > 0 || hasMoves(latest.current.view))) return notify(t("测量用的是装配位置：先把爆炸拖回 0、挪开的零件移回原位。分开时仍可选件和标注。", "Measuring uses assembled positions: drag explode back to 0 and move parts back first. While apart you can still select parts and add notes."))
       // The model's own mesh (not a see-through reference body, which can't be picked).
       const meshes = pickable(current.current)
       if (!d?.mesh || !meshes.length || s.kernel.phase !== "ready") return
       const { edge, face } = pickTargets(viewer, d, meshes, e, cut, latest.current.view)
       if (rsel?.state) return void rsel.toggle({ edge: edge?.hash ?? null, face: face?.hash ?? null })
       if (isMeasuring) {
-        if (s.rollback) return notify("先回到最新一步，再测量")
+        if (s.rollback) return notify(t("先回到最新一步，再测量", "Go back to the latest step to measure"))
         if (!edge && !face) return setPicked([])
         // Same rule as annotating: a fillet's tangent line means the face under the pointer.
         const info = edge ? await s.pick("edge", edge.hash, edge.point) : null
         if (revision !== pickRevision.current) return
-        const t: MeasureTarget = edge && info && !info.smooth ? { kind: "edge", ...edge } : face ? { kind: "face", ...face } : { kind: "edge", ...edge! }
-        setPicked((p) => (p.some((x) => x.kind === t.kind && x.hash === t.hash) ? p.filter((x) => x.hash !== t.hash) : p.length >= 2 ? [t] : [...p, t]))
+        const target: MeasureTarget = edge && info && !info.smooth ? { kind: "edge", ...edge } : face ? { kind: "face", ...face } : { kind: "edge", ...edge! }
+        setPicked((p) => (p.some((x) => x.kind === target.kind && x.hash === target.hash) ? p.filter((x) => x.hash !== target.hash) : p.length >= 2 ? [target] : [...p, target]))
         return
       }
       if (!edge && !face) return cancel()
       if (latest.current.readOnly) return
-      if (s.rollback) return notify("先回到最新一步，再在模型上标注")
+      if (s.rollback) return notify(t("先回到最新一步，再在模型上标注", "Go back to the latest step to add notes on the model"))
       let info = edge ? await s.pick("edge", edge.hash, edge.point) : null
       // A fillet's tangent line looks like an edge but has no corner: the face under the pointer is what's meant.
       if ((!info || info.smooth) && face) info = (await s.pick("face", face.hash, face.point)) ?? info
@@ -853,15 +854,15 @@ export function StudioViewport({
         // Twice the view's size (as sharp as a Retina screen), at most 4096 px on the long side.
         const k = Math.min(2, 4096 / Math.max(w, h))
         const data = renderPicture(display, { camera, width: Math.round(w * k), height: Math.round(h * k), view, style, looks: coloured, section: plane, background: o.background })
-        if (!data) return void notify("还没有东西可以导出")
+        if (!data) return void notify(t("还没有东西可以导出", "Nothing to export yet"))
         await onSaveFigure({ format: "png", data })
       } else {
         const figure = lineFigure(display, { camera, width: w, height: h, view, section: plane, hidden: o.hidden, labels: o.labels, labelParts: selectedParts.length ? selectedParts : undefined })
-        if (!figure) return void notify("这个视角下没有可画的线")
+        if (!figure) return void notify(t("这个视角下没有可画的线", "No lines to draw from this angle"))
         await onSaveFigure({ format: "svg", data: figure.svg })
       }
     } catch (e) {
-      notify.error(`导出没成功：${(e as Error)?.message ?? e}`)
+      notify.error(t(`导出没成功：${(e as Error)?.message ?? e}`, `Export failed: ${(e as Error)?.message ?? e}`))
     }
   }
 
@@ -962,38 +963,46 @@ export function StudioViewport({
   return (
     <Viewport className="absolute inset-0" onReady={onReady} triadBesideCube>
       {onParts && display?.parts && (selectedParts.length > 0 || view.focus || view.hidden.size > 0 || movedNames.length > 0) && (
-        <div role="toolbar" aria-label="选中零件" className="absolute left-3 z-20 flex max-w-[calc(100%_-_1.5rem)] flex-wrap items-center gap-0.5 rounded-md border bg-background/95 p-1 shadow-popover [&_button]:px-2" style={{ bottom: "calc(var(--timeline-h, 0px) + 1.25rem)" }}>
-          <span className="max-w-48 truncate px-2 text-caption" title={selectionLabels.join("、")}>
-            {selectionLabels.length > 1 ? `已选 ${selectionLabels.length} 个零件` : selectionLabels[0] ?? (view.focus ? `${view.focus.mode === "ghost" ? "保留实体" : "已隔离"} ${wholeNames(display.parts, view.focus.parts).length} 个零件` : view.hidden.size ? `已隐藏 ${hiddenLabels} 个零件` : `已挪开 ${movedLabels} 个零件`)}
+        <div role="toolbar" aria-label={t("选中零件", "Selected parts")} className="absolute left-3 z-20 flex max-w-[calc(100%_-_1.5rem)] flex-wrap items-center gap-0.5 rounded-md border bg-background/95 p-1 shadow-popover [&_button]:px-2" style={{ bottom: "calc(var(--timeline-h, 0px) + 1.25rem)" }}>
+          <span className="max-w-48 truncate px-2 text-caption" title={selectionLabels.join(t("、", ", "))}>
+            {selectionLabels.length > 1
+              ? t(`已选 ${selectionLabels.length} 个零件`, `${selectionLabels.length} parts selected`)
+              : (selectionLabels[0] ??
+                (view.focus
+                  ? t(`${view.focus.mode === "ghost" ? "保留实体" : "已隔离"} ${wholeNames(display.parts, view.focus.parts).length} 个零件`, `${countParts(wholeNames(display.parts, view.focus.parts).length)} ${view.focus.mode === "ghost" ? "kept solid" : "isolated"}`)
+                  : view.hidden.size
+                    ? t(`已隐藏 ${hiddenLabels} 个零件`, `${countParts(hiddenLabels)} hidden`)
+                    : t(`已挪开 ${movedLabels} 个零件`, `${countParts(movedLabels)} moved`)))}
           </span>
           {selectionNames.length > 0 && selectionActions}
           {selectionNames.length > 0 && selectionActions && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
-          <Button size="sm" variant="ghost" disabled={!selectionNames.length} onClick={hideSelected}>隐藏<Kbd>H</Kbd></Button>
-          <Button size="sm" variant={focusMatches && view.focus?.mode === "isolate" ? "secondary" : "ghost"} aria-pressed={focusMatches && view.focus?.mode === "isolate"} disabled={!selectionNames.length} onClick={isolateSelected}>隔离<Kbd>I</Kbd></Button>
-          <Button size="sm" variant={focusMatches && view.focus?.mode === "ghost" ? "secondary" : "ghost"} aria-pressed={focusMatches && view.focus?.mode === "ghost"} disabled={!selectionNames.length} onClick={ghostOthers}>其余透明<Kbd>T</Kbd></Button>
-          {onLocateStep && <Button size="sm" variant="ghost" onClick={onLocateStep}>定位步骤</Button>}
-          {selectionNames.length > 0 && <Button size="sm" variant="ghost" onClick={() => onSelectFeature?.(null)}>清除选择<Kbd>Esc</Kbd></Button>}
-          {view.focus && <Button size="sm" variant="ghost" onClick={() => onParts({ ...view, focus: undefined })}>恢复显示{!selectionNames.length && <Kbd>I</Kbd>}</Button>}
-          {view.hidden.size > 0 && <Button size="sm" variant="ghost" onClick={showAll}>显示隐藏的 {hiddenLabels} 个<Kbd>⇧H</Kbd></Button>}
-          {selectionMoved && <Button size="sm" variant="ghost" title="选中的零件回到文件里的位置" onClick={() => moveBack(selectionNames)}>移回原位</Button>}
-          {movedElsewhere && <Button size="sm" variant="ghost" title="挪开的零件都回到文件里的位置" onClick={() => moveBack()}>全部移回原位</Button>}
+          <Button size="sm" variant="ghost" disabled={!selectionNames.length} onClick={hideSelected}>{t("隐藏", "Hide")}<Kbd>H</Kbd></Button>
+          <Button size="sm" variant={focusMatches && view.focus?.mode === "isolate" ? "secondary" : "ghost"} aria-pressed={focusMatches && view.focus?.mode === "isolate"} disabled={!selectionNames.length} onClick={isolateSelected}>{t("隔离", "Isolate")}<Kbd>I</Kbd></Button>
+          <Button size="sm" variant={focusMatches && view.focus?.mode === "ghost" ? "secondary" : "ghost"} aria-pressed={focusMatches && view.focus?.mode === "ghost"} disabled={!selectionNames.length} onClick={ghostOthers}>{t("其余透明", "See-through rest")}<Kbd>T</Kbd></Button>
+          {onLocateStep && <Button size="sm" variant="ghost" onClick={onLocateStep}>{t("定位步骤", "Find step")}</Button>}
+          {selectionNames.length > 0 && <Button size="sm" variant="ghost" onClick={() => onSelectFeature?.(null)}>{t("清除选择", "Clear selection")}<Kbd>Esc</Kbd></Button>}
+          {view.focus && <Button size="sm" variant="ghost" onClick={() => onParts({ ...view, focus: undefined })}>{t("恢复显示", "Show all again")}{!selectionNames.length && <Kbd>I</Kbd>}</Button>}
+          {view.hidden.size > 0 && <Button size="sm" variant="ghost" onClick={showAll}>{t(`显示隐藏的 ${hiddenLabels} 个`, `Show ${hiddenLabels} hidden`)}<Kbd>⇧H</Kbd></Button>}
+          {selectionMoved && <Button size="sm" variant="ghost" title={t("选中的零件回到文件里的位置", "Return the selected parts to where the file puts them")} onClick={() => moveBack(selectionNames)}>{t("移回原位", "Move back")}</Button>}
+          {movedElsewhere && <Button size="sm" variant="ghost" title={t("挪开的零件都回到文件里的位置", "Return every moved part to where the file puts it")} onClick={() => moveBack()}>{t("全部移回原位", "Move all back")}</Button>}
         </div>
       )}
       {kernel.phase === "loading" && (
         <div className="absolute inset-0 grid place-items-center">
           <div className="flex items-center gap-2 rounded-md border bg-background px-4 py-3 text-body">
             <Spinner className="size-4" />
-            正在加载建模内核（OpenCascade）… {kernel.loadedMB > 0 ? `${kernel.loadedMB.toFixed(1)} MB` : ""}
+            {t("正在加载建模内核（OpenCascade）…", "Loading the modeling kernel (OpenCascade)…")} {kernel.loadedMB > 0 ? `${kernel.loadedMB.toFixed(1)} MB` : ""}
           </div>
         </div>
       )}
       {kernel.phase === "error" && (
         <div className="absolute inset-0 grid place-items-center p-6">
           <div role="alert" className="max-w-sm rounded-md border border-destructive/40 bg-background p-4 text-body">
-            建模内核没能启动：{kernel.message}
+            {t("建模内核没能启动：", "The modeling kernel didn’t start: ")}
+            {kernel.message}
             <div className="mt-3">
               <Button size="sm" variant="secondary" onClick={() => location.reload()}>
-                重新加载
+                {t("重新加载", "Reload")}
               </Button>
             </div>
           </div>
@@ -1030,18 +1039,21 @@ export function StudioViewport({
           onChanges={setShowChanges}
           keysOpen={keysOpen}
           onKeysOpen={setKeysOpen}
-          keys={[...VIEW_KEYS.filter((k) => (onAnnotation || !"VCRP".includes(k.keys)) && (sketch || !"RP".includes(k.keys)) && (onParts || !["H / ⇧H", "I", "拖箭头"].includes(k.keys)) && (onSelectFeature || k.keys !== "拖箭头")), ...keys]}
+          keys={[...VIEW_KEYS.filter((k) => (onAnnotation || !"VCRP".includes(k.keys)) && (sketch || !"RP".includes(k.keys)) && (onParts || !["H / ⇧H", "I", DRAG_ARROWS].includes(k.keys)) && (onSelectFeature || k.keys !== DRAG_ARROWS)), ...keys]}
           tips={[
-            ...(readOnly || copy?.hint === null ? [] : [`${copy?.hint ?? "单击模型上的面或边，标注要改的地方"}。`]),
-            "拖动转视角，滚轮缩放；拖右上角的方块也能转，点它的面、棱或角转到对应的视图。",
-            ...(onParts && onSelectFeature && display.parts && display.parts.length > 1 ? ["选中零件后拖它中间的 X / Y / Z 箭头，把它挪开看；只改视图，不改文件。"] : []),
+            ...(readOnly || copy?.hint === null ? [] : [t(`${copy?.hint ?? "单击模型上的面或边，标注要改的地方"}。`, `${copy?.hint ?? "Click a face or edge on the model to mark what to change"}.`)]),
+            t("拖动转视角，滚轮缩放；拖右上角的方块也能转，点它的面、棱或角转到对应的视图。", "Drag to orbit, scroll to zoom. The cube at top right turns the view too: click a face, edge or corner of it for that view."),
+            ...(onParts && onSelectFeature && display.parts && display.parts.length > 1 ? [t("选中零件后拖它中间的 X / Y / Z 箭头，把它挪开看；只改视图，不改文件。", "Select a part, then drag its X / Y / Z arrows to move it aside. Only the view changes, not the file.")] : []),
           ]}
         />
       )}
       {rs && (
         <div role="status" className="pointer-events-none absolute top-3 left-1/2 max-w-[calc(100%-12rem)] -translate-x-1/2 rounded-md border border-primary bg-background/95 px-2.5 py-1 text-center text-caption text-foreground">
-          现在显示的是「{displayName(studio.tree, studio.tree.features[rs.index])}」之前的样子：
-          {rs.kind === "edge" ? "点要选的边，再点一次取消；点一个面等于选它的一圈边" : "点要选的面，再点一次取消"}。Esc 退出
+          {t(`现在显示的是「${displayName(studio.tree, studio.tree.features[rs.index])}」之前的样子：`, `Showing the model before “${displayName(studio.tree, studio.tree.features[rs.index])}”: `)}
+          {rs.kind === "edge"
+            ? t("点要选的边，再点一次取消；点一个面等于选它的一圈边", "click edges to pick, click again to drop; clicking a face picks the edges around it")
+            : t("点要选的面，再点一次取消", "click faces to pick, click again to drop")}
+          {t("。Esc 退出", ". Esc to exit")}
         </div>
       )}
       {editingDim && !busy && (
@@ -1092,7 +1104,7 @@ export function StudioViewport({
           draft={draft}
           offset={display ? partOffset(display, view, display.parts?.findIndex((p) => p.name === draft.part)) : [0, 0, 0]}
           n={nextPin}
-          addLabel={copy?.add ?? "加到消息"}
+          addLabel={copy?.add ?? t("加到消息", "Add to message")}
           onAdd={annotations.add}
           onCancel={annotations.cancel}
         />
@@ -1103,6 +1115,9 @@ export function StudioViewport({
 
 /** At most this many dimensions with 「显示尺寸」 on, parameters first. */
 const DIMS_SHOWN = 12
+
+/** "3 parts", for the selection bar in English. */
+const countParts = (n: number) => `${n} ${n === 1 ? "part" : "parts"}`
 
 /**
  * The hover from a panel row, held a moment after the pointer leaves it, and
@@ -1242,14 +1257,14 @@ function AnnotationCard({
         align={narrow ? "center" : "start"}
         sideOffset={16}
         className="w-80 max-w-[calc(100vw-1rem)]"
-        aria-label={`标注 ${circled(n)}`}
+        aria-label={t(`标注 ${circled(n)}`, `Note ${circled(n)}`)}
         // Clicks on the model pick something else or drag the camera; they don't dismiss the card.
         onInteractOutside={(e) => {
           if (viewer.renderer.domElement.contains(e.target as Node)) e.preventDefault()
         }}
       >
         <div className="text-body font-medium">
-          {circled(n)} {draft.kind === "face" ? "面" : "边"} · {draft.what}
+          {circled(n)} {draft.kind === "face" ? t("面", "Face") : t("边", "Edge")} · {draft.what}
         </div>
         <div className="mt-0.5 text-small text-muted-foreground">
           {draft.where} · {draft.facts}
@@ -1258,7 +1273,7 @@ function AnnotationCard({
           className="mt-3 resize-none"
           rows={3}
           value={note}
-          placeholder={draft.kind === "face" ? "这里想怎么改？例如：开一个 ⌀8 的通孔" : "这条边想怎么改？例如：倒 R3 圆角"}
+          placeholder={draft.kind === "face" ? t("这里想怎么改？例如：开一个 ⌀8 的通孔", "What should change here? e.g. a ⌀8 through hole") : t("这条边想怎么改？例如：倒 R3 圆角", "What should change on this edge? e.g. an R3 fillet")}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1266,11 +1281,11 @@ function AnnotationCard({
               add()
             }
           }}
-          aria-label="标注备注"
+          aria-label={t("标注备注", "Note text")}
         />
         <div className="mt-3 flex justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={onCancel}>
-            取消
+            {t("取消", "Cancel")}
           </Button>
           <Button size="sm" variant="primary" onClick={add}>
             {addLabel}

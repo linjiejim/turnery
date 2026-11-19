@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 
 /**
  * A parameter: label, live value, slider and an exact number field.
@@ -50,7 +51,7 @@ export function ParamSlider({
         </label>
         <div className="flex items-center gap-1">
           <input
-            aria-label={typeof label === "string" ? `${label}数值` : undefined}
+            aria-label={typeof label === "string" ? t(`${label}数值`, `${label} value`) : undefined}
             value={text}
             inputMode="decimal"
             onChange={(e) => setText(e.target.value)}

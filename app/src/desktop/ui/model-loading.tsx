@@ -1,9 +1,10 @@
 import * as React from "react"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
+import { t } from "@/lib/i18n"
 import type { LoadState } from "../core/protocol"
 
-const STAGES = { prepare: "准备零件", build: "组装模型", mesh: "生成视图", checks: "检查装配" }
+const STAGES = { prepare: t("准备零件", "Preparing parts"), build: t("组装模型", "Assembling the model"), mesh: t("生成视图", "Building the view"), checks: t("检查装配", "Checking the assembly") }
 
 /** A slim card at the top of the viewport while the worker is busy: the model stays in view and can be orbited. */
 export function ModelLoading({ load, visible }: { load: LoadState; visible: boolean }) {
@@ -14,11 +15,11 @@ export function ModelLoading({ load, visible }: { load: LoadState; visible: bool
     return () => window.clearInterval(timer)
   }, [load.startedAt])
   const p = load.progress
-  const title = visible && load.startedAt ? "正在恢复精确几何" : !load.startedAt ? "正在显示模型" : p ? STAGES[p.stage] : "正在打开模型"
+  const title = visible && load.startedAt ? t("正在恢复精确几何", "Restoring exact geometry") : !load.startedAt ? t("正在显示模型", "Showing the model") : p ? STAGES[p.stage] : t("正在打开模型", "Opening the model")
   const elapsed = Math.max(0, Math.floor((now - (load.startedAt || mountedAt)) / 1000))
   const determinate = p && p.total > 0
   return (
-    <div role="status" aria-live="polite" aria-atomic="true" data-testid="model-loading" title={visible ? "预览已显示，可旋转、选件和隔离；标注与测量等精确几何就绪后可用。" : undefined} className="pointer-events-auto w-80 max-w-full rounded-lg border bg-background/95 px-3 py-2 shadow-popover">
+    <div role="status" aria-live="polite" aria-atomic="true" data-testid="model-loading" title={visible ? t("预览已显示，可旋转、选件和隔离；标注与测量等精确几何就绪后可用。", "Preview shown: you can orbit, select and isolate parts. Notes and measuring work once the exact geometry is ready.") : undefined} className="pointer-events-auto w-80 max-w-full rounded-lg border bg-background/95 px-3 py-2 shadow-popover">
       <div className="flex items-center gap-2 text-body">
         <Spinner />
         <span className="shrink-0 font-medium">{title}</span>
@@ -26,7 +27,7 @@ export function ModelLoading({ load, visible }: { load: LoadState; visible: bool
           {determinate ? p.label ?? load.name : load.name}
         </span>
         {determinate && <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{p.completed} / {p.total}</span>}
-        <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{elapsed} 秒</span>
+        <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{t(`${elapsed} 秒`, `${elapsed} s`)}</span>
       </div>
       {determinate && <Progress value={p.completed} max={p.total} aria-label={title} className="mt-2" />}
     </div>

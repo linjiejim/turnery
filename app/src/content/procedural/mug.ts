@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import * as THREE from "three"
 import { datumPlane, edgeLine, face, label, line, linearDim } from "@/three/build"
 import { arc, ellipsePoints, filletCorner, flipFaces, intersect, lathe, offsetLine, ringPoints, sweepEllipse, type V2 } from "@/three/geom"
@@ -279,7 +280,7 @@ function build({ kit, params: p, upto, progress }: BuildInput): BuildOutput {
 
   // ---- sketches (only while that sketch is the current step)
   if (cur === "sk1") {
-    const plane = datumPlane(kit, "XZ", Math.max(H, p.D) * 1.7, "前视基准面")
+    const plane = datumPlane(kit, "XZ", Math.max(H, p.D) * 1.7, t("前视基准面", "Front plane"))
     plane.position.set(R1 * 0.5, 0, H / 2)
     g.add(plane)
     const R0 = p.d / 2

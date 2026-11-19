@@ -1,6 +1,7 @@
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type FileUIPart, type UIMessage } from "ai"
+import { locale, t } from "../lib/i18n"
 import { isDivider } from "./share"
 import { trimMessages } from "./trim"
 import type { Studio } from "./use-studio"
@@ -54,7 +55,7 @@ export function errorText(e: Error | undefined) {
   } catch {
     /* not JSON */
   }
-  return /fetch|network/i.test(e.message) ? "连不上服务器，检查网络后重试。" : e.message || "出错了"
+  return /fetch|network/i.test(e.message) ? t("连不上服务器，检查网络后重试。", "Can’t reach the server. Check your connection and try again.") : e.message || t("出错了", "Something went wrong")
 }
 
 /**
@@ -88,7 +89,7 @@ export function useStudioChat(studio: Studio) {
           const s = bridge.studio
           return {
             // Dividers are for the learner; each message already carries the tree it was sent with.
-            body: { messages: trimMessages(messages.filter((m) => !isDivider(m))), tree: s?.treeRef.current, summary: s?.summary ?? "", mode: bridge.mode },
+            body: { messages: trimMessages(messages.filter((m) => !isDivider(m))), tree: s?.treeRef.current, summary: s?.summary ?? "", mode: bridge.mode, lang: locale },
             headers: key ? { "x-deepseek-key": key } : undefined,
           }
         },

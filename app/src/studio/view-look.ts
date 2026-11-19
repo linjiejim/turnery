@@ -1,4 +1,5 @@
 import type { ViewStyle } from "@/three/materials"
+import { t } from "@/lib/i18n"
 
 /**
  * How the model looks, as the 「显示样式」 card offers it: a white model, the parts' own colours, a line
@@ -10,7 +11,7 @@ export type ViewLook = "plain" | "colour" | "lines" | "xray"
 /** In the card's order, which is also the order W steps through. */
 export const VIEW_LOOKS: ViewLook[] = ["plain", "colour", "lines", "xray"]
 
-export const LOOK_WORDS: Record<ViewLook, string> = { plain: "白模", colour: "彩色", lines: "线描", xray: "半透明" }
+export const LOOK_WORDS: Record<ViewLook, string> = { plain: t("白模", "Clay"), colour: t("彩色", "Color"), lines: t("线描", "Line drawing"), xray: t("半透明", "See-through") }
 
 /** The look the two switches make. */
 export function viewLook(style: ViewStyle, colours: boolean): ViewLook {

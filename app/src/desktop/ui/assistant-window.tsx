@@ -2,6 +2,7 @@ import * as React from "react"
 import { Minus, PanelRight, PictureInPicture2 } from "lucide-react"
 import { IconButton } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import { MIN_H, MIN_W, type AssistantLayoutState } from "../assistant-layout"
 import { AssistantPanel } from "./assistant-panel"
 
@@ -70,7 +71,7 @@ export function AssistantFloat({ state }: { state: AssistantLayoutState }) {
 
   return (
     <section
-      aria-label="对话"
+      aria-label={t("对话", "Chat")}
       className="fixed z-40 flex flex-col rounded-lg border bg-background shadow-popover"
       style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h }}
     >
@@ -92,7 +93,7 @@ export function AssistantDock({ state }: { state: AssistantLayoutState }) {
     drag(e, (dx) => setLayout(state.fit({ ...start, dockW: start.dockW - dx })))
   }
   return (
-    <aside aria-label="对话" className="relative flex shrink-0 flex-col border-l" style={{ width: layout.dockW }}>
+    <aside aria-label={t("对话", "Chat")} className="relative flex shrink-0 flex-col border-l" style={{ width: layout.dockW }}>
       <div aria-hidden className="absolute inset-y-0 -left-1 z-10 w-2 cursor-ew-resize touch-none" onPointerDown={resize} />
       <AssistantPanel head={{ actions: <Actions state={state} /> }} />
     </aside>
@@ -104,14 +105,14 @@ function Actions({ state }: { state: AssistantLayoutState }) {
   return (
     <>
       <IconButton
-        label={docked ? "浮动显示" : state.room() < MIN_W ? "窗口太窄，放不下固定的对话栏" : "固定在右侧"}
+        label={docked ? t("浮动显示", "Float") : state.room() < MIN_W ? t("窗口太窄，放不下固定的对话栏", "The window is too narrow to dock the chat") : t("固定在右侧", "Dock on the right")}
         size="icon-sm"
         disabled={!docked && state.room() < MIN_W}
         onClick={() => state.show(docked ? "float" : "dock")}
       >
         {docked ? <PictureInPicture2 /> : <PanelRight />}
       </IconButton>
-      <IconButton label="收起到右上角" size="icon-sm" onClick={state.hide}>
+      <IconButton label={t("收起到右上角", "Minimize to the top right")} size="icon-sm" onClick={state.hide}>
         <Minus />
       </IconButton>
     </>

@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { datumPlane, edgeLine, face, line, linearDim } from "@/three/build"
 import { capLoop, draftedPrism, ellipsePoints, extrude, flipFaces, lathe, loft, ringPoints, roundedRect, roundedRectPoints, sweepEllipse, type V2 } from "@/three/geom"
 import type { MaterialKit } from "@/three/materials"
+import { t } from "../lib/i18n"
 import type { OpId } from "./ops"
 
 /**
@@ -38,7 +39,7 @@ function block(w: number, l: number, z0: number, z1: number, holes: { r: number 
 const DEMOS: Demo[] = [
   {
     op: "plane",
-    options: [{ id: "d", label: "偏移距离", min: 5, max: 40, step: 1, value: 22, unit: "mm" }],
+    options: [{ id: "d", label: t("偏移距离", "Offset distance"), min: 5, max: 40, step: 1, value: 22, unit: "mm" }],
     box: box3(-30, -22, 0, 30, 22, 56),
     build(kit, t, o) {
       const g = new THREE.Group()
@@ -53,7 +54,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "sketch",
-    options: [{ id: "w", label: "宽度", min: 30, max: 60, step: 1, value: 44, unit: "mm" }],
+    options: [{ id: "w", label: t("宽度", "Width"), min: 30, max: 60, step: 1, value: 44, unit: "mm" }],
     box: box3(-32, -22, 0, 32, 22, 4),
     dir: new THREE.Vector3(0.2, -0.5, 1),
     build(kit, t, o) {
@@ -70,10 +71,10 @@ const DEMOS: Demo[] = [
   },
   {
     op: "cut",
-    options: [{ id: "d", label: "深度", min: 3, max: 18, step: 1, value: 10, unit: "mm" }],
+    options: [{ id: "d", label: t("深度", "Depth"), min: 3, max: 18, step: 1, value: 10, unit: "mm" }],
     modes: [
-      { id: "blind", label: "给定深度" },
-      { id: "through", label: "完全贯穿" },
+      { id: "blind", label: t("给定深度", "Blind") },
+      { id: "through", label: t("完全贯穿", "Through all") },
     ],
     box: box3(-26, -18, 0, 26, 18, 20),
     dir: new THREE.Vector3(0.8, -1, 1.3),
@@ -98,7 +99,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "rib",
-    options: [{ id: "w", label: "筋厚", min: 0.8, max: 3, step: 0.1, value: 1.2, unit: "mm" }],
+    options: [{ id: "w", label: t("筋厚", "Rib thickness"), min: 0.8, max: 3, step: 0.1, value: 1.2, unit: "mm" }],
     box: box3(-26, -18, 0, 26, 18, 24),
     dir: new THREE.Vector3(0.6, -1, 1.4),
     build(kit, t, o) {
@@ -118,7 +119,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "thicken",
-    options: [{ id: "th", label: "厚度", min: 1, max: 8, step: 0.5, value: 4, unit: "mm" }],
+    options: [{ id: "th", label: t("厚度", "Thickness"), min: 1, max: 8, step: 0.5, value: 4, unit: "mm" }],
     box: box3(-10, -30, 0, 34, 10, 40),
     dir: new THREE.Vector3(1, -1.2, 0.7),
     build(kit, t, o) {
@@ -143,7 +144,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "thread",
-    options: [{ id: "p", label: "螺距", min: 2, max: 8, step: 0.5, value: 4, unit: "mm" }],
+    options: [{ id: "p", label: t("螺距", "Pitch"), min: 2, max: 8, step: 0.5, value: 4, unit: "mm" }],
     box: box3(-14, -14, 0, 14, 14, 40),
     dir: new THREE.Vector3(1, -1, 0.5),
     build(kit, t, o) {
@@ -157,7 +158,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "extrude",
-    options: [{ id: "depth", label: "深度", min: 6, max: 40, step: 1, value: 24, unit: "mm" }],
+    options: [{ id: "depth", label: t("深度", "Depth"), min: 6, max: 40, step: 1, value: 24, unit: "mm" }],
     box: box3(-28, -20, 0, 28, 20, 34),
     build(kit, t, o) {
       const g = new THREE.Group()
@@ -171,7 +172,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "revolve",
-    options: [{ id: "angle", label: "角度", min: 30, max: 360, step: 15, value: 360, unit: "°" }],
+    options: [{ id: "angle", label: t("角度", "Angle"), min: 30, max: 360, step: 15, value: 360, unit: "°" }],
     box: box3(-22, -22, 0, 22, 22, 40),
     build(kit, t, o) {
       const g = new THREE.Group()
@@ -201,7 +202,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "sweep",
-    options: [{ id: "r", label: "截面半径", min: 2, max: 8, step: 0.5, value: 4.5, unit: "mm" }],
+    options: [{ id: "r", label: t("截面半径", "Profile radius"), min: 2, max: 8, step: 0.5, value: 4.5, unit: "mm" }],
     box: box3(-34, -18, 0, 34, 18, 34),
     build(kit, t, o) {
       const g = new THREE.Group()
@@ -225,8 +226,8 @@ const DEMOS: Demo[] = [
   {
     op: "loft",
     options: [
-      { id: "r", label: "顶部半径", min: 6, max: 20, step: 1, value: 13, unit: "mm" },
-      { id: "h", label: "高度", min: 20, max: 60, step: 1, value: 40, unit: "mm" },
+      { id: "r", label: t("顶部半径", "Top radius"), min: 6, max: 20, step: 1, value: 13, unit: "mm" },
+      { id: "h", label: t("高度", "Height"), min: 20, max: 60, step: 1, value: 40, unit: "mm" },
     ],
     box: box3(-22, -22, 0, 22, 22, 46),
     build(kit, t, o) {
@@ -254,7 +255,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "fillet",
-    options: [{ id: "r", label: "半径", min: 1, max: 11, step: 0.5, value: 7, unit: "mm" }],
+    options: [{ id: "r", label: t("半径", "Radius"), min: 1, max: 11, step: 0.5, value: 7, unit: "mm" }],
     box: box3(-26, -18, 0, 26, 18, 24),
     build(kit, t, o) {
       const g = new THREE.Group()
@@ -267,7 +268,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "chamfer",
-    options: [{ id: "c", label: "距离", min: 1, max: 8, step: 0.5, value: 4, unit: "mm" }],
+    options: [{ id: "c", label: t("距离", "Distance"), min: 1, max: 8, step: 0.5, value: 4, unit: "mm" }],
     box: box3(-26, -18, 0, 26, 18, 24),
     build(kit, t, o) {
       const g = new THREE.Group()
@@ -292,7 +293,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "shell",
-    options: [{ id: "th", label: "壁厚", min: 1, max: 6, step: 0.5, value: 2.5, unit: "mm" }],
+    options: [{ id: "th", label: t("壁厚", "Wall thickness"), min: 1, max: 6, step: 0.5, value: 2.5, unit: "mm" }],
     box: box3(-26, -18, 0, 26, 18, 28),
     dir: new THREE.Vector3(0.9, -1, 1.5),
     build(kit, t, o) {
@@ -311,7 +312,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "draft",
-    options: [{ id: "a", label: "拔模角", min: 1, max: 15, step: 0.5, value: 8, unit: "°" }],
+    options: [{ id: "a", label: t("拔模角", "Draft angle"), min: 1, max: 15, step: 0.5, value: 8, unit: "°" }],
     box: box3(-24, -17, 0, 24, 17, 30),
     dir: new THREE.Vector3(1, -1.4, 0.45),
     build(kit, t, o) {
@@ -323,11 +324,11 @@ const DEMOS: Demo[] = [
   },
   {
     op: "hole",
-    options: [{ id: "r", label: "孔半径", min: 2, max: 6, step: 0.5, value: 3.5, unit: "mm" }],
+    options: [{ id: "r", label: t("孔半径", "Hole radius"), min: 2, max: 6, step: 0.5, value: 3.5, unit: "mm" }],
     modes: [
-      { id: "simple", label: "简单孔" },
-      { id: "cbore", label: "锪平孔" },
-      { id: "csink", label: "沉头孔" },
+      { id: "simple", label: t("简单孔", "Simple") },
+      { id: "cbore", label: t("锪平孔", "Counterbore") },
+      { id: "csink", label: t("沉头孔", "Countersink") },
     ],
     box: box3(-26, -18, 0, 26, 18, 20),
     dir: new THREE.Vector3(0.8, -1, 1.3),
@@ -353,10 +354,10 @@ const DEMOS: Demo[] = [
   },
   {
     op: "pattern",
-    options: [{ id: "n", label: "数量", min: 2, max: 12, step: 1, value: 8, unit: "个" }],
+    options: [{ id: "n", label: t("数量", "Count"), min: 2, max: 12, step: 1, value: 8, unit: t("个", "") }],
     modes: [
-      { id: "polar", label: "圆周" },
-      { id: "linear", label: "线性" },
+      { id: "polar", label: t("圆周", "Circular") },
+      { id: "linear", label: t("线性", "Linear") },
     ],
     box: box3(-36, -32, 0, 36, 32, 14),
     dir: new THREE.Vector3(0.7, -1, 1.1),
@@ -382,7 +383,7 @@ const DEMOS: Demo[] = [
   },
   {
     op: "mirror",
-    options: [{ id: "w", label: "宽度", min: 14, max: 34, step: 1, value: 26, unit: "mm" }],
+    options: [{ id: "w", label: t("宽度", "Width"), min: 14, max: 34, step: 1, value: 26, unit: "mm" }],
     box: box3(-36, -14, 0, 36, 14, 30),
     dir: new THREE.Vector3(0.6, -1.2, 0.8),
     build(kit, t, o) {
@@ -413,11 +414,11 @@ const DEMOS: Demo[] = [
   },
   {
     op: "boolean",
-    options: [{ id: "r", label: "工具半径", min: 4, max: 14, step: 0.5, value: 9, unit: "mm" }],
+    options: [{ id: "r", label: t("工具半径", "Tool radius"), min: 4, max: 14, step: 0.5, value: 9, unit: "mm" }],
     modes: [
-      { id: "subtract", label: "减去" },
-      { id: "union", label: "合并" },
-      { id: "intersect", label: "相交" },
+      { id: "subtract", label: t("减去", "Subtract") },
+      { id: "union", label: t("合并", "Union") },
+      { id: "intersect", label: t("相交", "Intersect") },
     ],
     box: box3(-26, -18, -6, 26, 18, 30),
     build(kit, t, o, mode) {

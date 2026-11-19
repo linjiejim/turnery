@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as THREE from "three"
 import { notify } from "@/components/ui/toast"
+import { t } from "@/lib/i18n"
 import type { Annotation, PickInfo } from "./annotations"
 import { renderViews, type Pin } from "./look"
 import type { Studio } from "./use-studio"
@@ -62,7 +63,7 @@ export function useAnnotations(studio: Studio) {
       const hashes = a.selector ? await studio.locate(a.kind, a.selector) : null
       if (!hashes?.length) {
         setFocus(null)
-        notify(`${a.kind === "face" ? "这个面" : "这条边"}已经变了，在现在的模型上找不到`)
+        notify(t(`${a.kind === "face" ? "这个面" : "这条边"}已经变了，在现在的模型上找不到`, `This ${a.kind === "face" ? "face" : "edge"} has changed and can’t be found on the current model`))
         return
       }
       setFocus({ kind: a.kind, hashes, pin: { n: a.n, point: a.point as Pin["point"], part: a.part } })

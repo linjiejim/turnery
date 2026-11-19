@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 import { ChevronLast, ChevronLeft, ChevronRight, CircleAlert, CircleDashed, Eye, EyeOff, Pause, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { byLocale, t } from "@/lib/i18n"
 import { IconButton } from "@/components/ui/button"
 import { OpIcon } from "@/components/op-icon"
 import { displayName, type Feature } from "../dsl"
@@ -127,7 +128,7 @@ export function TreeOverlay({
 
   const show = (f: Feature) => {
     setPeek(f.id)
-    onHover({ ids: f.op === "sketch" ? [] : [f.id], label: "该特征生成的面", feature: f.id })
+    onHover({ ids: f.op === "sketch" ? [] : [f.id], label: t("该特征生成的面", "Faces this feature made"), feature: f.id })
   }
   const hide = () => {
     setPeek(null)
@@ -197,10 +198,10 @@ export function TreeOverlay({
     if (!playing) return
     const { features, onHover: light } = live.current
     const f = features[shown]
-    if (f) light({ ids: f.op === "sketch" ? [] : [f.id], label: "该特征生成的面", feature: f.id })
+    if (f) light({ ids: f.op === "sketch" ? [] : [f.id], label: t("该特征生成的面", "Faces this feature made"), feature: f.id })
     // Drawn: rest on it a moment. Not yet: wait for it, but not for ever.
     const drawn = display !== drawnBefore.current
-    const t = window.setTimeout(
+    const timer = window.setTimeout(
       () => {
         const { features: now, showFeature } = live.current
         // The last step (the latest model) had its moment: done.
@@ -210,7 +211,7 @@ export function TreeOverlay({
       },
       drawn ? REPLAY_HOLD : REPLAY_WAIT,
     )
-    return () => window.clearTimeout(t)
+    return () => window.clearTimeout(timer)
   }, [playing, shown, display])
   // Stopped (at the end, by a click, by Esc): the last step's faces don't stay lit.
   const wasPlaying = React.useRef(false)
@@ -320,10 +321,10 @@ export function TreeOverlay({
   const open = Boolean(rollback || pinned || selectedFeature || playing)
 
   return (
-    <nav ref={nav} aria-label="特征树" className="pointer-events-none absolute right-3 bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
+    <nav ref={nav} aria-label={t("特征树", "Feature tree")} className="pointer-events-none absolute right-3 bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
       {details}
       {splitParts && (
-        <ul aria-label="零件" className="pointer-events-auto flex flex-wrap gap-1">
+        <ul aria-label={t("零件", "Parts")} className="pointer-events-auto flex flex-wrap gap-1">
           {splitParts.map((p, k) => {
             const hidden = parts.hidden.has(k)
             const faces = studio.display!.groups.filter((g) => g.part === k).map((g) => g.hash)
@@ -331,13 +332,13 @@ export function TreeOverlay({
               <li
                 key={p.name}
                 className="flex items-center gap-1.5 rounded-md border bg-background/90 py-0.5 pr-0.5 pl-2 text-small text-muted-foreground"
-                onMouseEnter={() => onHover({ ids: [], label: `零件「${p.name}」`, faces })}
+                onMouseEnter={() => onHover({ ids: [], label: t(`零件「${p.name}」`, `Part “${p.name}”`), faces })}
                 onMouseLeave={() => onHover(null)}
               >
-                {canColor ? <LookPicker look={p.look} label={`「${p.name}」的颜色`} onChange={(c) => setLook([p.name], c)} className="-ml-1" /> : <LookDot look={p.look} />}
+                {canColor ? <LookPicker look={p.look} label={t(`「${p.name}」的颜色`, `Color of “${p.name}”`)} onChange={(c) => setLook([p.name], c)} className="-ml-1" /> : <LookDot look={p.look} />}
                 <span className={cn("max-w-32 truncate", hidden && "line-through opacity-60")}>{p.name}</span>
                 <IconButton
-                  label={hidden ? `显示「${p.name}」` : `隐藏「${p.name}」`}
+                  label={hidden ? t(`显示「${p.name}」`, `Show “${p.name}”`) : t(`隐藏「${p.name}」`, `Hide “${p.name}”`)}
                   size="icon-sm"
                   className="size-6"
                   onClick={() => {
@@ -372,40 +373,48 @@ export function TreeOverlay({
               <span className={LIT}>
                 <LookPicker
                   look={{ ...(tree.appearance?.color ? { color: tree.appearance.color } : {}), ...(tree.appearance?.finish ? { finish: tree.appearance.finish } : {}), source: "part" }}
-                  label={splitParts ? "整个零件的颜色（各零件自己设的优先）" : "零件的颜色"}
+                  label={splitParts ? t("整个零件的颜色（各零件自己设的优先）", "Whole part color (each part’s own color wins)") : t("零件的颜色", "Part color")}
                   onChange={(c) => setLook(undefined, c)}
                   disabled={!studio.display?.mesh}
                   className="-ml-1"
                 />
               </span>
             )}
-            <span className="tabular">{tree.features.length} 个特征</span>
+            <span className="tabular">{t(`${tree.features.length} 个特征`, `${tree.features.length} ${tree.features.length === 1 ? "feature" : "features"}`)}</span>
             <span className={LIT}>
               <Hint
-                label="特征树怎么用"
+                label={t("特征树怎么用", "How the feature tree works")}
                 side="top"
-                tips={[
-                  "点一步：模型回到这一步，右侧显示它的详情，可以直接改尺寸、在模型上重选面或边。",
-                  "指向一步只看一眼：图标下方出现它的名字，停一下上方弹出小卡片；蓝色是这一步新生成的面，橙色是被它修改的面。",
-                  "再点一次、点「关闭」或按 Esc，回到最新一步；← → 在各步之间移动；双击一步改名。",
-                  "‹ › 往前、往后看一步；▶ 从第一步起把建模过程放一遍；›| 回到最新。",
-                ]}
+                tips={byLocale(
+                  [
+                    "点一步：模型回到这一步，右侧显示它的详情，可以直接改尺寸、在模型上重选面或边。",
+                    "指向一步只看一眼：图标下方出现它的名字，停一下上方弹出小卡片；蓝色是这一步新生成的面，橙色是被它修改的面。",
+                    "再点一次、点「关闭」或按 Esc，回到最新一步；← → 在各步之间移动；双击一步改名。",
+                    "‹ › 往前、往后看一步；▶ 从第一步起把建模过程放一遍；›| 回到最新。",
+                  ],
+                  [
+                    "Click a step: the model rolls back to it and its details open on the right, where you can edit dimensions or re-pick faces and edges on the model.",
+                    "Point at a step for a quick look: its name shows under the icon, and a small card pops up after a moment. Blue faces are new in this step, orange ones it modified.",
+                    "Click it again, click Close or press Esc to go back to the latest step. ← → move between steps; double-click a step to rename it.",
+                    "‹ › step back and forward; ▶ replays the modeling from the first step; ›| goes back to latest.",
+                  ],
+                )}
               />
             </span>
           </div>
           <div className="flex h-5 items-center gap-0.5">
-            <IconButton label="上一步" size="icon-sm" className={REPLAY_BUTTON} disabled={shown <= 0} onClick={() => stepBy(-1)}>
+            <IconButton label={t("上一步", "Previous step")} size="icon-sm" className={REPLAY_BUTTON} disabled={shown <= 0} onClick={() => stepBy(-1)}>
               <ChevronLeft />
             </IconButton>
-            <IconButton label={playing ? "暂停" : "播放建模过程"} size="icon-sm" className={REPLAY_BUTTON} disabled={count < 2} onClick={play}>
+            <IconButton label={playing ? t("暂停", "Pause") : t("播放建模过程", "Replay the modeling")} size="icon-sm" className={REPLAY_BUTTON} disabled={count < 2} onClick={play}>
               {playing ? <Pause /> : <Play />}
             </IconButton>
-            <IconButton label="下一步" size="icon-sm" className={REPLAY_BUTTON} disabled={shown >= count - 1} onClick={() => stepBy(1)}>
+            <IconButton label={t("下一步", "Next step")} size="icon-sm" className={REPLAY_BUTTON} disabled={shown >= count - 1} onClick={() => stepBy(1)}>
               <ChevronRight />
             </IconButton>
             {/* Laid out even when hidden: it appearing moves nothing. */}
             <IconButton
-              label="回到最新"
+              label={t("回到最新", "Back to latest")}
               size="icon-sm"
               className={cn(REPLAY_BUTTON, !rollback && "invisible")}
               onClick={() => {
@@ -540,13 +549,13 @@ function StepCard({ feature: f, result: r, index, name, full, dims }: { feature:
         </dl>
       )}
       {r?.state === "error" ? (
-        <div className="line-clamp-2 text-caption text-destructive">{r.message ?? "这一步没建成"}</div>
+        <div className="line-clamp-2 text-caption text-destructive">{r.message ?? t("这一步没建成", "This step failed")}</div>
       ) : r?.state === "skipped" ? (
-        <div className="text-caption text-faint-foreground">前面的步骤失败了，这一步没有重建</div>
+        <div className="text-caption text-faint-foreground">{t("前面的步骤失败了，这一步没有重建", "An earlier step failed, so this one wasn’t rebuilt")}</div>
       ) : r?.state === "ok" && r.faces ? (
         <div className="text-caption text-faint-foreground tabular">
-          新面 {r.faces.new}
-          {r.faces.modified ? ` · 改动 ${r.faces.modified}` : ""}
+          {t(`新面 ${r.faces.new}`, `New faces ${r.faces.new}`)}
+          {r.faces.modified ? t(` · 改动 ${r.faces.modified}`, ` · modified ${r.faces.modified}`) : ""}
         </div>
       ) : null}
       {f.intent && <div className="truncate text-caption text-muted-foreground">{f.intent}</div>}

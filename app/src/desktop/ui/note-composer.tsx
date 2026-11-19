@@ -2,6 +2,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/input"
+import { t } from "@/lib/i18n"
 
 /**
  * A note for the agent about the part, some parts or one step, not a spot on the model:
@@ -29,7 +30,7 @@ export function NoteComposer({ text, about, onClose, onSave }: { text: string | 
   return (
     <Dialog open={text !== null} onOpenChange={(open) => !open && onClose()} dirty={value.trim() !== (text ?? "").trim()}>
       <DialogContent size="md">
-        <DialogHeader title="给 agent 留一条备注" description={`${about}Agent 下一次调用时会知道，用 get_notes 读到全文。`} />
+        <DialogHeader title={t("给 agent 留一条备注", "Leave a note for the agent")} description={t(`${about}Agent 下一次调用时会知道，用 get_notes 读到全文。`, `${about} The agent learns of it on its next call and reads it in full with get_notes.`)} />
         <DialogBody>
           <Textarea
             rows={5}
@@ -43,16 +44,16 @@ export function NoteComposer({ text, about, onClose, onSave }: { text: string | 
                 void save()
               }
             }}
-            placeholder="例如：把外圆角改成 R6，顶部开口边再倒个 C0.5"
-            aria-label="备注"
+            placeholder={t("例如：把外圆角改成 R6，顶部开口边再倒个 C0.5", "For example: make the outer fillets R6 and chamfer the top opening C0.5")}
+            aria-label={t("备注", "Note")}
           />
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t("取消", "Cancel")}
           </Button>
           <Button variant="primary" loading={saving} disabled={!value.trim()} onClick={() => void save()}>
-            记下备注
+            {t("记下备注", "Save note")}
           </Button>
         </DialogFooter>
       </DialogContent>

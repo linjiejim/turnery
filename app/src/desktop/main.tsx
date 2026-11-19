@@ -6,7 +6,12 @@ import { LucideProvider } from "lucide-react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/toast"
 import { DesktopApp } from "./app"
+import { applyLocale, locale } from "@/lib/i18n"
 import "../index.css"
+
+applyLocale()
+// The app's menus and dialogs follow the window's language.
+void window.turnery?.setLanguage?.(locale)
 
 // Same rule as the site: a saved choice, otherwise the system's.
 const applyTheme = () => {

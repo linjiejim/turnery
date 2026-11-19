@@ -1,5 +1,6 @@
 // Where each parameter is used: 「草图1 · 矩形宽」「拉伸1 · 距离」, so the
 // parameters panel can say what a name means and light up what it drives.
+import { isEn } from "../lib/i18n"
 import { displayName, type Feature, type Tree } from "./dsl"
 import { namesIn } from "./expr"
 
@@ -33,12 +34,46 @@ const FIELD: Record<string, string> = {
 
 const SHAPE: Record<string, string> = { rect: "矩形", circle: "圆", polygon: "多边形", slot: "长圆孔", polyline: "轮廓", text: "文字" }
 
+const FIELD_EN: Record<string, string> = {
+  distance: "distance",
+  d: "diameter",
+  r: "radius",
+  w: "width",
+  h: "height",
+  t: "wall thickness",
+  count: "count",
+  count2: "count (2nd direction)",
+  spacing: "spacing",
+  spacing2: "spacing (2nd direction)",
+  angle: "angle",
+  size: "text size",
+  offset: "offset",
+  depth: "depth",
+  length: "length",
+  width: "width",
+  sides: "sides",
+  center: "center",
+  at: "position",
+  points: "outline points",
+  rotate: "rotation",
+  corner: "corner radius",
+  radius: "radius",
+  value: "coordinate",
+  near: "near point",
+}
+
+const SHAPE_EN: Record<string, string> = { rect: "rectangle", circle: "circle", polygon: "polygon", slot: "slot", polyline: "outline", text: "text" }
+
 const SELECTORS = new Set(["edges", "faces", "open", "face", "not"])
 
 export type ParamUse = { feature: Feature; what: string }
 
-/** What a field path means, in words: ["shapes", 0, "w"] on a rect → 「矩形宽」. */
-export function fieldLabel(f: Feature, path: (string | number)[]): string {
+/**
+ * What a field path means, in words: ["shapes", 0, "w"] on a rect → 「矩形宽」. Chinese (the kernel labels
+ * dimensions with it) unless `shown`: then in the page's language, for the parameters panel.
+ */
+export function fieldLabel(f: Feature, path: (string | number)[], shown = false): string {
+  if (shown && isEn) return fieldLabelEn(f, path)
   if (path.some((k) => typeof k === "string" && SELECTORS.has(k))) return "选择条件"
   const keys = path.filter((k): k is string => typeof k === "string")
   const last = keys[keys.length - 1] ?? ""
@@ -53,14 +88,30 @@ export function fieldLabel(f: Feature, path: (string | number)[]): string {
   return FIELD[last] ?? last
 }
 
-/** Every place `name` appears in the tree's features, as 「特征名 · 字段」. */
+function fieldLabelEn(f: Feature, path: (string | number)[]): string {
+  if (path.some((k) => typeof k === "string" && SELECTORS.has(k))) return "selection"
+  const keys = path.filter((k): k is string => typeof k === "string")
+  const last = keys[keys.length - 1] ?? ""
+  const field = FIELD_EN[last] ?? last
+  if (f.op === "sketch" && path[0] === "shapes" && typeof path[1] === "number") return [SHAPE_EN[f.shapes[path[1]].type], field].filter(Boolean).join(" ")
+  if (keys.includes("cbore")) return `counterbore ${field}`
+  if (keys.includes("csink")) return `countersink ${field}`
+  if (keys.includes("profile")) return `profile ${field}`
+  if (keys[0] === "on" || keys[0] === "neutral") return "sketch plane offset"
+  if (f.op === "hole" && last === "d") return "hole diameter"
+  if (f.op === "chamfer" && last === "d") return "chamfer distance"
+  if (f.op === "fillet" && last === "r") return "fillet radius"
+  return field
+}
+
+/** Every place `name` appears in the tree's features, as 「特征名 · 字段」 (for the window: the page's language). */
 export function paramUses(tree: Tree, name: string): ParamUse[] {
   const out: ParamUse[] = []
   for (const f of tree.features) {
     const whats = new Set<string>()
     const walk = (v: unknown, path: (string | number)[]) => {
       if (typeof v === "string") {
-        if (path.length && !["id", "name", "intent", "sketch", "of", "text", "op"].includes(String(path[path.length - 1])) && safeNames(v).includes(name)) whats.add(fieldLabel(f, path))
+        if (path.length && !["id", "name", "intent", "sketch", "of", "text", "op"].includes(String(path[path.length - 1])) && safeNames(v).includes(name)) whats.add(fieldLabel(f, path, true))
       } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, [...path, i]))
       else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, [...path, k])
     }
