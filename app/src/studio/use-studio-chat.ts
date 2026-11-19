@@ -133,8 +133,8 @@ export function useStudioChat(studio: Studio) {
 
   const send = React.useCallback(
     (text: string, files?: FileUIPart[], notes?: Note[], shot?: string | null) => {
-      const t = text.trim()
-      if (!t && !files?.length && !notes?.length) return
+      const said = text.trim()
+      if (!said && !files?.length && !notes?.length) return
       setPaused(false)
       const s = bridge.studio
       s?.checkpoint()
@@ -142,7 +142,8 @@ export function useStudioChat(studio: Studio) {
       const annotations = notes?.length ? notes.map(({ hash: _hash, ...a }) => a) : undefined
       const metadata = s ? { tree: s.treeRef.current, summary: s.summary, annotations } : { annotations }
       const all = [...(files ?? []), ...(shot ? [{ type: "file" as const, mediaType: "image/png", filename: ANNOTATED_VIEW, url: shot }] : [])]
-      void chat.sendMessage({ text: t || (notes?.length ? "按标注修改" : "照着这张图建模"), files: all.length ? all : undefined, metadata })
+      // Nothing typed: a short message of the person's own, in their language.
+      void chat.sendMessage({ text: said || (notes?.length ? t("按标注修改", "Change it as noted") : t("照着这张图建模", "Model it from this picture")), files: all.length ? all : undefined, metadata })
     },
     [chat],
   )
@@ -175,8 +176,8 @@ export function useStudioChat(studio: Studio) {
   }
   React.useEffect(() => {
     if (!linger) return
-    const t = setTimeout(() => setLinger(0), BETWEEN_STEPS_MS)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setLinger(0), BETWEEN_STEPS_MS)
+    return () => clearTimeout(timer)
   }, [linger])
   const busy = requesting || (linger > 0 && chat.status === "ready" && !paused)
 

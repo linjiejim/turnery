@@ -94,7 +94,13 @@ export function setLocale(to: Locale) {
   try {
     localStorage.setItem(STORE, to)
   } catch {
-    /* private mode: this visit only */
+    // Storage full or private mode: this visit only. An older English choice mustn't win either
+    // (applyLocale would move a Chinese address straight back to /en); removing needs no room.
+    try {
+      localStorage.removeItem(STORE)
+    } catch {
+      /* no storage at all */
+    }
   }
   if (!inBrowser) return
   if (inDesktopWindow) return window.location.reload()

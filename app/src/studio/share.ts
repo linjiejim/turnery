@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai"
-import { t } from "../lib/i18n"
+import { isEn, locale, localizedPath, t } from "../lib/i18n"
 import { Tree } from "./dsl"
 import { byteLength, checkTree, LIMITS } from "./limits"
 
@@ -67,9 +67,22 @@ export function payloadProblem(p: SharePayload): string | null {
 
 export type ShareCreated = { id: string; url: string; deleteToken: string }
 
+/** The share API's errors in English, by code (the server writes its messages in Chinese). */
+const SHARE_ERRORS_EN: Record<string, string> = {
+  "rate-limit": "Too many requests. Try again in a few minutes.",
+  "too-large": "The model is too big to share.",
+  full: "Sharing is full right now. Try again later.",
+  secret: "This looks like it contains a secret key, so it wasn’t shared.",
+  "bad-request": "The share request was malformed.",
+  "bad-id": "That link isn’t valid.",
+  "not-found": "This link doesn’t exist or was deleted.",
+  forbidden: "Wrong delete token: only the browser that made the link can delete it.",
+}
+
 async function failure(r: Response, fallback: string) {
-  const j = (await r.json().catch(() => null)) as { message?: string } | null
-  return new Error(j?.message ?? fallback)
+  const j = (await r.json().catch(() => null)) as { error?: string; message?: string } | null
+  const en = isEn && j?.error ? SHARE_ERRORS_EN[j.error] : undefined
+  return new Error(en ?? (isEn ? fallback : (j?.message ?? fallback)))
 }
 
 export async function createShare(p: SharePayload): Promise<ShareCreated> {
@@ -138,7 +151,8 @@ export async function deleteShare(id: string, token: string): Promise<void> {
   forgetShare(id)
 }
 
-export const shareUrl = (id: string) => new URL(`/studio/s/${id}`, location.origin).href
+/** A shared link, in the language it was made in (/en/studio/s/… from an English page). */
+export const shareUrl = (id: string) => new URL(localizedPath(`/studio/s/${id}`, locale), location.origin).href
 
 // Delete tokens live only in the browser that made the link.
 const TOKENS = "ft-studio-shares-v1"

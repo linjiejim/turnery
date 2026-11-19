@@ -656,8 +656,12 @@ function refreshMenu() {
 
 function wireIpc() {
   // The window's language (its own choice, else the system's): the menus and dialogs follow it.
-  ipcMain.handle("turnery:set-language", (_e, lang: unknown) => {
-    if (setLang(lang)) refreshMenu()
+  // A change (switched in one window, which reloaded itself) reloads the other windows too: they share
+  // the stored choice but each read it when it loaded.
+  ipcMain.handle("turnery:set-language", (e, lang: unknown) => {
+    if (!setLang(lang)) return
+    refreshMenu()
+    for (const w of BrowserWindow.getAllWindows()) if (w.webContents !== e.sender && !w.webContents.isLoading()) w.webContents.reload()
   })
   ipcMain.handle("turnery:state", (e) => {
     const { engine } = wsOf(e)

@@ -38,6 +38,7 @@ const load = async (file) => {
 }
 
 const meta = await load("src/lib/page-meta.ts")
+const { localizeIndex } = await load("src/content/en/teardowns.ts")
 const { SITE_URL } = await load("src/lib/site.ts")
 const models = JSON.parse(await readFile(path.join(dist, "models", "index.json"), "utf8"))
 
@@ -45,16 +46,23 @@ const OG_IMAGE = { path: "/og.png", width: 1200, height: 630, alt: { zh: "Turner
 
 /** The English address of a Chinese page: / → /en, /learn → /en/learn. */
 const enPath = (p) => (p === "/" ? "/en" : `/en${p}`)
+/** A page and its English twin, each naming the other. */
+const twins = (p, metaIn) => [
+  { path: p, ...metaIn("zh"), lang: "zh", twin: enPath(p) },
+  { path: enPath(p), ...metaIn("en"), lang: "en", twin: p },
+]
+const modelsEn = localizeIndex(models)
 const fixed = Object.keys(meta.staticPages("zh"))
 
 /** @type {{ path: string, title: string | null, description: string, lang: "zh" | "en", twin?: string }[]} */
 const pages = [
   ...Object.entries(meta.staticPages("zh")).map(([p, m]) => ({ path: p, ...m, lang: "zh", twin: enPath(p) })),
-  // Lessons, cards and teardowns keep their Chinese titles for now: no English copy of those.
   ...fixed.map((p) => ({ path: enPath(p), ...meta.staticPages("en")[p], lang: "en", twin: p })),
-  ...meta.lessonPaths().map((p) => ({ path: p, ...meta.lessonPageMeta(p.slice("/lesson/".length), "zh"), lang: "zh" })),
-  ...Object.values(models).map((m) => ({ path: `/teardown/${m.id}`, ...meta.teardownPageMeta(m, "zh"), lang: "zh" })),
-  ...meta.cardPaths().map((p) => ({ path: p, ...meta.cardPageMeta(p.slice("/card/".length), "zh"), lang: "zh" })),
+  // Lessons, cards and teardowns: English titles from the catalog (their bodies are still Chinese, and
+  // their descriptions say so), each paired with its Chinese page.
+  ...meta.lessonPaths().flatMap((p) => twins(p, (lang) => meta.lessonPageMeta(p.slice("/lesson/".length), lang))),
+  ...Object.values(models).flatMap((m) => twins(`/teardown/${m.id}`, (lang) => meta.teardownPageMeta(lang === "en" ? modelsEn[m.id] : m, lang))),
+  ...meta.cardPaths().flatMap((p) => twins(p, (lang) => meta.cardPageMeta(p.slice("/card/".length), lang))),
 ]
 for (const p of pages) {
   if (!/^\/([\w.-]+(\/[\w.-]+)*)?$/.test(p.path) || p.path.includes("..")) throw new Error(`prerender: unsafe path ${p.path}`)
