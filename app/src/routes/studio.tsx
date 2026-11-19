@@ -24,6 +24,7 @@ import { CodePanel, ParamsPanel } from "@/studio/ui/side-panels"
 import type { Hover } from "@/studio/scene"
 import { StudioViewport } from "@/studio/ui/studio-viewport"
 import { ConnectorOverlay } from "@/studio/ui/connector-overlay"
+import { DesktopBanner } from "@/studio/ui/desktop-banner"
 import { NO_PARTS_VIEW, type PartsView } from "@/studio/scene"
 import { DrawingSheet } from "@/studio/ui/drawing-sheet"
 import { useReselect } from "@/studio/use-reselect"
@@ -220,6 +221,8 @@ export function StudioPage() {
           }}
         />
       </header>
+      {/* Under the top bar, not over it: toasts open 56 px from the top and must not cover its actions. */}
+      <DesktopBanner />
 
       <div className="flex min-h-0 flex-1 max-lg:flex-col">
         <main
