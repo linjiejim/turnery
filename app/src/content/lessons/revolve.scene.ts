@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
 import { datumPlane, edgeLine, face, label, line } from "@/three/build"
 import { flipFaces, lathe, ringPoints, type V2 } from "@/three/geom"
+import { t } from "@/lib/i18n"
 import type { Viewer } from "@/three/viewer"
 import { LessonScene } from "./scene"
 
@@ -52,7 +53,7 @@ export class RevolveScene extends LessonScene<RevolveState> {
       triedOffset: false,
     })
     v.setGrid(100, 10)
-    const plane = datumPlane(v.kit, "XZ", 120, "前视基准面")
+    const plane = datumPlane(v.kit, "XZ", 120, t("前视基准面", "Front plane"))
     plane.position.set(12, 0, 30)
     this.root.add(plane, this.profile, this.solid)
     this.handles = EDITABLE.map((i) => this.handle(i))
@@ -100,9 +101,9 @@ export class RevolveScene extends LessonScene<RevolveState> {
     this.clear(this.profile)
     const pts3 = [...loop, loop[0]].map(([r, z]) => new THREE.Vector3(r, -0.05, z))
     this.profile.add(line(pts3, crossed ? kit.sketchThin : kit.sketch))
-    if (crossed) this.profile.add(label("轮廓越过了旋转轴", new THREE.Vector3(0, 0, 58), "border-destructive text-destructive font-sans"))
+    if (crossed) this.profile.add(label(t("轮廓越过了旋转轴", "The profile crosses the axis"), new THREE.Vector3(0, 0, 58), "border-destructive text-destructive font-sans"))
     this.profile.add(line([new THREE.Vector3(0, 0, -8), new THREE.Vector3(0, 0, 62)], kit.construction))
-    this.profile.add(label("旋转轴", new THREE.Vector3(0, 0, 64), "border-transparent bg-transparent font-sans text-faint-foreground"))
+    this.profile.add(label(t("旋转轴", "Axis of revolution"), new THREE.Vector3(0, 0, 64), "border-transparent bg-transparent font-sans text-faint-foreground"))
 
     this.clear(this.solid)
     if (!crossed && s.angle > 0) {
@@ -139,7 +140,7 @@ export class RevolveScene extends LessonScene<RevolveState> {
   private handle(idx: number) {
     const el = document.createElement("div")
     el.className = "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-shadow hover:ring-4 hover:ring-primary/25"
-    el.title = "拖动轮廓点"
+    el.title = t("拖动轮廓点", "Drag the profile point")
     const o = new CSS2DObject(el)
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault()

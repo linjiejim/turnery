@@ -1,6 +1,7 @@
 import * as THREE from "three"
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
+import { t } from "@/lib/i18n"
 import { faces, label, line, paint } from "@/three/build"
 import { VIEW_DIRS, type Viewer } from "@/three/viewer"
 import { L, lBlock, type Cylinder } from "./coordinates.solid"
@@ -62,14 +63,14 @@ const wall = (x: number) => [v3(x, -BY, Z0), v3(x, BY, Z0), v3(x, BY, Z1), v3(x,
 
 export const VIEWS: Record<Angle, ViewDef[]> = {
   first: [
-    { key: "front", name: "主视图", dir: v3(0, 1, 0), axis: 1, at: BY, pivot: v3(0, 0, 0), hingeAxis: AX, hingeAngle: 0, corners: front(BY) },
-    { key: "top", name: "俯视图", dir: v3(0, 0, -1), axis: 2, at: Z0, pivot: v3(0, BY, Z0), hingeAxis: AX, hingeAngle: Math.PI / 2, corners: floor(Z0) },
-    { key: "side", name: "左视图", dir: v3(1, 0, 0), axis: 0, at: BX, pivot: v3(BX, BY, 0), hingeAxis: AZ, hingeAngle: Math.PI / 2, corners: wall(BX) },
+    { key: "front", name: t("主视图", "Front view"), dir: v3(0, 1, 0), axis: 1, at: BY, pivot: v3(0, 0, 0), hingeAxis: AX, hingeAngle: 0, corners: front(BY) },
+    { key: "top", name: t("俯视图", "Top view"), dir: v3(0, 0, -1), axis: 2, at: Z0, pivot: v3(0, BY, Z0), hingeAxis: AX, hingeAngle: Math.PI / 2, corners: floor(Z0) },
+    { key: "side", name: t("左视图", "Left view"), dir: v3(1, 0, 0), axis: 0, at: BX, pivot: v3(BX, BY, 0), hingeAxis: AZ, hingeAngle: Math.PI / 2, corners: wall(BX) },
   ],
   third: [
-    { key: "front", name: "主视图", dir: v3(0, 1, 0), axis: 1, at: -BY, pivot: v3(0, 0, 0), hingeAxis: AX, hingeAngle: 0, corners: front(-BY) },
-    { key: "top", name: "俯视图", dir: v3(0, 0, -1), axis: 2, at: Z1, pivot: v3(0, -BY, Z1), hingeAxis: AX, hingeAngle: Math.PI / 2, corners: floor(Z1) },
-    { key: "side", name: "右视图", dir: v3(-1, 0, 0), axis: 0, at: BX, pivot: v3(BX, -BY, 0), hingeAxis: AZ, hingeAngle: -Math.PI / 2, corners: wall(BX) },
+    { key: "front", name: t("主视图", "Front view"), dir: v3(0, 1, 0), axis: 1, at: -BY, pivot: v3(0, 0, 0), hingeAxis: AX, hingeAngle: 0, corners: front(-BY) },
+    { key: "top", name: t("俯视图", "Top view"), dir: v3(0, 0, -1), axis: 2, at: Z1, pivot: v3(0, -BY, Z1), hingeAxis: AX, hingeAngle: Math.PI / 2, corners: floor(Z1) },
+    { key: "side", name: t("右视图", "Right view"), dir: v3(-1, 0, 0), axis: 0, at: BX, pivot: v3(BX, -BY, 0), hingeAxis: AZ, hingeAngle: -Math.PI / 2, corners: wall(BX) },
   ],
 }
 

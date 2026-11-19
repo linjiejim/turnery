@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { face, faces, label, line, tag } from "@/three/build"
 import type { Viewer } from "@/three/viewer"
 import type { OpId } from "@/content/ops"
+import { t } from "@/lib/i18n"
 import { buildPart, chainAt, HOLE, W, type ChamferEnd, type FeatureId } from "./feature-tree.model"
 import { LessonScene } from "./scene"
 
@@ -31,10 +32,10 @@ export type FtState = {
 export type FeatureInfo = { id: FeatureId; name: string; op: OpId }
 
 export const FEATURES: FeatureInfo[] = [
-  { id: "extrude1", name: "拉伸1", op: "extrude" },
-  { id: "hole1", name: "孔1", op: "hole" },
-  { id: "fillet1", name: "圆角1", op: "fillet" },
-  { id: "chamfer1", name: "倒角1", op: "chamfer" },
+  { id: "extrude1", name: t("拉伸1", "Extrude1"), op: "extrude" },
+  { id: "hole1", name: t("孔1", "Hole1"), op: "hole" },
+  { id: "fillet1", name: t("圆角1", "Fillet1"), op: "fillet" },
+  { id: "chamfer1", name: t("倒角1", "Chamfer1"), op: "chamfer" },
 ]
 
 export const DEFAULT_DEPTH = 30
@@ -164,20 +165,20 @@ export class FeatureTreeScene extends LessonScene<FtState> {
       // The edge the chamfer was attached to no longer exists: show where it used to be.
       const lost = chainAt("right", H)
       this.notes.add(line(lost, kit.path))
-      this.notes.add(label("倒角1：找不到 Edge7", midOf(lost).add(new THREE.Vector3(8, -10, 16)), destructive))
+      this.notes.add(label(t("倒角1：找不到 Edge7", "Chamfer1: can't find Edge7"), midOf(lost).add(new THREE.Vector3(8, -10, 16)), destructive))
     }
     if (d.wrongEdge) {
       const meant = chainAt("right", H)
       this.notes.add(line(meant, kit.path))
-      this.notes.add(label("想要的边：现在叫 Edge9", midOf(meant).add(new THREE.Vector3(6, -8, 18)), "border-transparent bg-popover font-sans text-muted-foreground"))
+      this.notes.add(label(t("想要的边：现在叫 Edge9", "The edge you meant: now Edge9"), midOf(meant).add(new THREE.Vector3(6, -8, 18)), "border-transparent bg-popover font-sans text-muted-foreground"))
       const now = chainAt("left", H)
-      this.notes.add(label("倒角1 落在这里：新的 Edge7", midOf(now).add(new THREE.Vector3(0, -8, -20)), "border-scene-modified font-sans"))
+      this.notes.add(label(t("倒角1 落在这里：新的 Edge7", "Chamfer1 landed here: the new Edge7"), midOf(now).add(new THREE.Vector3(0, -8, -20)), "border-scene-modified font-sans"))
     }
     if (s.step >= 3 && d.chamferEnd === "right" && s.refMode === "intent") {
-      this.notes.add(tag("倒角1 · 右端面 ∩ 圆角面", midOf(chainAt("right", H)).add(new THREE.Vector3(6, -8, 18))))
+      this.notes.add(tag(t("倒角1 · 右端面 ∩ 圆角面", "Chamfer1 · right end face ∩ fillet face"), midOf(chainAt("right", H)).add(new THREE.Vector3(6, -8, 18))))
     }
     if (s.step >= 3 && d.through && s.upTo >= 2) {
-      this.notes.add(label("孔1 打穿了底面：多出一圈边", new THREE.Vector3(HOLE.x, -W / 2, 0), "border-transparent bg-popover font-sans text-muted-foreground"))
+      this.notes.add(label(t("孔1 打穿了底面：多出一圈边", "Hole1 broke through the bottom: an extra loop of edges"), new THREE.Vector3(HOLE.x, -W / 2, 0), "border-transparent bg-popover font-sans text-muted-foreground"))
     }
     this.v.invalidate()
   }

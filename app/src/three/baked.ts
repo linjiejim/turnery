@@ -6,6 +6,7 @@ import { datumPlane, label, linearDim } from "./build"
 import type { MaterialKit } from "./materials"
 import type { OpId } from "@/content/ops"
 import { localizeIndex } from "@/content/en/teardowns"
+import { localizeManifest, sceneWordsEn } from "@/content/en/teardown-text"
 import { isEn } from "@/lib/i18n"
 
 /**
@@ -115,10 +116,10 @@ const fetchJson = <T,>(url: string) => {
 /** The model index; on English pages with the catalog text in English (content/en/teardowns.ts). */
 const VIEWS_EN: Record<string, string> = { 前: "Front", 上: "Top", 右: "Right", 后: "Back", 下: "Bottom", 左: "Left" }
 
-/** Words baked into a model's scene (「前视基准面」): the standard plane names in English on English pages. */
+/** Words baked into a model's scene (「前视基准面」, 「分度圆 Ø27」): in English on English pages. */
 export function bakedWords(text: string) {
   if (!isEn) return text
-  return text.replace(/([前上右后下左])视基准面/g, (_, v: string) => `${VIEWS_EN[v]} plane`)
+  return sceneWordsEn(text.replace(/([前上右后下左])视基准面/g, (_, v: string) => `${VIEWS_EN[v]} plane`))
 }
 
 export const loadIndex = () => {
@@ -127,11 +128,12 @@ export const loadIndex = () => {
 }
 export const loadManifest = (id: string) => {
   const manifest = fetchJson<Manifest>(`${base}/${id}/manifest.json`)
-  // English pages: the header's title, subtitle, level and "what it teaches", as in the index.
+  // English pages: the header's title, subtitle, level and "what it teaches", as in the index, and
+  // the steps, parameters and parts (content/en/teardown-text.ts).
   return isEn
     ? manifest.then((m) => {
         const { title, subtitle, level, teaches } = localizeIndex({ [id]: { ...m, id } as unknown as ModelIndexEntry })[id]
-        return { ...m, title, subtitle, level, teaches }
+        return localizeManifest({ ...m, title, subtitle, level, teaches })
       })
     : manifest
 }
@@ -200,7 +202,7 @@ export function displayStep(node: THREE.Object3D, kit: MaterialKit, opts: { role
       g.add(plane)
     } else if (d.kind === "dim") {
       const p = d as unknown as { a: number[]; b: number[]; dir: number[]; offset: number; text: string }
-      g.add(linearDim(kit, new THREE.Vector3(...p.a), new THREE.Vector3(...p.b), new THREE.Vector3(...p.dir), p.offset, p.text))
+      g.add(linearDim(kit, new THREE.Vector3(...p.a), new THREE.Vector3(...p.b), new THREE.Vector3(...p.dir), p.offset, bakedWords(p.text)))
     } else if (d.kind === "label") {
       const p = d as unknown as { at: number[]; text: string }
       g.add(label(bakedWords(p.text), new THREE.Vector3(...p.at)))

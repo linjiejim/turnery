@@ -16,7 +16,6 @@ import { CARDS, cardMeta } from "@/content/cards"
 import type { CardDef } from "@/content/cards/types"
 import { lessonById, placeOf } from "@/content/curriculum"
 import { lessonMeta } from "@/content/lessons"
-import { ZhOnlyNotice } from "@/components/zh-only"
 import { isEn, t } from "@/lib/i18n"
 
 /**
@@ -121,9 +120,7 @@ function CardReader({ def }: { def: CardDef }) {
         {place && (
           <>
             <span className="text-faint-foreground">/</span>
-            <span>
-              {place.track.id} {place.track.title.split(/[：:]/)[0]}
-            </span>
+            <span>{place.track.title.split(/[：:]/)[0]}</span>
             <span className="text-faint-foreground">/</span>
             <span>{place.module.title}</span>
           </>
@@ -133,13 +130,11 @@ function CardReader({ def }: { def: CardDef }) {
       <header className="mt-5">
         <h1 className="text-title-lg font-semibold">{def.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-muted-foreground">
-          <span className="font-mono tabular text-faint-foreground">{def.code}</span>
           <Badge tone="info">{t("图文", "Card")}</Badge>
           <span>{t(`约 ${def.minutes} 分钟`, `About ${def.minutes} min`)}</span>
           {done && <Badge tone="success">{t("已完成", "Done")}</Badge>}
         </div>
         {entry && <p className="mt-3 text-body text-muted-foreground">{t("目标：", "Goal: ")}{entry.goal}</p>}
-        <ZhOnlyNotice what="This card" className="mt-4" />
       </header>
 
       {def.sections.map((s, i) => (
@@ -293,7 +288,6 @@ function Pager({ code, dir }: { code: string; dir: "prev" | "next" }) {
         {dir === "next" && <ArrowRight className="size-3.5" />}
       </span>
       <span className="text-body font-medium">
-        <span className="mr-1.5 font-mono text-small font-normal text-faint-foreground">{code}</span>
         {entry?.title ?? code}
       </span>
     </Link>

@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n"
+import { byLocale, t } from "@/lib/i18n"
 import * as THREE from "three"
 import { datumPlane, edgeLine, face, label, line, linearDim } from "@/three/build"
 import { arc, ellipsePoints, filletCorner, flipFaces, intersect, lathe, offsetLine, ringPoints, sweepEllipse, type V2 } from "@/three/geom"
@@ -11,16 +11,16 @@ import type { BuildInput, BuildOutput, FeatureDef, ParamDef, Params, PartModel }
  * the shell so the shell offsets it into a concentric inner fillet.
  */
 const PARAMS: ParamDef[] = [
-  { id: "H", label: "杯高", unit: "mm", min: 70, max: 130, step: 1, value: 96, feature: "sk1" },
-  { id: "D", label: "杯口直径", unit: "mm", min: 60, max: 110, step: 1, value: 84, feature: "sk1" },
-  { id: "d", label: "杯底直径", unit: "mm", min: 50, max: 110, step: 1, value: 72, feature: "sk1" },
-  { id: "rb", label: "杯底圆角", unit: "mm", min: 0, max: 20, step: 0.5, value: 9, feature: "fil1" },
-  { id: "t", label: "壁厚", unit: "mm", min: 1.5, max: 8, step: 0.1, value: 3.5, feature: "shell1" },
-  { id: "rl", label: "杯口圆角", unit: "mm", min: 0, max: 3, step: 0.1, value: 1.2, feature: "fil2" },
-  { id: "reach", label: "把手外伸", unit: "mm", min: 16, max: 46, step: 1, value: 30, feature: "sk2" },
-  { id: "span", label: "把手跨度", unit: "mm", min: 28, max: 80, step: 1, value: 54, feature: "sk2" },
-  { id: "ha", label: "把手截面厚", unit: "mm", min: 3, max: 9, step: 0.5, value: 5.5, feature: "sk3" },
-  { id: "hb", label: "把手截面宽", unit: "mm", min: 5, max: 14, step: 0.5, value: 9, feature: "sk3" },
+  { id: "H", label: t("杯高", "Height"), unit: "mm", min: 70, max: 130, step: 1, value: 96, feature: "sk1" },
+  { id: "D", label: t("杯口直径", "Rim diameter"), unit: "mm", min: 60, max: 110, step: 1, value: 84, feature: "sk1" },
+  { id: "d", label: t("杯底直径", "Base diameter"), unit: "mm", min: 50, max: 110, step: 1, value: 72, feature: "sk1" },
+  { id: "rb", label: t("杯底圆角", "Bottom fillet"), unit: "mm", min: 0, max: 20, step: 0.5, value: 9, feature: "fil1" },
+  { id: "t", label: t("壁厚", "Wall thickness"), unit: "mm", min: 1.5, max: 8, step: 0.1, value: 3.5, feature: "shell1" },
+  { id: "rl", label: t("杯口圆角", "Rim fillet"), unit: "mm", min: 0, max: 3, step: 0.1, value: 1.2, feature: "fil2" },
+  { id: "reach", label: t("把手外伸", "Handle reach"), unit: "mm", min: 16, max: 46, step: 1, value: 30, feature: "sk2" },
+  { id: "span", label: t("把手跨度", "Handle span"), unit: "mm", min: 28, max: 80, step: 1, value: 54, feature: "sk2" },
+  { id: "ha", label: t("把手截面厚", "Handle section thickness"), unit: "mm", min: 3, max: 9, step: 0.5, value: 5.5, feature: "sk3" },
+  { id: "hb", label: t("把手截面宽", "Handle section width"), unit: "mm", min: 5, max: 14, step: 0.5, value: 9, feature: "sk3" },
 ]
 
 const ISO: [number, number, number] = [1, -1.1, 0.85]
@@ -30,49 +30,70 @@ const FEATURES: FeatureDef[] = [
     id: "sk1",
     op: "sketch",
     name: "草图1",
-    title: "杯身半截面",
-    summary: (p) => `前视基准面 · H${p.H} · Ø${p.D} / Ø${p.d}`,
-    why: "旋转体只画一半截面，另一半由旋转生成。直径关于中心线标注，和图纸、卡尺的读数一致。",
-    pitfall: "轮廓一旦越过中心线，旋转会自交失败。",
+    title: t("杯身半截面", "Body half-section"),
+    summary: (p) => t(`前视基准面 · H${p.H} · Ø${p.D} / Ø${p.d}`, `Front plane · H${p.H} · Ø${p.D} / Ø${p.d}`),
+    why: t(
+      "旋转体只画一半截面，另一半由旋转生成。直径关于中心线标注，和图纸、卡尺的读数一致。",
+      "For a revolved part you draw only half the section; the revolve makes the other half. Diameters are dimensioned about the centerline, so they read the same as on a drawing or a caliper.",
+    ),
+    pitfall: t("轮廓一旦越过中心线，旋转会自交失败。", "If the profile crosses the centerline, the revolve intersects itself and fails."),
     view: [0, -1, 0],
   },
   {
     id: "rev1",
     op: "revolve",
     name: "旋转1",
-    title: "杯身",
-    summary: () => "360° · 绕中心线",
-    why: "先得到一个实心的「毛坯」。后面的特征都在它上面做加减，就像车床上的一根料。",
+    title: t("杯身", "Body"),
+    summary: () => t("360° · 绕中心线", "360° · about the centerline"),
+    why: t(
+      "先得到一个实心的「毛坯」。后面的特征都在它上面做加减，就像车床上的一根料。",
+      "First you get a solid “blank”. Every later feature adds to it or cuts from it, like a piece of bar stock on a lathe.",
+    ),
     view: ISO,
   },
   {
     id: "fil1",
     op: "fillet",
     name: "圆角1",
-    title: "杯底外圆角",
+    title: t("杯底外圆角", "Outer bottom fillet"),
     summary: (p) => `R${p.rb}`,
-    why: "在抽壳之前给外底边加圆角：抽壳会把它向内偏移出一个同心的内圆角，转角处的壁厚和别处一样。",
-    pitfall: "如果先抽壳再加外圆角，内侧仍是尖角，转角处的壁会被削薄。",
+    why: t(
+      "在抽壳之前给外底边加圆角：抽壳会把它向内偏移出一个同心的内圆角，转角处的壁厚和别处一样。",
+      "Fillet the outer bottom edge before the shell: the shell offsets it inward into a concentric inner fillet, so the wall at the corner is as thick as everywhere else.",
+    ),
+    pitfall: t(
+      "如果先抽壳再加外圆角，内侧仍是尖角，转角处的壁会被削薄。",
+      "If you shell first and add the outer fillet afterwards, the inside corner stays sharp and the wall gets thinner at the corner.",
+    ),
     view: [1, -1.1, -0.5],
   },
   {
     id: "shell1",
     op: "shell",
     name: "抽壳1",
-    title: "掏空杯身",
-    summary: (p) => `壁厚 ${p.t} · 移除顶面`,
-    why: "抽壳把实心件变成等壁厚的薄壁件：选中的顶面被打开，其余所有面向内偏移一个壁厚。",
-    pitfall: "壁厚 ≥ 杯底圆角时，内侧圆角会退化成尖角。把壁厚拉大试试。",
+    title: t("掏空杯身", "Hollow out the body"),
+    summary: (p) => t(`壁厚 ${p.t} · 移除顶面`, `Wall thickness ${p.t} · top face removed`),
+    why: t(
+      "抽壳把实心件变成等壁厚的薄壁件：选中的顶面被打开，其余所有面向内偏移一个壁厚。",
+      "The shell turns the solid into a thin-walled part with an even wall: the selected top face is opened, and every other face is offset inward by the wall thickness.",
+    ),
+    pitfall: t(
+      "壁厚 ≥ 杯底圆角时，内侧圆角会退化成尖角。把壁厚拉大试试。",
+      "When the wall thickness is ≥ the bottom fillet, the inner fillet degenerates into a sharp corner. Try making the wall thicker.",
+    ),
     view: [0.8, -1, 1.6],
   },
   {
     id: "fil2",
     op: "fillet",
     name: "圆角2",
-    title: "杯口圆角",
-    summary: (p) => `R${p.rl} · 内外两条边`,
-    why: "嘴唇接触的边必须圆滑。它只依赖杯口，放在抽壳之后、把手之前，以后改把手不会碰到它。",
-    pitfall: "半径超过壁厚的一半就放不下：内外两个圆角会撞在一起。",
+    title: t("杯口圆角", "Rim fillet"),
+    summary: (p) => t(`R${p.rl} · 内外两条边`, `R${p.rl} · inner and outer edges`),
+    why: t(
+      "嘴唇接触的边必须圆滑。它只依赖杯口，放在抽壳之后、把手之前，以后改把手不会碰到它。",
+      "The edges your lips touch must be smooth. This fillet depends only on the rim, so it goes after the shell and before the handle: changing the handle later won't touch it.",
+    ),
+    pitfall: t("半径超过壁厚的一半就放不下：内外两个圆角会撞在一起。", "A radius over half the wall thickness doesn't fit: the inner and outer fillets run into each other."),
     view: [0.7, -1, 0.9],
     focus: (p) => new THREE.Box3(new THREE.Vector3(-p.D / 2, -p.D / 2, p.H - 18), new THREE.Vector3(p.D / 2, p.D / 2, p.H + 2)),
   },
@@ -80,27 +101,36 @@ const FEATURES: FeatureDef[] = [
     id: "sk2",
     op: "sketch",
     name: "草图2",
-    title: "把手路径",
-    summary: (p) => `前视基准面 · 外伸 ${p.reach} · 跨度 ${p.span}`,
-    why: "路径画在杯身的对称面上，把手天然左右对称。两端伸进杯壁，扫掠出来才能和杯身合成一体。",
+    title: t("把手路径", "Handle path"),
+    summary: (p) => t(`前视基准面 · 外伸 ${p.reach} · 跨度 ${p.span}`, `Front plane · reach ${p.reach} · span ${p.span}`),
+    why: t(
+      "路径画在杯身的对称面上，把手天然左右对称。两端伸进杯壁，扫掠出来才能和杯身合成一体。",
+      "The path is drawn on the body's plane of symmetry, so the handle comes out symmetric left to right on its own. Both ends reach into the wall, so the swept handle can join the body as one solid.",
+    ),
     view: [0, -1, 0],
   },
   {
     id: "sk3",
     op: "sketch",
     name: "草图3",
-    title: "把手截面",
-    summary: (p) => `椭圆 ${round(p.ha * 2)} × ${round(p.hb * 2)}`,
-    why: "截面画在路径起点的法平面上。椭圆比圆更好握：窄的一面贴手指，宽的一面承力。",
+    title: t("把手截面", "Handle section"),
+    summary: (p) => t(`椭圆 ${round(p.ha * 2)} × ${round(p.hb * 2)}`, `Ellipse ${round(p.ha * 2)} × ${round(p.hb * 2)}`),
+    why: t(
+      "截面画在路径起点的法平面上。椭圆比圆更好握：窄的一面贴手指，宽的一面承力。",
+      "The section is drawn on the plane normal to the path at its start. An ellipse is easier to grip than a circle: the narrow side rests against your fingers, and the wide side takes the load.",
+    ),
     view: [1.4, -0.9, 0.5],
   },
   {
     id: "sweep1",
     op: "sweep",
     name: "扫掠1",
-    title: "把手",
-    summary: () => "沿草图2 · 合并到杯身",
-    why: "截面沿路径走一遍得到把手，并与杯身合并成一个实体。正式建模时最后还会给把手根部加圆角（原型未演示）。",
+    title: t("把手", "Handle"),
+    summary: () => t("沿草图2 · 合并到杯身", "Along Sketch2 · merged with the body"),
+    why: t(
+      "截面沿路径走一遍得到把手，并与杯身合并成一个实体。正式建模时最后还会给把手根部加圆角（原型未演示）。",
+      "Moving the section along the path makes the handle, merged with the body into one solid. In a real model you'd finish with a fillet at the handle's root (this preview doesn't show it).",
+    ),
     view: ISO,
   },
 ]
@@ -119,7 +149,7 @@ function profile(p: Params, s: { rb: number; shell: boolean; cavity: number; rl:
   const B: V2 = [R0, 0]
   const C: V2 = [R1, H]
   const fb = filletCorner(A, B, C, s.rb, 16)
-  if (fb.clamped) warnings.push("杯底圆角太大，侧壁放不下，已按最大可用半径生成。")
+  if (fb.clamped) warnings.push(byLocale("杯底圆角太大，侧壁放不下，已按最大可用半径生成。", "The bottom fillet is too large for the side wall, so it was built at the largest radius that fits."))
   const tB1 = fb.pts[0]
   const tB2 = fb.pts[fb.pts.length - 1]
   const segs: Seg[] = [{ pts: [A, tB1], feature: "rev1" }]
@@ -150,7 +180,7 @@ function profile(p: Params, s: { rb: number; shell: boolean; cavity: number; rl:
       { pts: [ia[ia.length - 1], [0, t]], feature: "shell1" },
     ]
   } else {
-    if (fb.r > 0) warnings.push("壁厚 ≥ 杯底圆角：抽壳后内侧是尖角，转角处壁厚不均。")
+    if (fb.r > 0) warnings.push(byLocale("壁厚 ≥ 杯底圆角：抽壳后内侧是尖角，转角处壁厚不均。", "Wall thickness ≥ bottom fillet: after the shell the inside corner is sharp, and the wall is uneven at the corner."))
     inner = [
       { pts: [Ci, Bi], feature: "shell1" },
       { pts: [Bi, [0, t]], feature: "shell1" },
@@ -161,7 +191,7 @@ function profile(p: Params, s: { rb: number; shell: boolean; cavity: number; rl:
   let rl = s.rl
   if (rl > rimW / 2 - 0.05) {
     rl = Math.max(0, rimW / 2 - 0.05)
-    if (s.rl > 0) warnings.push("杯口圆角超过壁厚的一半，已按最大可用半径生成。")
+    if (s.rl > 0) warnings.push(byLocale("杯口圆角超过壁厚的一半，已按最大可用半径生成。", "The rim fillet is more than half the wall thickness, so it was built at the largest radius that fits."))
   }
   const innerDown = inner[0].pts[1]
   const lo = filletCorner(tB2, C, Ci, rl, 8)
@@ -210,7 +240,7 @@ function handleCurve(p: Params, warnings: string[]) {
   const zMax = H - Math.max(p.rl, 0) - p.ha - 4
   const zMin = Math.max(p.rb, 2) + p.ha + 3
   if (z1 > zMax || z2 < zMin) {
-    warnings.push("把手跨度超出杯壁的直段，已缩短到能放下的长度。")
+    warnings.push(t("把手跨度超出杯壁的直段，已缩短到能放下的长度。", "The handle span runs past the straight part of the wall, so it was shortened to fit."))
     z1 = Math.min(z1, zMax)
     z2 = Math.max(z2, zMin)
   }
@@ -295,7 +325,7 @@ function build({ kit, params: p, upto, progress }: BuildInput): BuildOutput {
     }
   }
   if (cur === "sk2" || cur === "sk3") {
-    const plane = datumPlane(kit, "XZ", Math.max(H, p.D + p.reach * 2) * 1.5, cur === "sk2" ? "前视基准面" : undefined)
+    const plane = datumPlane(kit, "XZ", Math.max(H, p.D + p.reach * 2) * 1.5, cur === "sk2" ? t("前视基准面", "Front plane") : undefined)
     plane.position.set(R1 * 0.5, 0, H / 2)
     if (cur === "sk2") g.add(plane)
     const pts = handle.curve.getSpacedPoints(64)
@@ -356,8 +386,8 @@ export function trimPolyline(pts: THREE.Vector3[], k: number): THREE.Vector3[] {
 export const mug: PartModel = {
   kind: "part",
   id: "mug",
-  title: "马克杯",
-  subtitle: "旋转 · 圆角 · 抽壳 · 扫掠",
+  title: t("马克杯", "Mug"),
+  subtitle: t("旋转 · 圆角 · 抽壳 · 扫掠", "Revolve · fillet · shell · sweep"),
   level: "入门",
   params: PARAMS,
   features: FEATURES,

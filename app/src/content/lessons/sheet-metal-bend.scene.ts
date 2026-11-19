@@ -1,6 +1,7 @@
 import * as THREE from "three"
 import { edgeLine, edges, face, label, line, linearDim } from "@/three/build"
 import type { Viewer } from "@/three/viewer"
+import { t } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 
 /**
@@ -175,9 +176,9 @@ export class SheetScene extends LessonScene<SheetState> {
       this.notes.add(line(yEdge(a, top), kit.construction), line(yEdge(a + BA, top), kit.construction))
       this.notes.add(line(yEdge(a + BA / 2, top), kit.path))
       if (s.step >= 3) {
-        this.notes.add(label("折弯线", V(a + BA / 2, hf + 4, top), "font-sans"))
+        this.notes.add(label(t("折弯线", "Bend line"), V(a + BA / 2, hf + 4, top), "font-sans"))
         const L = flatLength(s)
-        this.notes.add(linearDim(kit, V(0, -hw, top), V(L, -hw, top), V(0, -1, 0), 10, `展开长 ${L.toFixed(2)}`))
+        this.notes.add(linearDim(kit, V(0, -hw, top), V(L, -hw, top), V(0, -1, 0), 10, t(`展开长 ${L.toFixed(2)}`, `Flat length ${L.toFixed(2)}`)))
       }
     }
 
@@ -199,11 +200,15 @@ export class SheetScene extends LessonScene<SheetState> {
           const p = onArc(a, T, R, mid, r)
           return label(text, V(p[0], y - 0.5, p[1]), `border-transparent bg-transparent font-sans ${cls}`)
         }
-        const inside = lab(R - 0.3, "内侧受压", "text-muted-foreground")
+        const inside = lab(R - 0.3, t("内侧受压", "Inside in compression"), "text-muted-foreground")
         inside.center.set(1, 1)
-        const outside = lab(R + T + 0.3, "外侧受拉", "text-muted-foreground")
+        const outside = lab(R + T + 0.3, t("外侧受拉", "Outside in tension"), "text-muted-foreground")
         outside.center.set(0, 0)
-        const neutral = label(`虚线：中性层，距内侧 K·T = ${(K * T).toFixed(2)} mm`, V(a - 1, y - 0.5, -1.2), "border-transparent bg-transparent font-sans text-primary")
+        const neutral = label(
+          t(`虚线：中性层，距内侧 K·T = ${(K * T).toFixed(2)} mm`, `Dashed: neutral axis, K·T = ${(K * T).toFixed(2)} mm from the inside`),
+          V(a - 1, y - 0.5, -1.2),
+          "border-transparent bg-transparent font-sans text-primary",
+        )
         neutral.center.set(0.5, 0)
         this.notes.add(inside, outside, neutral)
       }
@@ -211,11 +216,12 @@ export class SheetScene extends LessonScene<SheetState> {
 
     // Checks.
     if (s.partial && !s.relief) {
-      for (const sy of [-1, 1]) this.notes.add(label("撕裂 · 鼓包", V(a + e / 2, sy * hf, T + 1), "border-warning text-warning font-sans"))
+      for (const sy of [-1, 1]) this.notes.add(label(t("撕裂 · 鼓包", "Tearing · bulging"), V(a + e / 2, sy * hf, T + 1), "border-warning text-warning font-sans"))
     }
     if (b < 4 * T && s.step >= 5) {
       const tipBase = onArc(a, T, R, phi, R + T)
-      this.notes.add(label(`法兰 ${b} < 4T = ${(4 * T).toFixed(1)}`, V(tipBase[0] + 6, -hf, tipBase[1] + b / 2), "border-warning text-warning font-sans"))
+      const msg = t(`法兰 ${b} < 4T = ${(4 * T).toFixed(1)}`, `Flange ${b} < 4T = ${(4 * T).toFixed(1)}`)
+      this.notes.add(label(msg, V(tipBase[0] + 6, -hf, tipBase[1] + b / 2), "border-warning text-warning font-sans"))
     }
     this.v.invalidate()
   }

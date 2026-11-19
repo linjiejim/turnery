@@ -61,7 +61,7 @@ The interface exists in Chinese and English: the website's English pages are und
 
 - Every string on screen is written as a pair where it's used: `t("回到最新", "Back to latest")`. Keep the Chinese exactly as it is (tests match it) and put the English next to it.
 - Text for the agent or a model (the MCP guide, tool descriptions, kernel and engine messages, system prompts) is Chinese only for now: don't wrap it in `t()`.
-- The English for the course catalog (curriculum, lesson titles, command atlas, glossary) lives in `app/src/content/en/`. Lesson and card bodies are Chinese for now, and English pages say so.
+- Lessons and cards carry both languages in place (`byLocale(<>中文</>, <>English</>)` for rich text; quiz options in the same order in both). The course catalog and the teardowns' narration are overlays in `app/src/content/en/`; a re-baked model with new text needs its English there too.
 - English copy: sentence case, short sentences, verbs on buttons, no "Please". Chinese copy: short sentences, 「」 quotes, a space between Chinese and Latin text or numbers, buttons as verb + object in six characters or fewer.
 
 ## Write a lesson

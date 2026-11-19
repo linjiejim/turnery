@@ -175,7 +175,7 @@ Turnery is young (0.11) and moving fast. What works today: single parts and mult
 What does not, yet:
 
 - **macOS only**, and unsigned. Windows and Linux builds are planned.
-- **English, but not everywhere yet.** The window and the website come in English and Chinese. What the agent reads (the guide, tool descriptions, kernel messages) is still Chinese, which agents read fine; tool names and JSON schemas are English. The course's lesson bodies are Chinese too. See [`docs/i18n.md`](docs/i18n.md).
+- **English, but not everywhere yet.** The window and the website come in English and Chinese. What the agent reads (the guide, tool descriptions, kernel messages) is still Chinese, which agents read fine; tool names and JSON schemas are English. See [`docs/i18n.md`](docs/i18n.md).
 - **No sketch constraint solver in the modeling tools.** Sketches are written with parameters and expressions.
 - **No free-form "code feature"** for shapes the tree cannot express.
 - **Mates place parts once, in order.** They are not a constraint system and there is no motion.
@@ -197,7 +197,7 @@ What we have not found elsewhere in one tool: semantic selectors, a persistent r
 
 [turnery.linjiejim.com](https://turnery.linjiejim.com/en) is a software-neutral course on mechanical CAD built on the same kernel and file format: 21 interactive lessons, 17 illustrated cards, 9 teardowns of real parts that replay feature by feature, a command atlas across 8 CAD packages, and a browser workbench with an AI tutor. The desktop app is for making things; the site is for learning why they are made that way.
 
-The site's interface, learning path, command atlas and glossary are in English and Chinese; the lesson and card text itself is written in Chinese for now.
+The whole course, lessons, cards and teardowns included, is in English and Chinese.
 
 ## Develop
 
