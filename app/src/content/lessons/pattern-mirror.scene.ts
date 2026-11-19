@@ -4,6 +4,7 @@ import { datumPlane, face, label, line, linearDim, tag } from "@/three/build"
 import { extrude, lathe } from "@/three/geom"
 import type { MaterialKit, SurfaceRole } from "@/three/materials"
 import type { Viewer } from "@/three/viewer"
+import { byLocale } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 
 /**
@@ -99,7 +100,7 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
       mirrorEdited: false,
     })
     v.setGrid(150, 10)
-    this.mirrorPlane = datumPlane(v.kit, "YZ", 76, "右视基准面 YZ · 镜像平面", [1, 1])
+    this.mirrorPlane = datumPlane(v.kit, "YZ", 76, byLocale("右视基准面 YZ · 镜像平面", "Right plane YZ · mirror plane"), [1, 1])
     this.mirrorPlane.position.set(0, 0, 18)
     this.boss = this.bossHandle()
     this.root.add(this.part, this.mirrorPlane, this.boss)
@@ -208,7 +209,7 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
         holes.push({ x, y: 0, r, role })
       } else {
         this.part.add(ghostHole(kit, x, 0, r))
-        this.part.add(label(st === "off" ? "在板外" : "切到板边", new THREE.Vector3(x, 14, T + 1), "border-destructive text-destructive font-sans"))
+        this.part.add(label(st === "off" ? byLocale("在板外", "Off the plate") : byLocale("切到板边", "Cuts the plate edge"), new THREE.Vector3(x, 14, T + 1), "border-destructive text-destructive font-sans"))
       }
     }
     const outline = new THREE.Shape()
@@ -224,15 +225,15 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
       const seed = new THREE.Vector3(lay.xs[0], 14, T + 1)
       this.part.add(
         s.seedPicked
-          ? tag("种子特征", seed)
-          : label("点选这个孔", seed, "border-primary text-primary font-sans"),
+          ? tag(byLocale("种子特征", "Seed feature"), seed)
+          : label(byLocale("点选这个孔", "Click this hole"), seed, "border-primary text-primary font-sans"),
       )
       return
     }
-    this.part.add(label("种子", new THREE.Vector3(lay.xs[0], -14, T + 1), "font-sans text-muted-foreground"))
+    this.part.add(label(byLocale("种子", "Seed"), new THREE.Vector3(lay.xs[0], -14, T + 1), "font-sans text-muted-foreground"))
     if (s.step === 3) return
     // Plate length along the far edge, spacing (and total length) along the near edge.
-    this.part.add(linearDim(kit, new THREE.Vector3(-L / 2, PLATE_W / 2, top), new THREE.Vector3(L / 2, PLATE_W / 2, top), new THREE.Vector3(0, 1, 0), 10, `板长 ${L}`))
+    this.part.add(linearDim(kit, new THREE.Vector3(-L / 2, PLATE_W / 2, top), new THREE.Vector3(L / 2, PLATE_W / 2, top), new THREE.Vector3(0, 1, 0), 10, byLocale(`板长 ${L}`, `Plate length ${L}`)))
     if (s.count >= 2) {
       const driven = s.mode === "length"
       this.part.add(
@@ -240,7 +241,7 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
       )
       if (driven) {
         this.part.add(
-          linearDim(kit, new THREE.Vector3(lay.xs[0], 0, top), new THREE.Vector3(lay.xs[s.count - 1], 0, top), new THREE.Vector3(0, -1, 0), PLATE_W / 2 + 24, `总长 ${fmt(lay.total)}`),
+          linearDim(kit, new THREE.Vector3(lay.xs[0], 0, top), new THREE.Vector3(lay.xs[s.count - 1], 0, top), new THREE.Vector3(0, -1, 0), PLATE_W / 2 + 24, byLocale(`总长 ${fmt(lay.total)}`, `Total length ${fmt(lay.total)}`)),
         )
       }
     }
@@ -268,7 +269,7 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
     const top = T + 0.1
     this.part.add(line(arcPoints(BOLT_R, 0, 360, top), kit.construction))
     this.part.add(line([new THREE.Vector3(0, 0, -14), new THREE.Vector3(0, 0, 38)], kit.construction))
-    this.part.add(label("旋转轴", new THREE.Vector3(0, 0, 42), "font-sans text-muted-foreground"))
+    this.part.add(label(byLocale("旋转轴", "Axis of rotation"), new THREE.Vector3(0, 0, 42), "font-sans text-muted-foreground"))
     // One spacing, and the total angle when it is less than a full turn.
     this.part.add(line(arcPoints(BOLT_R + 10, 0, step, top), kit.dimension))
     const mid = THREE.MathUtils.degToRad(step / 2)
@@ -277,10 +278,10 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
       this.part.add(line(arcPoints(FLANGE_R + 7, 0, s.polarAngle, top), kit.construction))
       const end = THREE.MathUtils.degToRad(s.polarAngle)
       this.part.add(
-        label(`总角度 ${s.polarAngle}°`, new THREE.Vector3(Math.cos(end) * (FLANGE_R + 15), Math.sin(end) * (FLANGE_R + 15), top), "border-transparent bg-transparent font-sans text-muted-foreground"),
+        label(byLocale(`总角度 ${s.polarAngle}°`, `Total angle ${s.polarAngle}°`), new THREE.Vector3(Math.cos(end) * (FLANGE_R + 15), Math.sin(end) * (FLANGE_R + 15), top), "border-transparent bg-transparent font-sans text-muted-foreground"),
       )
     }
-    this.part.add(label("种子", new THREE.Vector3(BOLT_R, -11, T + 1), "font-sans text-muted-foreground"))
+    this.part.add(label(byLocale("种子", "Seed"), new THREE.Vector3(BOLT_R, -11, T + 1), "font-sans text-muted-foreground"))
   }
 
   private renderMirror() {
@@ -311,8 +312,8 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
     this.part.add(face(plate, kit, { feature: "half", role: "model" }), face(boss, kit, { feature: "half", role: "model" }))
     this.part.add(face(mirrorX(plate), kit, { feature: "mirror", role: "highlight" }), face(mirrorX(boss), kit, { feature: "mirror", role: "highlight" }))
     const faint = "border-transparent bg-transparent font-sans text-faint-foreground"
-    this.part.add(label("建模的一半", new THREE.Vector3(HALF_X / 2, -PLATE_W / 2 - 9, 0), faint))
-    this.part.add(label("镜像出来的一半", new THREE.Vector3(-HALF_X / 2, -PLATE_W / 2 - 9, 0), faint))
+    this.part.add(label(byLocale("建模的一半", "Modeled half"), new THREE.Vector3(HALF_X / 2, -PLATE_W / 2 - 9, 0), faint))
+    this.part.add(label(byLocale("镜像出来的一半", "Mirrored half"), new THREE.Vector3(-HALF_X / 2, -PLATE_W / 2 - 9, 0), faint))
   }
 
   /** A plate with patterned holes whose walls are separate meshes, so each instance can carry its own role. */
@@ -365,7 +366,7 @@ export class PatternMirrorScene extends LessonScene<PatternMirrorState> {
   private bossHandle() {
     const el = document.createElement("div")
     el.className = "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-shadow hover:ring-4 hover:ring-primary/25"
-    el.title = "拖动凸台"
+    el.title = byLocale("拖动凸台", "Drag the boss")
     const o = new CSS2DObject(el)
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault()

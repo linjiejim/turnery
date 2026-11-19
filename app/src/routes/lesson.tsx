@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge"
 import { LESSONS, lessonMeta } from "@/content/lessons"
 import type { LessonController, LessonDef } from "@/content/lessons/types"
 import type { Viewer } from "@/three/viewer"
-import { ZhOnlyNotice } from "@/components/zh-only"
 import { t } from "@/lib/i18n"
 
 /**
@@ -146,7 +145,7 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="truncate text-body font-semibold">{def.title}</span>
           <span className="text-small text-faint-foreground max-sm:hidden">
-            {def.codes.join(" · ")} · {t(`约 ${meta.minutes} 分钟`, `About ${meta.minutes} min`)}
+            {t(`约 ${meta.minutes} 分钟`, `About ${meta.minutes} min`)}
           </span>
         </div>
         <StepBar titles={[...def.steps.map((x) => x.title), t("小测", "Quiz")]} current={step} onJump={go} className="mx-auto max-sm:hidden" />
@@ -158,7 +157,6 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
       <div className="flex min-h-0 flex-1 max-md:flex-col-reverse">
         <aside className="flex w-[400px] shrink-0 flex-col border-r max-md:h-[50dvh] max-md:w-full max-md:border-r-0 max-md:border-t">
           <div key={step} className="min-h-0 flex-1 animate-fade-in overflow-y-auto px-5 py-5">
-            {step === 0 && <ZhOnlyNotice what="This lesson" className="mb-4" />}
             <div className="text-small text-muted-foreground">{isQuiz ? t("最后", "Last") : t(`第 ${step + 1} 步`, `Step ${step + 1}`)}</div>
             <h1 className="mt-1 text-title font-semibold">{isQuiz ? t("小测", "Quiz") : s.title}</h1>
             {isQuiz ? (

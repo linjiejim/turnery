@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { edgeLine, face, label, line, linearDim } from "@/three/build"
 import { flipFaces } from "@/three/geom"
 import type { Viewer } from "@/three/viewer"
+import { byLocale } from "@/lib/i18n"
 import { buildBlock, D, edgeSegment, failure, frontProfile, H, W, type EdgeId, type Mode, type Treatment } from "./fillet-chamfer.geom"
 import { LessonScene } from "./scene"
 
@@ -217,7 +218,10 @@ export class FilletScene extends LessonScene<FilletState> {
     this.clear(this.extras)
     if (failed && !last) {
       const f = failure(t)
-      if (f) this.extras.add(label(`${s.mode === "fillet" ? "圆角" : "倒角"}失败：${f.face}不够`, f.at, "border-destructive text-destructive font-sans"))
+      if (f) {
+        const text = byLocale(`${s.mode === "fillet" ? "圆角" : "倒角"}失败：${f.face}不够`, `${s.mode === "fillet" ? "Fillet" : "Chamfer"} fails: not enough ${f.face}`)
+        this.extras.add(label(text, f.at, "border-destructive text-destructive font-sans"))
+      }
     }
     if (s.step === 3 && !failed) this.addComb(t)
     if (last) this.addHoleNotes(s, mesh.frontTangentY)
@@ -231,7 +235,11 @@ export class FilletScene extends LessonScene<FilletState> {
     for (const { p, n } of prof) this.extras.add(line([p.clone().addScaledVector(n, 0.3), p.clone().addScaledVector(n, 7)], kit.dimension))
     const tip = prof[Math.floor(prof.length / 2)]
     this.extras.add(
-      label(t.mode === "fillet" ? "法向连续转过去：G1 相切" : "法向在两条棱上突变：G0", tip.p.clone().addScaledVector(tip.n, 11), "font-sans"),
+      label(
+        t.mode === "fillet" ? byLocale("法向连续转过去：G1 相切", "Normals turn smoothly: G1, tangent") : byLocale("法向在两条棱上突变：G0", "Normals jump at two edges: G0"),
+        tip.p.clone().addScaledVector(tip.n, 11),
+        "font-sans",
+      ),
     )
   }
 
@@ -242,14 +250,14 @@ export class FilletScene extends LessonScene<FilletState> {
     const z = H + 0.15
     if (s.order === "first" && s.filletOn) {
       this.extras.add(line([new THREE.Vector3(-W / 2, refY, z), new THREE.Vector3(W / 2, refY, z)], kit.sketch))
-      this.extras.add(label("参照：圆角的切线边", new THREE.Vector3(W / 2 + 4, refY, z), "font-sans translate-x-1/2"))
+      this.extras.add(label(byLocale("参照：圆角的切线边", "Reference: the fillet's tangent edge"), new THREE.Vector3(W / 2 + 4, refY, z), "font-sans translate-x-1/2"))
     }
     if (s.order === "last") {
       this.extras.add(line([new THREE.Vector3(-W / 2, refY, H), new THREE.Vector3(W / 2, refY, H)], kit.construction))
-      this.extras.add(label("参照：拉伸1 的原始棱边", new THREE.Vector3(W / 2 + 4, refY, H), "font-sans translate-x-1/2"))
+      this.extras.add(label(byLocale("参照：拉伸1 的原始棱边", "Reference: the original edge of Extrude1"), new THREE.Vector3(W / 2 + 4, refY, H), "font-sans translate-x-1/2"))
     }
     if (hy === null) {
-      this.extras.add(label("孔1：参照边不存在了", new THREE.Vector3(0, -D / 2 + HOLE_DIM, H + 6), "border-destructive text-destructive font-sans"))
+      this.extras.add(label(byLocale("孔1：参照边不存在了", "Hole1: its reference edge is gone"), new THREE.Vector3(0, -D / 2 + HOLE_DIM, H + 6), "border-destructive text-destructive font-sans"))
       return
     }
     const a = new THREE.Vector3(-HOLE_R - 2, refY, z)
@@ -257,7 +265,8 @@ export class FilletScene extends LessonScene<FilletState> {
     this.extras.add(linearDim(kit, a, b, new THREE.Vector3(-1, 0, 0), 18, `${HOLE_DIM}`))
     // Hole centre mark, so the dimension clearly ends at the centre.
     this.extras.add(line([new THREE.Vector3(-HOLE_R - 2, hy, z), new THREE.Vector3(HOLE_R + 2, hy, z)], kit.construction))
-    this.extras.add(label(`孔中心到前面 ${Math.round((hy + D / 2) * 10) / 10} mm`, new THREE.Vector3(0, hy, H + 12), "font-sans"))
+    const toFront = Math.round((hy + D / 2) * 10) / 10
+    this.extras.add(label(byLocale(`孔中心到前面 ${toFront} mm`, `Hole center to front face: ${toFront} mm`), new THREE.Vector3(0, hy, H + 12), "font-sans"))
   }
 
   // ------------------------------------------------------------ pointer

@@ -198,7 +198,7 @@ Turnery 目前是 0.11，更新很快。已经能用的：单个零件、共用�
 
 [turnery.linjiejim.com](https://turnery.linjiejim.com) 是一门中文、讲概念、不绑定软件的 3D 工业建模课，和桌面版用同一个内核、同一种特征树文件。桌面版适合做真东西，网站适合学为什么这样做。
 
-网站的界面、学习路径、工具图鉴和术语表也有英文版（[`/en`](https://turnery.linjiejim.com/en)）；课程正文目前只有中文。
+整门课都有英文版（[`/en`](https://turnery.linjiejim.com/en)），互动课、图文卡和拆解都包括在内。
 
 | 板块 | 内容 |
 | --- | --- |

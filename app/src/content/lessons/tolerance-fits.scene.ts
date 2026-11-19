@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
+import { t as tr } from "@/lib/i18n"
 import { face, label, line } from "@/three/build"
 import type { Viewer } from "@/three/viewer"
 import { cap, circle, rect, walls, WORLD } from "./coordinates.solid"
@@ -63,7 +64,11 @@ export const NOMINAL = 20
 export type HoleId = keyof typeof HOLES
 export type ShaftId = keyof typeof SHAFTS
 export type FitKind = "clearance" | "transition" | "interference"
-export const FIT_NAME: Record<FitKind, string> = { clearance: "间隙配合", transition: "过渡配合", interference: "过盈配合" }
+export const FIT_NAME: Record<FitKind, string> = {
+  clearance: tr("间隙配合", "Clearance fit"),
+  transition: tr("过渡配合", "Transition fit"),
+  interference: tr("过盈配合", "Interference fit"),
+}
 
 export type Fit = { kind: FitKind; maxClear: number; minClear: number }
 
@@ -344,7 +349,7 @@ export class ToleranceFitsScene extends LessonScene<FitState> {
   private makeHandle() {
     const el = document.createElement("div")
     el.className = "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-colors hover:bg-selected"
-    el.title = "往下拖，把轴装进孔里"
+    el.title = tr("往下拖，把轴装进孔里", "Drag down to fit the shaft into the hole")
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -438,14 +443,14 @@ export class ToleranceFitsScene extends LessonScene<FitState> {
       ring.push(new THREE.Vector3(Math.cos(a) * (NOMINAL / 2), Math.sin(a) * (NOMINAL / 2), BLOCK.h + 0.2))
     }
     this.marks.add(line(ring, kit.construction))
-    const holeTag = label(`孔 Ø${size(s.dHole)}`, new THREE.Vector3(-BLOCK.x, 0, BLOCK.h * 0.55), "font-sans")
+    const holeTag = label(tr(`孔 Ø${size(s.dHole)}`, `Hole Ø${size(s.dHole)}`), new THREE.Vector3(-BLOCK.x, 0, BLOCK.h * 0.55), "font-sans")
     holeTag.center.set(1.08, 0.5)
-    const shaftTag = label(`轴 Ø${size(s.dShaft)}`, new THREE.Vector3(-rs, 0, zb + LEN * 0.7), "font-sans")
+    const shaftTag = label(tr(`轴 Ø${size(s.dShaft)}`, `Shaft Ø${size(s.dShaft)}`), new THREE.Vector3(-rs, 0, zb + LEN * 0.7), "font-sans")
     shaftTag.center.set(1.1, 0.5)
     this.marks.add(holeTag)
     if (s.step > 0) this.marks.add(shaftTag)
     if (s.blocked && !s.pressed && s.dHole - s.dShaft < 0) {
-      const t = label("推不进去：轴比孔大", new THREE.Vector3(rs + 2, 0, BLOCK.h + 4), "border-warning text-warning font-sans")
+      const t = label(tr("推不进去：轴比孔大", "Won't go in: the shaft is bigger than the hole"), new THREE.Vector3(rs + 2, 0, BLOCK.h + 4), "border-warning text-warning font-sans")
       t.center.set(0, 0.5)
       this.marks.add(t)
     }

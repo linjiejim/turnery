@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
 import { datumPlane, faces, paint } from "@/three/build"
 import { VIEW_DIRS, type Viewer } from "@/three/viewer"
+import { byLocale, t } from "@/lib/i18n"
 import { lBlock } from "./coordinates.solid"
 import { LessonScene } from "./scene"
 
@@ -238,7 +239,7 @@ export class CoordinatesScene extends LessonScene<CoordState> {
       const g = arrow(dir, AXIS_LEN * 0.8, this.v.kit.ghost, 1, 3, 9)
       const el = document.createElement("button")
       el.type = "button"
-      el.textContent = upwards ? "Z 朝这边？" : "还是这边？"
+      el.textContent = upwards ? t("Z 朝这边？", "Is Z this way?") : t("还是这边？", "Or this way?")
       el.className =
         "interactive cursor-pointer rounded-sm border border-primary bg-popover px-2 py-0.5 font-sans text-small text-primary transition-colors hover:bg-selected"
       el.addEventListener("pointerdown", (e) => e.stopPropagation())
@@ -278,10 +279,10 @@ export class CoordinatesScene extends LessonScene<CoordState> {
       this.planesFor = planeFor
       if (planeFor) {
         const n = planeFor === "z" ? { top: "XY", front: "XZ" } : { top: "XZ", front: "XY" }
-        const top = datumPlane(kit, "XY", 100, `上视基准面 ${n.top}`, [1, -1])
+        const top = datumPlane(kit, "XY", 100, byLocale(`上视基准面 ${n.top}`, `Top plane ${n.top}`), [1, -1])
         ;(top.children[0] as THREE.Mesh).material = kit.planeHover
-        const front = datumPlane(kit, "XZ", 100, `前视基准面 ${n.front}`, [-1, 1])
-        const right = datumPlane(kit, "YZ", 100, "右视基准面 YZ", [1, 1])
+        const front = datumPlane(kit, "XZ", 100, byLocale(`前视基准面 ${n.front}`, `Front plane ${n.front}`), [-1, 1])
+        const right = datumPlane(kit, "YZ", 100, byLocale("右视基准面 YZ", "Right plane YZ"), [1, 1])
         this.planes.add(top, front, right)
       }
     }

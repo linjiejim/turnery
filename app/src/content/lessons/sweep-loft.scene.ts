@@ -3,6 +3,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
 import { datumPlane, edgeLine, face, label, line } from "@/three/build"
 import { capLoop, ellipsePoints, sweepEllipse, type V2 } from "@/three/geom"
 import type { Viewer } from "@/three/viewer"
+import { byLocale } from "@/lib/i18n"
 import { LessonScene } from "./scene"
 
 /**
@@ -74,7 +75,7 @@ export class SweepLoftScene extends LessonScene<SweepLoftState> {
       triedBulge: false,
     })
     v.setGrid(120, 10)
-    this.front = datumPlane(v.kit, "XZ", 150, "前视基准面 XZ", [1, -1])
+    this.front = datumPlane(v.kit, "XZ", 150, byLocale("前视基准面 XZ", "Front plane XZ"), [1, -1])
     this.front.position.set(0, 0, 45)
     this.root.add(this.front, this.sweepGroup, this.loftGroup)
     this.handles = PATH.map((_, i) => this.handle(i))
@@ -192,8 +193,8 @@ export class SweepLoftScene extends LessonScene<SweepLoftState> {
     const N0 = new THREE.Vector3().crossVectors(B, t0).normalize()
     const p0 = curve.getPointAt(0)
     g.add(line(ellipsePoints(p0, N0, B, s.radius, s.radius), kit.sketch))
-    if (s.step === 0) g.add(label("截面", p0.clone().addScaledVector(N0, s.radius + 6), "border-transparent bg-transparent font-sans text-faint-foreground"))
-    if (s.step === 0) g.add(label("路径", curve.getPointAt(0.55).add(new THREE.Vector3(10, 0, -4)), "border-transparent bg-transparent font-sans text-faint-foreground"))
+    if (s.step === 0) g.add(label(byLocale("截面", "Profile"), p0.clone().addScaledVector(N0, s.radius + 6), "border-transparent bg-transparent font-sans text-faint-foreground"))
+    if (s.step === 0) g.add(label(byLocale("路径", "Path"), curve.getPointAt(0.55).add(new THREE.Vector3(10, 0, -4)), "border-transparent bg-transparent font-sans text-faint-foreground"))
 
     if (s.sweep > 0) {
       const geo = sweepEllipse(curve, { a: s.radius, b: s.radius, binormal: B, tEnd: s.sweep / 100, tubular: 160, radial: 40 })
@@ -213,7 +214,9 @@ export class SweepLoftScene extends LessonScene<SweepLoftState> {
       const at = new THREE.Vector3(m.point[0], 0, m.point[1])
       g.add(
         label(
-          tight ? `弯曲半径 R${fmt(m.r)} < 截面半径 R${fmt(s.radius)}：自交` : `最小弯曲半径 R${fmt(m.r)}`,
+          tight
+            ? byLocale(`弯曲半径 R${fmt(m.r)} < 截面半径 R${fmt(s.radius)}：自交`, `Bend radius R${fmt(m.r)} < profile radius R${fmt(s.radius)}: self-intersects`)
+            : byLocale(`最小弯曲半径 R${fmt(m.r)}`, `Tightest bend radius R${fmt(m.r)}`),
           at.clone().add(new THREE.Vector3(0, 0, -s.radius - 10)),
           tight ? "border-destructive text-destructive font-sans" : "font-sans",
         ),
@@ -237,7 +240,7 @@ export class SweepLoftScene extends LessonScene<SweepLoftState> {
       const conn: THREE.Vector3[] = []
       for (let i = 0; i <= ROWS; i++) conn.push(this.loftPoint(secs, i / ROWS, 0))
       g.add(line(conn, s.step === 5 ? kit.sketch : kit.path))
-      g.add(label(s.step === 5 ? "引导线" : "起点连线", conn[Math.round(ROWS * 0.55)].clone().add(new THREE.Vector3(8, 0, 0)), "border-transparent bg-transparent font-sans text-faint-foreground"))
+      g.add(label(s.step === 5 ? byLocale("引导线", "Guide curve") : byLocale("起点连线", "Line through start points"), conn[Math.round(ROWS * 0.55)].clone().add(new THREE.Vector3(8, 0, 0)), "border-transparent bg-transparent font-sans text-faint-foreground"))
     }
     if (k <= 0) return
 
@@ -309,7 +312,7 @@ export class SweepLoftScene extends LessonScene<SweepLoftState> {
   private handle(i: number) {
     const el = document.createElement("div")
     el.className = "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-shadow hover:ring-4 hover:ring-primary/25"
-    el.title = "拖动路径点"
+    el.title = byLocale("拖动路径点", "Drag the path point")
     const o = new CSS2DObject(el)
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault()

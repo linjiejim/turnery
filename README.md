@@ -196,7 +196,7 @@ What we have not found elsewhere in one tool: semantic selectors, a persistent r
 
 [turnery.linjiejim.com](https://turnery.linjiejim.com/en) is a software-neutral course on mechanical CAD built on the same kernel and file format: 21 interactive lessons, 17 illustrated cards, 9 teardowns of real parts that replay feature by feature, a command atlas across 8 CAD packages, and a browser workbench with an AI tutor. The desktop app is for making things; the site is for learning why they are made that way.
 
-The site's interface, learning path, command atlas and glossary are in English and Chinese; the lesson and card text itself is written in Chinese for now.
+The whole course, lessons, cards and teardowns included, is in English and Chinese.
 
 ## Develop
 
