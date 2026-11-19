@@ -8,6 +8,7 @@
  *    (src/three/tokens.ts), so light/dark switch the scene with the UI.
  *    Axis colours follow the X red / Y green / Z blue convention every CAD
  *    package uses; they only appear on the axis triad and view cube.
+ * 3. Typefaces: IBM Plex Sans / Plex Sans SC (headings, buttons) / Plex Mono.
  */
 :root {
   --primary: #2759e0;
@@ -83,7 +84,13 @@
 }
 
 @theme inline {
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* IBM Plex: one skeleton for Latin, Chinese and mono. Body Chinese stays in the system font;
+   * headings and buttons take Plex Sans SC, cut to the characters the app uses (src/styles/fonts). */
+  --font-sans: "IBM Plex Sans Variable", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-display: "IBM Plex Sans Variable", "Turnery Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --color-scene: var(--scene-bg);
   --color-axis-x: var(--axis-x);
   --color-axis-y: var(--axis-y);
@@ -96,6 +103,12 @@
   --color-code-string: var(--code-string);
   --color-code-number: var(--code-number);
   --color-code-call: var(--code-call);
+}
+
+/* Headings and buttons use the display stack, so their Chinese is Plex Sans SC (500/600 only:
+ * a 400 heading such as a caption label adds `font-sans`). A utility class still wins. */
+@layer base {
+  h1, h2, h3, [data-slot="button"] { font-family: var(--font-display); }
 }
 
 /* Engineering-paper backdrop for marketing sections: two grid scales in hairline colours. */

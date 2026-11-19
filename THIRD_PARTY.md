@@ -27,8 +27,9 @@ Turnery 自己的代码用 MIT（[`LICENSE`](LICENSE)），课程文字和文档
 | tailwind-merge | 3.7.0 | MIT | 合并 class | <https://github.com/dcastil/tailwind-merge> |
 | Sonner | 2.0.8 | MIT | 轻提示 | <https://github.com/emilkowalski/sonner> |
 | TanStack Table（`@tanstack/react-table`、`table-core`） | 8.21.3 | MIT | 表格 | <https://github.com/TanStack/table> |
-| Inter（经 `@fontsource-variable/inter` 打包） | 5.3.0 | SIL OFL 1.1 | 界面字体 | <https://github.com/rsms/inter> |
-| JetBrains Mono（经 `@fontsource-variable/jetbrains-mono` 打包） | 5.3.0 | SIL OFL 1.1 | 等宽字体 | <https://github.com/JetBrains/JetBrainsMono> |
+| IBM Plex Sans（经 `@fontsource-variable/ibm-plex-sans` 打包） | 5.3.0 | SIL OFL 1.1 | 界面字体 | <https://github.com/IBM/plex> |
+| IBM Plex Mono（经 `@fontsource/ibm-plex-mono` 打包） | 5.3.0 | SIL OFL 1.1 | 等宽字体 | <https://github.com/IBM/plex> |
+| IBM Plex Sans SC（Medium、SemiBold 的子集，改名 Turnery Sans SC：`app/src/styles/fonts/turnery-sans-sc-*.woff2`，取自 `@ibm/plex-sans-sc` 1.1.0） | 1.1.0 | SIL OFL 1.1；保留字体名「Plex」，所以子集改了名。许可全文在 `app/src/styles/fonts/OFL.txt` | 标题和按钮里的中文 | <https://github.com/IBM/plex> |
 | **planegcs**（`@salusoft89/planegcs`） | 1.3.0 | **LGPL-2.1**，见下 | 「几何约束与自由度」课的草图求解器 | <https://github.com/Salusoft89/planegcs> |
 | replicad | 1.2.0 | MIT | AI 建模工作台的建模 API（浏览器里的 Web Worker） | <https://github.com/sgenoud/replicad> |
 | opentype.js（replicad 依赖） | 2.0.0 | MIT | 读取字体轮廓，做草图文字 | <https://github.com/opentypejs/opentype.js> |

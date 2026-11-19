@@ -8,6 +8,7 @@
 - 圆角：默认 8
 - 密度：舒适
 - 默认外观：跟随系统
+- 字体：IBM Plex Sans（界面）、IBM Plex Mono（等宽）。标题和按钮里的中文用 IBM Plex Sans SC，正文中文仍用系统字体（苹方、微软雅黑）。
 
 ## 状态词表
 
@@ -28,4 +29,5 @@
 - **参数滑杆**：kit 里还没有 Slider，`src/components/param-slider.tsx` 用原生 range 加 `accent-primary`，并配一个精确数值输入框。确认这个形态后，应提回 jim-uiux。
 - **视口内的浮层**（视图方块、特征树小窗、时间轴、重建提示）浮在 3D 画面上，按「浮起来的东西」处理，用 `shadow-popover`。
 - **图文卡**（`/card/:code`）：阅读页，用浏览页的 48px 顶栏和 720 宽的 narrow 页面。示意图是 SVG，画布宽 ≤ 320，手机上约 1:1 显示，文字不小于 12px；颜色只用主题类。
+- **中文标题字体**：h1–h3 和按钮走 `--font-display`（`src/styles/turnery-theme.css`），中文落到 Turnery Sans SC。它是 IBM Plex Sans SC 的子集：只有 500 和 600 两个字重，字是应用自己用到的加上 GB2312 一级字，按 unicode-range 分片，界面短文案（标题、按钮、标签）里的字排在最前面的小片里（`scripts/build-ui-fonts.py` 生成，产物在 `src/styles/fonts`），页面只取用到的片。400 字重的小标题（灰色的分组标签）加 `font-sans`，不走这套字。加了很多新中文文案后重跑脚本；子集里没有的字回退到系统字体。
 - **首页英雄区**：模型按特征树自己建一遍后停住，不循环；「重播」按钮重新开始。图鉴卡片只在悬停或聚焦时回放一次。

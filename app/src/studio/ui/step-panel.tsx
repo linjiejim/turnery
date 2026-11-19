@@ -374,7 +374,7 @@ function DirectOptions({ f, studio, busy, onError }: { f: Feature; studio: Studi
     if (!texts.length) return null
     return (
       <section aria-label={t("文字内容", "Text")} className="space-y-1">
-        <h3 className="text-caption text-faint-foreground">{t("文字内容", "Text")}</h3>
+        <h3 className="font-sans text-caption text-faint-foreground">{t("文字内容", "Text")}</h3>
         {texts.map(([s, i]) => (
           <TextField key={i} value={s.type === "text" ? s.text : ""} disabled={busy} onCommit={(v) => void set(["shapes", i, "text"], v)} />
         ))}
@@ -385,7 +385,7 @@ function DirectOptions({ f, studio, busy, onError }: { f: Feature; studio: Studi
     const std = f.standard
     return (
       <section aria-label={t("标准孔", "Standard hole")} className="space-y-1">
-        <h3 className="text-caption text-faint-foreground">{t("标准孔", "Standard hole")}</h3>
+        <h3 className="font-sans text-caption text-faint-foreground">{t("标准孔", "Standard hole")}</h3>
         <div className="flex gap-2">
           <Select
             className="w-24"
