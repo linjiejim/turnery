@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js"
+import { t } from "@/lib/i18n"
 import { face, label, line } from "@/three/build"
 import type { V2 } from "@/three/geom"
 import type { Viewer } from "@/three/viewer"
@@ -163,7 +164,7 @@ export class SectionViewsScene extends LessonScene<SectionState> {
   private handle() {
     const el = document.createElement("div")
     el.className = "interactive size-3.5 rounded-full border-2 border-primary bg-background cursor-grab transition-shadow hover:ring-4 hover:ring-primary/25"
-    el.title = "拖动剖切平面"
+    el.title = t("拖动剖切平面", "Drag the cutting plane")
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -229,7 +230,7 @@ export class SectionViewsScene extends LessonScene<SectionState> {
       this.planeFill = new THREE.Mesh(geo, kit.plane)
       const border = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), kit.planeEdge)
       border.raycast = () => {}
-      const name = label("剖切平面", new THREE.Vector3(-w, d, z1), "border-transparent bg-transparent font-sans text-faint-foreground")
+      const name = label(t("剖切平面", "Cutting plane"), new THREE.Vector3(-w, d, z1), "border-transparent bg-transparent font-sans text-faint-foreground")
       name.center.set(0, 1)
       this.planeGroup.add(this.planeFill, border, name)
     }

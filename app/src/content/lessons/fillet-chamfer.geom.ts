@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import { flipFaces } from "@/three/geom"
+import { byLocale } from "@/lib/i18n"
 
 /**
  * Geometry for 1.2.6 「圆角与倒角」: a 60 × 30 × 20 block whose 4 top edges
@@ -35,16 +36,28 @@ const CORNER_XY: [number, number][] = [
   [-W / 2, D / 2],
 ]
 
-export const EDGE_NAMES: Record<EdgeId, string> = {
-  tf: "前上边",
-  tr: "右上边",
-  tb: "后上边",
-  tl: "左上边",
-  vfl: "左前竖边",
-  vfr: "右前竖边",
-  vbr: "右后竖边",
-  vbl: "左后竖边",
-}
+export const EDGE_NAMES: Record<EdgeId, string> = byLocale(
+  {
+    tf: "前上边",
+    tr: "右上边",
+    tb: "后上边",
+    tl: "左上边",
+    vfl: "左前竖边",
+    vfr: "右前竖边",
+    vbr: "右后竖边",
+    vbl: "左后竖边",
+  },
+  {
+    tf: "front top edge",
+    tr: "right top edge",
+    tb: "back top edge",
+    tl: "left top edge",
+    vfl: "front-left vertical edge",
+    vfr: "front-right vertical edge",
+    vbr: "back-right vertical edge",
+    vbl: "back-left vertical edge",
+  },
+)
 
 /** The sharp edge's segment on the unmodified block (picking, highlight). */
 export function edgeSegment(id: EdgeId): [THREE.Vector3, THREE.Vector3] {
@@ -81,27 +94,32 @@ export function failure(t: Treatment): Failure | null {
   const has = (e: EdgeId) => t.sel.includes(e)
   const s = setbacks(t)
   const eps = 1e-6
-  const what = t.mode === "fillet" ? "圆角" : "倒角"
+  const what = t.mode === "fillet" ? byLocale("圆角", "fillet") : byLocale("倒角", "chamfer")
   const amount = (n: number, v: number) => (n === 1 ? `${fmt(v)} mm` : `${n} × ${fmt(v)} = ${fmt(n * v)} mm`)
+  const [top, front, back, left, right] = byLocale(["顶面", "前侧面", "后侧面", "左侧面", "右侧面"], ["top face", "front face", "back face", "left face", "right face"])
+  const [wide, long, high] = byLocale(["宽", "长", "高"], ["wide", "long", "high"])
   const checks: [number, number, number, string, string, THREE.Vector3][] = [
     // [edge count, setback each, face extent, face name, direction, label position]
-    [Number(has("tf")) + Number(has("tb")), s.top, D, "顶面", "宽", new THREE.Vector3(0, 0, H + 2)],
-    [Number(has("tl")) + Number(has("tr")), s.top, W, "顶面", "长", new THREE.Vector3(0, 0, H + 2)],
-    [Number(has("tf")), s.side, H, "前侧面", "高", new THREE.Vector3(0, -D / 2 - 2, H / 2)],
-    [Number(has("tb")), s.side, H, "后侧面", "高", new THREE.Vector3(0, D / 2 + 2, H / 2)],
-    [Number(has("tl")), s.side, H, "左侧面", "高", new THREE.Vector3(-W / 2 - 2, 0, H / 2)],
-    [Number(has("tr")), s.side, H, "右侧面", "高", new THREE.Vector3(W / 2 + 2, 0, H / 2)],
-    [Number(has("vfl")) + Number(has("vfr")), s.long, W, "前侧面", "长", new THREE.Vector3(0, -D / 2 - 2, H / 2)],
-    [Number(has("vbl")) + Number(has("vbr")), s.long, W, "后侧面", "长", new THREE.Vector3(0, D / 2 + 2, H / 2)],
-    [Number(has("vfl")) + Number(has("vbl")), s.short, D, "左侧面", "宽", new THREE.Vector3(-W / 2 - 2, 0, H / 2)],
-    [Number(has("vfr")) + Number(has("vbr")), s.short, D, "右侧面", "宽", new THREE.Vector3(W / 2 + 2, 0, H / 2)],
+    [Number(has("tf")) + Number(has("tb")), s.top, D, top, wide, new THREE.Vector3(0, 0, H + 2)],
+    [Number(has("tl")) + Number(has("tr")), s.top, W, top, long, new THREE.Vector3(0, 0, H + 2)],
+    [Number(has("tf")), s.side, H, front, high, new THREE.Vector3(0, -D / 2 - 2, H / 2)],
+    [Number(has("tb")), s.side, H, back, high, new THREE.Vector3(0, D / 2 + 2, H / 2)],
+    [Number(has("tl")), s.side, H, left, high, new THREE.Vector3(-W / 2 - 2, 0, H / 2)],
+    [Number(has("tr")), s.side, H, right, high, new THREE.Vector3(W / 2 + 2, 0, H / 2)],
+    [Number(has("vfl")) + Number(has("vfr")), s.long, W, front, long, new THREE.Vector3(0, -D / 2 - 2, H / 2)],
+    [Number(has("vbl")) + Number(has("vbr")), s.long, W, back, long, new THREE.Vector3(0, D / 2 + 2, H / 2)],
+    [Number(has("vfl")) + Number(has("vbl")), s.short, D, left, wide, new THREE.Vector3(-W / 2 - 2, 0, H / 2)],
+    [Number(has("vfr")) + Number(has("vbr")), s.short, D, right, wide, new THREE.Vector3(W / 2 + 2, 0, H / 2)],
   ]
   for (const [n, v, extent, face, dir, at] of checks) {
     if (n > 0 && n * v > extent + eps) {
       return {
         face,
         at,
-        text: `${face}只有 ${extent} mm ${dir}，${n === 1 ? "这条边" : `${n} 条边`}的${what}要在它上面占掉 ${amount(n, v)}，面不够用了。`,
+        text: byLocale(
+          `${face}只有 ${extent} mm ${dir}，${n === 1 ? "这条边" : `${n} 条边`}的${what}要在它上面占掉 ${amount(n, v)}，面不够用了。`,
+          `The ${face} is only ${extent} mm ${dir}, and the ${what} on ${n === 1 ? "this edge" : `these ${n} edges`} would take ${amount(n, v)} of it. It doesn't fit.`,
+        ),
       }
     }
   }
