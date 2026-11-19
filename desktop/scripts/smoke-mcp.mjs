@@ -21,8 +21,9 @@ const transport = new StdioClientTransport({
   command: path.join(root, "bin/turnery"),
   args: ["mcp"],
   cwd: work,
-  // Headless runs keep their recent-parts list out of ~/.turnery.
-  env: { ...process.env, ...(withApp ? {} : { TURNERY_NO_APP: "1", TURNERY_HOME: path.join(work, ".turnery") }) },
+  // Headless runs keep their recent-parts list out of ~/.turnery. The checks below read the Chinese
+  // results (what the agent reads follows the saved or system language otherwise: src/lang-boot.ts).
+  env: { ...process.env, TURNERY_LANG: "zh", ...(withApp ? {} : { TURNERY_NO_APP: "1", TURNERY_HOME: path.join(work, ".turnery") }) },
   stderr: "inherit",
 })
 const client = new Client({ name: "turnery-smoke", version: "0.0.0" })

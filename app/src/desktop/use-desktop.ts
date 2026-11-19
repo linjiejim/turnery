@@ -176,7 +176,8 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
         }
         // Based on the version on screen: if the agent changed it meanwhile, the engine refuses rather than overwrite.
         const r = await call("set_tree", { tree: next, base_rev: revRef.current })
-        return /^✗ 模型已经是/.test(r.text) ? t("Agent 刚改过模型，你的改动没有生效：看一眼最新的模型再改。", "The agent just changed the model, so your change didn’t apply. Look at the latest model and try again.") : errorOf(r)
+        // The engine's refusal starts the same way in both of the agent's languages (engine.ts, set_tree).
+        return /^✗ (模型已经是|The model is already at version )/.test(r.text) ? t("Agent 刚改过模型，你的改动没有生效：看一眼最新的模型再改。", "The agent just changed the model, so your change didn’t apply. Look at the latest model and try again.") : errorOf(r)
       },
       [call],
     ),

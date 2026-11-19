@@ -5,11 +5,14 @@ import { parentPort } from "node:worker_threads"
 import { DirectKernel, wasmHeapMB } from "../../../app/src/desktop/core/direct-kernel"
 import { initNodeKernel } from "../../../app/src/studio/kernel/node"
 import { compileComponent, type BuildProgress, type DisplayData } from "../../../app/src/studio/kernel/build"
+import { setAgentLang, type AgentLang } from "../../../app/src/lib/agent-lang"
 
 export type KernelRequest = {
   id: number
   op: "compileComponent" | "use" | "setAssets" | "setComponents" | "setContext" | "rebuild" | "restyle" | "looks" | "inspect" | "display" | "pick" | "locate" | "selectorFor" | "faceEdges" | "measure" | "dimensions" | "drawing" | "exportBody"
   args: unknown[]
+  /** The language the kernel's messages are written in, as the engine has it now: the thread kept the one it started with otherwise. */
+  lang?: AgentLang
 }
 export type KernelReply =
   | { id: number; ok: true; result: unknown; heapMB: number }
@@ -32,6 +35,7 @@ ready.then(
 )
 
 port.on("message", async (req: KernelRequest) => {
+  if (req.lang) setAgentLang(req.lang)
   try {
     const k = await ready
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

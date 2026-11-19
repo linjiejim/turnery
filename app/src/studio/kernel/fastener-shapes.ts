@@ -2,6 +2,7 @@
 // threads shown as plain cylinders at the nominal diameter (cosmetic), the hex socket cut into the head.
 import { draw, drawPolysides, makeCylinder, type Shape3D } from "replicad"
 import { fastenerGeometry, type FastenerSpec } from "../fasteners"
+import { ta } from "../../lib/agent-lang"
 
 const cyl = (r: number, z0: number, z1: number) => makeCylinder(r, z1 - z0, [0, 0, z0], [0, 0, 1]) as unknown as Shape3D
 
@@ -66,6 +67,6 @@ export function fastenerShape(spec: FastenerSpec): Shape3D {
     top = g.k
   }
   if (g.s && g.t) head = cut(head, hex(g.s, top - g.t, top + 1))
-  if (!(g.L > -shankTop)) throw new Error(`螺钉长度 ${g.L} 比沉头的高度还短`)
+  if (!(g.L > -shankTop)) throw new Error(ta(`螺钉长度 ${g.L} 比沉头的高度还短`, `Screw length ${g.L} is shorter than the countersunk head's height`))
   return fuse(head, cyl(r, -g.L, shankTop))
 }

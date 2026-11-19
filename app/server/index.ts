@@ -18,8 +18,8 @@ import { Hono } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { Annotations, annotationText } from "../src/studio/annotations"
 import { Tree } from "../src/studio/dsl"
-import { SYSTEM_PROMPT, TEACH_PROMPT, languageRule, statePrompt, withState } from "../src/studio/prompt"
-import { STUDIO_TOOLS } from "../src/studio/tools"
+import { languageRule, statePrompt, systemPrompt, teachPrompt, withState } from "../src/studio/prompt"
+import { studioTools } from "../src/studio/tools"
 import { trimMessages } from "../src/studio/trim"
 import { Budget, clientIp, RateLimiter } from "./limits"
 import { mockModel } from "./mock"
@@ -59,8 +59,10 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
   const userKey = c.req.header("x-deepseek-key")?.trim() || undefined
   const body = (await c.req.json().catch(() => null)) as { messages?: UIMessage[]; tree?: unknown; summary?: unknown; mode?: unknown; lang?: unknown } | null
   if (!body || !Array.isArray(body.messages) || !body.messages.length) return c.json({ error: "bad-request", message: "请求格式不对" }, 400)
-  /** What the learner reads, in the language of the page they sent it from. */
-  const say = (zh: string, en: string) => (body.lang === "en" ? en : zh)
+  /** The language of the page they sent it from: what the learner reads, and what the model is told in. */
+  const lang = body.lang === "en" ? "en" : "zh"
+  const say = (zh: string, en: string) => (lang === "en" ? en : zh)
+  const tools = studioTools(lang)
   const tree = Tree.safeParse(body.tree ?? { params: {}, features: [] })
   if (!tree.success) return c.json({ error: "bad-request", message: say("特征树格式不对", "The feature tree is malformed.") }, 400)
   const summary = typeof body.summary === "string" ? body.summary.slice(0, 12000) : ""
@@ -81,14 +83,14 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
   const snap = (lastUser?.metadata ?? {}) as { tree?: unknown; summary?: unknown }
   const snapTree = Tree.safeParse(snap.tree)
   const state = snapTree.success
-    ? statePrompt(snapTree.data, typeof snap.summary === "string" ? snap.summary.slice(0, 12000) : "")
-    : statePrompt(tree.data, summary)
-  const messages = await convertToModelMessages(trimMessages(body.messages.map(withAnnotations)), { tools: STUDIO_TOOLS, ignoreIncompleteToolCalls: true })
+    ? statePrompt(snapTree.data, typeof snap.summary === "string" ? snap.summary.slice(0, 12000) : "", lang)
+    : statePrompt(tree.data, summary, lang)
+  const messages = await convertToModelMessages(trimMessages(body.messages.map((m) => withAnnotations(m, lang)), 8, lang), { tools, ignoreIncompleteToolCalls: true })
   const result = streamText({
     model: MOCK ? mockModel() : route!.model,
-    system: `${SYSTEM_PROMPT}${body.mode === "teach" ? `\n\n${TEACH_PROMPT}` : ""}${languageRule(body.lang)}`,
+    system: `${systemPrompt(lang)}${body.mode === "teach" ? `\n\n${teachPrompt(lang)}` : ""}${languageRule(lang)}`,
     messages: withState(messages, state),
-    tools: STUDIO_TOOLS,
+    tools,
     maxOutputTokens: 8000,
     abortSignal: c.req.raw.signal,
     providerOptions: MOCK ? undefined : route!.providerOptions,
@@ -110,9 +112,9 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
     sendReasoning: true,
     onError: (error) => {
       const msg = (error as Error)?.message ?? String(error)
-      if (/401|auth|api key/i.test(msg)) return "模型 key 无效或没有权限。"
-      if (/429|rate/i.test(msg)) return "模型服务繁忙，稍后再试。"
-      return "模型服务出错了，稍后再试。"
+      if (/401|auth|api key/i.test(msg)) return say("模型 key 无效或没有权限。", "The model key is invalid or has no access.")
+      if (/429|rate/i.test(msg)) return say("模型服务繁忙，稍后再试。", "The model service is busy. Try again later.")
+      return say("模型服务出错了，稍后再试。", "The model service failed. Try again later.")
     },
   })
 })
@@ -121,11 +123,11 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
  * Where the learner pointed (message metadata) becomes text the model reads,
  * appended to that message. Deterministic, so history stays a cacheable prefix.
  */
-function withAnnotations(m: UIMessage): UIMessage {
+function withAnnotations(m: UIMessage, lang: "zh" | "en"): UIMessage {
   if (m.role !== "user") return m
   const notes = Annotations.safeParse((m.metadata as { annotations?: unknown } | undefined)?.annotations)
   if (!notes.success || !notes.data.length) return m
-  return { ...m, parts: [...m.parts, { type: "text", text: annotationText(notes.data) }] }
+  return { ...m, parts: [...m.parts, { type: "text", text: annotationText(notes.data, lang) }] }
 }
 
 const port = Number(env.PORT ?? 18914)

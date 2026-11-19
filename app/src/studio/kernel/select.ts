@@ -6,6 +6,7 @@ import { getOC, makeVertex, measureDistanceBetween, Wire, type Edge, type Face, 
 import type { EdgeSelector, FaceSelector } from "../dsl"
 import { num, type Scope } from "../expr"
 import { InputError } from "./errors"
+import { agentLang, byAgentLang, ta } from "../../lib/agent-lang"
 import { edgesOf, faceProps, facesOf } from "./topo"
 
 type V3 = [number, number, number]
@@ -170,27 +171,45 @@ function nearest<T>(items: T[], shapeOf: (t: T) => Face | Edge, p: V3): T[] {
   return [best]
 }
 
+/** A face in a listing: 「面#3 平面 法向 +Z 中心(0, 0, 10) 来自 ext1」. */
 export function describeFace(f: FaceInfo) {
-  const kindName = { plane: "平面", cylinder: "圆柱面", cone: "圆锥面", sphere: "球面", torus: "环面", freeform: "自由曲面" }[f.kind]
-  const n = f.normal ? ` 法向 ${dirName(f.normal)}` : ""
+  return ta(`${faceShape(f)} 来自 ${f.origin}`, `${faceShape(f)} from ${f.origin}`)
+}
+
+/** The face without the feature it came from: 「面#3 平面 法向 +Z 中心(0, 0, 10)」. */
+export function faceShape(f: FaceInfo) {
+  const kindName = byAgentLang(
+    { plane: "平面", cylinder: "圆柱面", cone: "圆锥面", sphere: "球面", torus: "环面", freeform: "自由曲面" },
+    { plane: "plane", cylinder: "cylinder", cone: "cone", sphere: "sphere", torus: "torus", freeform: "freeform surface" },
+  )[f.kind]
+  const n = f.normal ? ta(` 法向 ${dirName(f.normal)}`, ` normal ${dirName(f.normal)}`) : ""
   const r = f.radius !== undefined ? ` R${r2(f.radius)}` : ""
-  return `面#${f.index} ${kindName}${n}${r} 中心(${f.center.map(r2).join(", ")}) 来自 ${f.origin}`
+  const c = f.center.map(r2).join(", ")
+  return ta(`面#${f.index} ${kindName}${n}${r} 中心(${c})`, `face#${f.index} ${kindName}${n}${r} center(${c})`)
 }
 
 export function describeEdge(e: EdgeInfo) {
-  const kindName = { line: "直线", circle: "圆弧", freeform: "曲线" }[e.kind]
-  const d = e.dir ? ` 方向 ${dirName(e.dir)}` : ""
+  const kindName = byAgentLang({ line: "直线", circle: "圆弧", freeform: "曲线" }, { line: "line", circle: "arc", freeform: "curve" })[e.kind]
+  const d = e.dir ? ta(` 方向 ${dirName(e.dir)}`, ` direction ${dirName(e.dir)}`) : ""
   const r = e.radius !== undefined ? ` R${r2(e.radius)}` : ""
-  return `边#${e.index} ${kindName}${d}${r} 中点(${e.mid.map(r2).join(", ")}) 长 ${r2(e.length)}`
+  const m = e.mid.map(r2).join(", ")
+  return ta(`边#${e.index} ${kindName}${d}${r} 中点(${m}) 长 ${r2(e.length)}`, `edge#${e.index} ${kindName}${d}${r} midpoint(${m}) length ${r2(e.length)}`)
 }
 
 function dirName(v: V3) {
   return axisDir(v) ?? `(${v.map(r2).join(", ")})`
 }
 
-function checkCount<T>(found: T[], expect: number | undefined, what: string, all: T[], describe: (t: T) => string, hint?: string) {
+function checkCount<T>(found: T[], expect: number | undefined, kind: "face" | "edge", all: T[], describe: (t: T) => string, hint?: string) {
   if (found.length && (expect === undefined || found.length === expect)) return found
   const list = all.slice(0, 16).map(describe).join("\n")
+  const what = kind === "face" ? "面" : "边"
+  const en = (k: number) => `${kind}${k === 1 ? "" : "s"}`
+  if (agentLang() === "en") {
+    const more = all.length > 16 ? `\n…${all.length} in all` : ""
+    const head = found.length ? `Selected ${found.length} ${en(found.length)}, expected ${expect}` : `No ${kind} matches this selector`
+    throw new InputError(`${head}${!found.length && hint ? `. ${hint}` : ""}. Candidates:\n${list}${more}`)
+  }
   const more = all.length > 16 ? `\n…共 ${all.length} 个` : ""
   const head = found.length ? `选中了 ${found.length} 个${what}，预期 ${expect} 个` : `没有${what}满足这个选择条件`
   throw new InputError(`${head}${!found.length && hint ? `。${hint}` : ""}。候选：\n${list}${more}`)
@@ -204,6 +223,10 @@ function checkCount<T>(found: T[], expect: number | undefined, what: string, all
 function ofHint(of: string | undefined, without: FaceInfo[]) {
   if (!of || !without.length) return undefined
   const names = [...new Set(without.map((f) => f.origin))].map((o) => `「${o}」`).join("、")
+  if (agentLang() === "en") {
+    const en = [...new Set(without.map((f) => f.origin))].map((o) => `“${o}”`).join(", ")
+    return `The faces that meet the rest of the selector are recorded under ${en}, not under “${of}”: the faces “${of}” made may have merged with coplanar faces made earlier (a merged face is recorded under the feature that made it first), or a later feature changed them. Drop of and select with normal, extreme, at or near`
+  }
   return `满足其余条件的面记在${names}名下，不在「${of}」名下：「${of}」生成的面可能和先有的共面的面合成了一个（合并后的面记在先生成它的特征名下），或者被后面的特征改掉了。去掉 of，用 normal、extreme、at 或 near 来选`
 }
 
@@ -214,7 +237,7 @@ export function selectFaces(sel: FaceSelector, faces: FaceInfo[], scope: Scope):
     out = out.filter((f) => !drop.has(f.index))
   }
   const hint = !out.length && sel.of ? ofHint(sel.of, filterFaces({ ...sel, of: undefined }, faces, scope)) : undefined
-  return checkCount(out, sel.expect, "面", faces, describeFace, hint)
+  return checkCount(out, sel.expect, "face", faces, describeFace, hint)
 }
 
 function filterFaces(sel: Omit<FaceSelector, "not" | "expect">, faces: FaceInfo[], scope: Scope): FaceInfo[] {
@@ -254,11 +277,14 @@ export function selectEdges(sel: EdgeSelector, edges: EdgeInfo[], faces: FaceInf
   }
   const hint =
     !out.length && sel.outer && !sel.faces
-      ? "outer 要和 faces 一起写：选这些面的外轮廓边"
+      ? ta("outer 要和 faces 一起写：选这些面的外轮廓边", "Write outer together with faces: it selects the outer boundary edges of those faces")
       : !out.length && sel.of && filterEdges({ ...sel, of: undefined }, edges, faces, scope).length
-        ? `满足其余条件的边不在「${sel.of}」生成的面上：它的面可能和先有的共面的面合成了一个，或者被后面的特征改掉了。去掉 of 再选`
+        ? ta(
+            `满足其余条件的边不在「${sel.of}」生成的面上：它的面可能和先有的共面的面合成了一个，或者被后面的特征改掉了。去掉 of 再选`,
+            `The edges that meet the rest of the selector are not on faces “${sel.of}” made: its faces may have merged with coplanar faces made earlier, or a later feature changed them. Drop of and select again`,
+          )
         : undefined
-  return checkCount(out, sel.expect, "边", edges, describeEdge, hint)
+  return checkCount(out, sel.expect, "edge", edges, describeEdge, hint)
 }
 
 function filterEdges(sel: Omit<EdgeSelector, "not" | "expect">, edges: EdgeInfo[], faces: FaceInfo[], scope: Scope): EdgeInfo[] {

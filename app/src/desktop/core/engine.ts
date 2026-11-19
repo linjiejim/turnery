@@ -18,7 +18,6 @@ import {
   LOOK_PADDING,
   LOOK_SIZE,
   VIEW_DIR,
-  VIEW_LABEL,
   autoFocus,
   boxOfGroups,
   facingOf,
@@ -30,6 +29,7 @@ import {
   type Box,
   type LookSection,
   type LookShot,
+  viewLabel,
 } from "../../studio/look-plan"
 import type { Dim } from "../../studio/kernel/dims"
 import type { DrawingData } from "../../studio/kernel/drawing"
@@ -67,6 +67,7 @@ import {
   type Snapshot,
 } from "./protocol"
 import { describeTreeChange } from "./tree-diff"
+import { ta } from "../../lib/agent-lang"
 
 type V3 = [number, number, number]
 /** `export`'s input: where, what format, and for pictures how to look. */
@@ -201,6 +202,19 @@ const WINDOW_OK = new Set(["undo", "redo"])
 
 const fail = (text: string): CommandResult => ({ ok: false, text: `✗ ${text}` })
 const clip = (s: string, n = 30) => (s.length > n ? `${s.slice(0, n)}…` : s)
+/** A count in English: "1 note", "2 notes". */
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+/** Lists inside a sentence: 「a、b」, "a, b". */
+const listed = (items: string[]) => items.join(ta("、", ", "))
+/** Names quoted in English, as 「a」「b」 are in Chinese: “a”, “b”. */
+const quoted = (names: string[]) => names.map((n) => `“${n}”`).join(", ")
+/** 「零件」 or 「装配」: what kind of file a path is, in a sentence. */
+const kindWord = (path: string) => (isAssembly(path) ? ta("装配", "assembly") : ta("零件", "part"))
+/** Input that didn't parse: `path message` per issue. */
+const issuesText = (issues: { path: PropertyKey[]; message: string }[]) => issues.map((i) => `${i.path.join(".") || ta("（根）", "(root)")} ${i.message}`).join(ta("；", "; "))
+const shadowWarning = (names: string[]) => ta(`⚠ 参数 ${names.join("、")} 在共享参数文件里也有，以共享的为准`, `⚠ Parameters ${names.join(", ")} are also in the shared parameter file: the shared values win`)
+/** doc.error after a build threw (cleared by the next build that works), in either language. */
+const LOAD_FAILED = ["加载失败：", "Failed to load: "]
 
 export function partName(path: string) {
   const base = path.split(/[\\/]/).pop() ?? path
@@ -252,10 +266,10 @@ export function parseTree(text: string): { ok: true; tree: Tree } | { ok: false;
   try {
     raw = JSON.parse(text)
   } catch (e) {
-    return { ok: false, error: `JSON 格式错误：${(e as Error).message}` }
+    return { ok: false, error: ta(`JSON 格式错误：${(e as Error).message}`, `Invalid JSON: ${(e as Error).message}`) }
   }
   const parsed = Tree.safeParse(raw)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join(".") || "（根）"} ${i.message}`).join("；") }
+  if (!parsed.success) return { ok: false, error: issuesText(parsed.error.issues.slice(0, 5)) }
   return { ok: true, tree: parsed.data }
 }
 
@@ -263,8 +277,15 @@ export function parseTree(text: string): { ok: true; tree: Tree } | { ok: false;
 type Reader = "agent" | "assistant"
 const readerOf = (actor: Actor): Reader | null => (actor === "agent" || actor === "assistant" ? actor : null)
 /** How a change by someone else is introduced to an agent. */
-const BY: Record<Actor, string> = { user: "用户在窗口里", file: "文件被直接修改", agent: "另一个 agent（通过 MCP）", assistant: "窗口里的内置助手" }
-const WHO: Record<Actor, string> = { user: "用户", file: "文件", agent: "另一个 agent ", assistant: "内置助手" }
+const BY = (a: Actor) =>
+  ({
+    user: ta("用户在窗口里", "The user, in the window"),
+    file: ta("文件被直接修改", "The file, edited directly"),
+    agent: ta("另一个 agent（通过 MCP）", "Another agent (over MCP)"),
+    assistant: ta("窗口里的内置助手", "The built-in assistant in the window"),
+  })[a]
+/** Who did it, in a sentence (the Chinese runs straight into what they did: 「另一个 agent 删除备注 n2」). */
+const WHO = (a: Actor) => ({ user: ta("用户", "the user"), file: ta("文件", "the file"), agent: ta("另一个 agent ", "another agent"), assistant: ta("内置助手", "the built-in assistant") })[a]
 
 export class Engine {
   private loading: LoadState | null = null
@@ -437,9 +458,9 @@ export class Engine {
     const spec = COMMAND.get(name)
     const allowed =
       spec && (spec.audience === "both" || (ctx.actor === "user" ? spec.audience === "user" || WINDOW_OK.has(name) : spec.audience === "agent"))
-    if (!spec || !allowed) return fail(`没有这个命令：${name}`)
+    if (!spec || !allowed) return fail(ta(`没有这个命令：${name}`, `No such command: ${name}`))
     const parsed = spec.input.safeParse(input ?? {})
-    if (!parsed.success) return fail(`参数不对：${parsed.error.issues.map((i) => `${i.path.join(".") || "（根）"} ${i.message}`).join("；")}`)
+    if (!parsed.success) return fail(ta(`参数不对：`, `Invalid input: `) + issuesText(parsed.error.issues))
     const data = parsed.data as Record<string, unknown>
     if (name === "guide") return { ok: true, text: AGENT_GUIDE }
     try {
@@ -447,7 +468,7 @@ export class Engine {
       if (name === "request_pick") return await this.requestPick(data, ctx)
       return await this.track(ctx, name, () => this.exclusive(() => this.runLocked(name, data, ctx)))
     } catch (e) {
-      return fail(e instanceof InputError ? e.message : `出错了：${(e as Error)?.message ?? e}`)
+      return fail(e instanceof InputError ? e.message : ta(`出错了：${(e as Error)?.message ?? e}`, `Error: ${(e as Error)?.message ?? e}`))
     }
   }
 
@@ -491,7 +512,7 @@ export class Engine {
       if (name === "close_project") return this.closeProject()
       if (name === "rename_file") return await this.renameFile(input as { path: string; name: string }, ctx)
       const doc = await this.resolveDoc(ctx)
-      if (!doc) return fail("还没有打开零件：先用 open_part（path 写零件文件，新零件加 create: true）。")
+      if (!doc) return fail(ta("还没有打开零件：先用 open_part（path 写零件文件，新零件加 create: true）。", "No part is open yet: call open_part first (path: the part file; add create: true for a new part)."))
       // Catch up with the file first: an editor may have saved it a moment ago (the watcher is debounced).
       await this.fileChanged(doc)
       // get_notes lists the new notes itself.
@@ -500,13 +521,19 @@ export class Engine {
       let res = await this.onDoc(doc, name, input, ctx)
       if (doc.conflict) {
         doc.conflict = false
-        res = { ok: false, text: `${res.text}\n\n⚠ 这次修改期间，文件被别人保存过：已经以文件里的版本为准，刚才的改动没有写进文件（undo 可以找回）。` }
+        res = {
+          ok: false,
+          text: `${res.text}\n\n${ta(
+            "⚠ 这次修改期间，文件被别人保存过：已经以文件里的版本为准，刚才的改动没有写进文件（undo 可以找回）。",
+            "⚠ Someone else saved the file while this change ran: the version in the file now stands, and this change was not written to the file (undo brings it back).",
+          )}`,
+        }
       }
       if (reader) this.markSeen(doc, reader)
       return notice ? { ...res, text: `${notice}\n\n${res.text}` } : res
     } catch (e) {
       if (e instanceof InputError) return fail(e.message)
-      return fail(`出错了：${(e as Error)?.message ?? e}`)
+      return fail(ta(`出错了：${(e as Error)?.message ?? e}`, `Error: ${(e as Error)?.message ?? e}`))
     }
   }
 
@@ -515,8 +542,20 @@ export class Engine {
     if (name === "share_params") return this.shareParams(doc, input as { file?: string; create?: boolean; move?: string[]; stop?: boolean }, ctx)
     if (FEATURE_TOOLS.has(name)) {
       const asm = isAssembly(doc.path)
-      if (name === "component" && !asm) return fail(`零件文件里不能放 component。新建一个装配文件（open_part，路径以 ${ASM_EXT} 结尾，create: true），在那里放零件`)
-      if (asm && name !== "component") return fail("装配里只能放零件（component）。要改零件的形状，用 open_part 打开它的文件（加 context 写这个装配文件，就能看着其他零件改）")
+      if (name === "component" && !asm)
+        return fail(
+          ta(
+            `零件文件里不能放 component。新建一个装配文件（open_part，路径以 ${ASM_EXT} 结尾，create: true），在那里放零件`,
+            `A part file can’t hold a component. Create an assembly file (open_part with a path ending in ${ASM_EXT}, create: true) and put the parts there`,
+          ),
+        )
+      if (asm && name !== "component")
+        return fail(
+          ta(
+            "装配里只能放零件（component）。要改零件的形状，用 open_part 打开它的文件（加 context 写这个装配文件，就能看着其他零件改）",
+            "An assembly can only hold parts (component). To change a part’s shape, open its file with open_part (set context to this assembly file to edit it with the other parts in view)",
+          ),
+        )
     }
     if (STUDIO_TOOL_NAMES.has(name)) {
       await this.ensureKernel(doc)
@@ -532,15 +571,17 @@ export class Engine {
         return { ok: true, text: await this.stateText(doc, readerOf(ctx.actor)) }
       case "set_tree": {
         const base = input.base_rev as number | undefined
-        if (base !== undefined && base !== doc.rev) return fail(`模型已经是第 ${doc.rev} 版了（你基于第 ${base} 版）：先用 get_state 看最新的，再改。`)
+        // The window tells this one from other failures by its start (use-desktop.ts): 「模型已经是」 / "The model is already at version".
+        if (base !== undefined && base !== doc.rev)
+          return fail(ta(`模型已经是第 ${doc.rev} 版了（你基于第 ${base} 版）：先用 get_state 看最新的，再改。`, `The model is already at version ${doc.rev} (you based this on version ${base}): call get_state to see the latest, then change it.`))
         await this.adopt(doc, await this.stripShared(doc, input.tree as Tree, ctx), ctx.actor)
-        return { ok: this.allOk(doc), text: `已替换特征树（第 ${doc.rev} 版）。\n${treeText(doc.tree, doc.report!)}` }
+        return { ok: this.allOk(doc), text: `${ta(`已替换特征树（第 ${doc.rev} 版）。`, `Replaced the feature tree (version ${doc.rev}).`)}\n${treeText(doc.tree, doc.report!)}` }
       }
       case "move_feature": {
         const by = input.by as number
         let tree = doc.tree
         for (let i = 0; i < Math.abs(by); i++) tree = moveFeature(tree, String(input.id), by < 0 ? -1 : 1)
-        if (tree === doc.tree) return { ok: true, text: "顺序没变。" }
+        if (tree === doc.tree) return { ok: true, text: ta("顺序没变。", "The order didn’t change.") }
         await this.adopt(doc, tree, ctx.actor)
         return { ok: this.allOk(doc), text: treeText(doc.tree, doc.report!) }
       }
@@ -556,7 +597,7 @@ export class Engine {
         const a = await this.one(input.a as Target)
         const b = input.b ? await this.one(input.b as Target) : undefined
         const res = await this.opts.kernel.measure(b ? [a, b] : [a])
-        if (!res) return fail("量不了：还没有实体。")
+        if (!res) return fail(ta("量不了：还没有实体。", "Nothing to measure: there is no solid yet."))
         return { ok: true, text: measureText(res) }
       }
       case "export":
@@ -569,13 +610,14 @@ export class Engine {
         // The pictures of areas framed or drawn on (open ones), so the agent sees what was marked.
         const shown = list.filter((n) => n.region?.image && (all || n.status === "open")).slice(-MAX_NOTE_IMAGES)
         const images = (await Promise.all(shown.map((n) => this.dataUrl(n.region!.image!)))).filter((x): x is string => !!x)
-        const own = notesText(list, all, isAssembly(doc.path) ? "装配" : "零件")
-        const text = [own, await this.contextNotes(doc, all), images.length ? `附了 ${images.length} 张框选或画笔标注时的画面（按备注顺序）。` : ""].filter(Boolean).join("\n\n")
+        const own = notesText(list, all, kindWord(doc.path))
+        const attached = images.length ? ta(`附了 ${images.length} 张框选或画笔标注时的画面（按备注顺序）。`, `Attached ${plural(images.length, "picture")} of the view when an area was framed or drawn on (in note order).`) : ""
+        const text = [own, await this.contextNotes(doc, all), attached].filter(Boolean).join("\n\n")
         return { ok: true, text, ...(images.length ? { images } : {}) }
       }
       case "resolve_note": {
         const note = doc.notes.notes.find((n) => n.id === input.id)
-        if (!note) return fail(`没有备注 ${input.id}。用 get_notes 看有哪些。`)
+        if (!note) return fail(ta(`没有备注 ${input.id}。用 get_notes 看有哪些。`, `No note ${input.id}. Call get_notes to see which notes there are.`))
         if (input.reopen) {
           note.status = "open"
           note.resolvedAt = undefined
@@ -584,11 +626,19 @@ export class Engine {
           note.resolvedAt = Date.now()
         }
         if (typeof input.reply === "string" && input.reply.trim()) note.reply = input.reply.trim()
-        this.logNote(doc, ctx.actor, `${input.reopen ? "重新打开" : "处理完"}备注 ${note.id}${note.reply && !input.reopen ? `：${note.reply}` : ""}`)
+        const replied = note.reply && !input.reopen
+        this.logNote(
+          doc,
+          ctx.actor,
+          ta(`${input.reopen ? "重新打开" : "处理完"}备注 ${note.id}${replied ? `：${note.reply}` : ""}`, `${input.reopen ? "reopened" : "resolved"} note ${note.id}${replied ? `: ${note.reply}` : ""}`),
+        )
         await this.saveNotes(doc)
         this.emitDoc(doc)
         const open = doc.notes.notes.filter((n) => n.status === "open").length
-        return { ok: true, text: `${note.id} ${note.status === "open" ? "已重新打开" : "已标为已处理"}。还有 ${open} 条未处理。` }
+        return {
+          ok: true,
+          text: ta(`${note.id} ${note.status === "open" ? "已重新打开" : "已标为已处理"}。还有 ${open} 条未处理。`, `${note.id} ${note.status === "open" ? "reopened" : "marked as resolved"}. ${open} still open.`),
+        }
       }
       case "show":
         return this.show(doc, input)
@@ -599,34 +649,34 @@ export class Engine {
         const image = about.region?.image ? await this.saveNoteImage(doc, doc.notes.next, about.region.image) : undefined
         const note = newNote(doc.notes, (input.pick as unknown as PickInfo | undefined) ?? null, String(input.text ?? ""), about, image)
         doc.notes = { next: note.n + 1, notes: [...doc.notes.notes, note] }
-        this.logNote(doc, ctx.actor, `记下备注 ${note.id}「${clip(note.text) || "只点了位置"}」`, "added")
+        this.logNote(doc, ctx.actor, ta(`记下备注 ${note.id}「${clip(note.text) || "只点了位置"}」`, `added note ${note.id} “${clip(note.text) || "only a point"}”`), "added")
         await this.saveNotes(doc)
         this.emitDoc(doc)
-        return { ok: true, text: `已记下备注 ${note.id}。` }
+        return { ok: true, text: ta(`已记下备注 ${note.id}。`, `Added note ${note.id}.`) }
       }
       case "update_note": {
         const note = doc.notes.notes.find((n) => n.id === input.id)
-        if (!note) return fail(`没有备注 ${input.id}`)
+        if (!note) return fail(ta(`没有备注 ${input.id}`, `No note ${input.id}`))
         if (input.remove) {
           doc.notes = { ...doc.notes, notes: doc.notes.notes.filter((n) => n !== note) }
-          this.logNote(doc, ctx.actor, `删除备注 ${note.id}`)
+          this.logNote(doc, ctx.actor, ta(`删除备注 ${note.id}`, `removed note ${note.id}`))
         } else {
           if (typeof input.text === "string" && input.text.trim() !== note.text) {
             note.text = input.text.trim()
-            this.logNote(doc, ctx.actor, `改了备注 ${note.id}：「${clip(note.text) || "（没写字）"}」`)
+            this.logNote(doc, ctx.actor, ta(`改了备注 ${note.id}：「${clip(note.text) || "（没写字）"}」`, `edited note ${note.id}: “${clip(note.text) || "(no text)"}”`))
           }
           if (input.status && input.status !== note.status) {
             note.status = input.status as "open" | "resolved"
             note.resolvedAt = note.status === "resolved" ? Date.now() : undefined
-            this.logNote(doc, ctx.actor, `把备注 ${note.id} 标为${note.status === "resolved" ? "已处理" : "未处理"}`)
+            this.logNote(doc, ctx.actor, ta(`把备注 ${note.id} 标为${note.status === "resolved" ? "已处理" : "未处理"}`, `marked note ${note.id} as ${note.status === "resolved" ? "resolved" : "open"}`))
           }
         }
         await this.saveNotes(doc)
         this.emitDoc(doc)
-        return { ok: true, text: "已更新备注。" }
+        return { ok: true, text: ta("已更新备注。", "Updated the note.") }
       }
     }
-    return fail(`没有这个命令：${name}`)
+    return fail(ta(`没有这个命令：${name}`, `No such command: ${name}`))
   }
 
   // ------------------------------------------------------- shared params
@@ -641,7 +691,7 @@ export class Engine {
     const notes = (input.notes as Record<string, string> | undefined) ?? {}
     const toShared = input.shared === true
     const sh = doc.shared
-    if (toShared && !sh) return fail("这个零件还没有共享参数文件：先用 share_params 指定一个（例如 pen.params.json）")
+    if (toShared && !sh) return fail(ta("这个零件还没有共享参数文件：先用 share_params 指定一个（例如 pen.params.json）", "This part has no shared parameter file yet: name one with share_params first (e.g. pen.params.json)"))
     if (sh?.error) return fail(sh.error)
     const inShared = (k: string) => toShared || (!!sh && k in sh.params)
     const pick = <T,>(o: Record<string, T>, keep: boolean) => Object.fromEntries(Object.entries(o).filter(([k]) => inShared(k) === keep))
@@ -662,11 +712,17 @@ export class Engine {
       try {
         resolveParams({ ...doc.tree.params, ...apply({ params: sh.params, notes: sh.notes }).params })
       } catch (e) {
-        return fail(`参数不对：${(e as Error).message}`)
+        return fail(ta(`参数不对：${(e as Error).message}`, `Invalid parameters: ${(e as Error).message}`))
       }
       const users = await this.writeShared(sh, apply, ctx)
-      const what = [...Object.entries(sharedSet).map(([k, v]) => `${k} = ${v}`), ...sharedRemove.map((k) => `删除 ${k}`)].join("，") || "参数说明"
-      lines.push(`共享参数（${sh.file}）：${what}。${users.length > 1 ? `用到它的 ${users.map((d) => d.name).join("、")} 都已重建。` : ""}`)
+      const what = [...Object.entries(sharedSet).map(([k, v]) => `${k} = ${v}`), ...sharedRemove.map((k) => ta(`删除 ${k}`, `removed ${k}`))].join(ta("，", ", ")) || ta("参数说明", "parameter notes")
+      const names = users.map((d) => d.name)
+      lines.push(
+        ta(
+          `共享参数（${sh.file}）：${what}。${users.length > 1 ? `用到它的 ${names.join("、")} 都已重建。` : ""}`,
+          `Shared parameters (${sh.file}): ${what}.${users.length > 1 ? ` Rebuilt everything that uses it: ${names.join(", ")}.` : ""}`,
+        ),
+      )
     }
     const own = { set: pick(set, false), remove: remove.filter((k) => !sharedRemove.includes(k)), notes: pick(notes, false) }
     if (Object.keys(own.set).length || own.remove.length || Object.keys(own.notes).length) {
@@ -677,7 +733,7 @@ export class Engine {
       lines.push(run.output.text)
     } else lines.push(treeText(doc.tree, doc.report!))
     const shadow = shadowed(doc.tree, doc.shared)
-    if (shadow.length) lines.push(`⚠ 参数 ${shadow.join("、")} 在共享参数文件里也有，以共享的为准`)
+    if (shadow.length) lines.push(shadowWarning(shadow))
     return { ok: this.allOk(doc), text: lines.join("\n") }
   }
 
@@ -693,7 +749,7 @@ export class Engine {
     try {
       resolveParams(params)
     } catch (e) {
-      throw new InputError(`共享参数不对，没有写入 ${sh.file}：${(e as Error).message}`)
+      throw new InputError(ta(`共享参数不对，没有写入 ${sh.file}：${(e as Error).message}`, `Invalid shared parameters, so nothing was written to ${sh.file}: ${(e as Error).message}`))
     }
     const text = sharedText({ params, notes })
     this.wrote.set(sh.path, { text, actor: ctx.actor })
@@ -702,7 +758,7 @@ export class Engine {
     for (const d of users) {
       if (d.shared?.path === sh.path) await this.refreshShared(d)
       d.rev += 1
-      d.changes = [{ rev: d.rev, actor: ctx.actor, at: Date.now(), summary: `改了共享参数 ${sh.file}`, seq: ++d.seq }, ...d.changes].slice(0, MAX_CHANGES)
+      d.changes = [{ rev: d.rev, actor: ctx.actor, at: Date.now(), summary: ta(`改了共享参数 ${sh.file}`, `changed the shared parameters in ${sh.file}`), seq: ++d.seq }, ...d.changes].slice(0, MAX_CHANGES)
       this.built.delete(d.path)
     }
     this.assetsKeys.clear()
@@ -717,28 +773,30 @@ export class Engine {
   /** Start using a shared parameter file (creating it, moving some of the part's own parameters into it), or stop. */
   private async shareParams(doc: Doc, input: { file?: string; create?: boolean; move?: string[]; stop?: boolean }, ctx: CallContext): Promise<CommandResult> {
     if (input.stop) {
-      if (!doc.tree.uses) return { ok: true, text: "这个零件本来就没有用共享参数文件。" }
+      if (!doc.tree.uses) return { ok: true, text: ta("这个零件本来就没有用共享参数文件。", "This part doesn’t use a shared parameter file anyway.") }
       const { uses: _drop, ...rest } = doc.tree
       void _drop
       // The values in use: the shared ones won, so they stay.
       const kept = { ...doc.tree.params, ...(doc.shared?.params ?? {}) }
       const keptNotes = { ...(doc.tree.paramNotes ?? {}), ...(doc.shared?.notes ?? {}) }
-      await this.adopt(doc, { ...rest, params: kept, paramNotes: Object.keys(keptNotes).length ? keptNotes : undefined }, ctx.actor, { summary: `不再用共享参数文件 ${doc.tree.uses}（参数抄回零件里）` })
-      return { ok: this.allOk(doc), text: `已停用共享参数文件，共享参数的当前值抄回了零件自己的参数表。\n${treeText(doc.tree, doc.report!)}` }
+      const summary = ta(`不再用共享参数文件 ${doc.tree.uses}（参数抄回零件里）`, `stopped using the shared parameter file ${doc.tree.uses} (parameters copied back into the part)`)
+      await this.adopt(doc, { ...rest, params: kept, paramNotes: Object.keys(keptNotes).length ? keptNotes : undefined }, ctx.actor, { summary })
+      const done = ta("已停用共享参数文件，共享参数的当前值抄回了零件自己的参数表。", "Stopped using the shared parameter file. The current values of the shared parameters were copied back into the part’s own parameter table.")
+      return { ok: this.allOk(doc), text: `${done}\n${treeText(doc.tree, doc.report!)}` }
     }
     const file = input.file?.trim()
-    if (!file) return fail("file 写共享参数文件的路径，相对零件文件所在的文件夹，例如 pen.params.json")
+    if (!file) return fail(ta("file 写共享参数文件的路径，相对零件文件所在的文件夹，例如 pen.params.json", "file: the path of the shared parameter file, relative to the folder the part file is in, e.g. pen.params.json"))
     const abs = besides(doc.path, file)
     let sh = await loadShared(this.opts.files, doc.path, file)
     if (sh.text === null) {
-      if (!input.create) return fail(`没有 ${abs}。要新建就设 create: true`)
+      if (!input.create) return fail(ta(`没有 ${abs}。要新建就设 create: true`, `${abs} doesn’t exist. To create it, set create: true`))
       await this.opts.files.write(abs, sharedText({ params: {}, notes: {} }))
       sh = await loadShared(this.opts.files, doc.path, file)
     }
     if (sh.error) return fail(sh.error)
     const move = input.move ?? []
     const missing = move.filter((k) => !(k in doc.tree.params))
-    if (missing.length) return fail(`零件里没有参数 ${missing.join("、")}`)
+    if (missing.length) return fail(ta(`零件里没有参数 ${missing.join("、")}`, `The part has no parameter ${missing.join(", ")}`))
     let tree: Tree = { ...doc.tree, uses: file }
     if (move.length) {
       const params = { ...sh.params, ...Object.fromEntries(move.map((k) => [k, doc.tree.params[k]])) }
@@ -748,12 +806,14 @@ export class Engine {
       tree = { ...tree, params: own, paramNotes: Object.keys(ownNotes).length ? ownNotes : undefined }
       await this.writeShared(sh, (cur) => ({ params: { ...cur.params, ...Object.fromEntries(move.map((k) => [k, params[k]])) }, notes: { ...cur.notes, ...Object.fromEntries(Object.entries(notes).filter(([k]) => move.includes(k))) } }), ctx)
     }
-    await this.adopt(doc, tree, ctx.actor, { summary: `用共享参数文件 ${file}${move.length ? `，移进去 ${move.join("、")}` : ""}` })
+    await this.adopt(doc, tree, ctx.actor, { summary: ta(`用共享参数文件 ${file}${move.length ? `，移进去 ${move.join("、")}` : ""}`, `started using the shared parameter file ${file}${move.length ? `, moved ${move.join(", ")} into it` : ""}`) })
     const shadow = shadowed(doc.tree, doc.shared)
-    return {
-      ok: this.allOk(doc),
-      text: `已用共享参数文件 ${file}（${Object.keys(doc.shared?.params ?? {}).length} 个参数）。别的零件和装配写同一个 uses（share_params）就共用这些尺寸；改它们用 set_params，会写回这个文件。${shadow.length ? `\n⚠ 参数 ${shadow.join("、")} 在共享参数文件里也有，以共享的为准` : ""}\n${treeText(doc.tree, doc.report!)}`,
-    }
+    const count = Object.keys(doc.shared?.params ?? {}).length
+    const using = ta(
+      `已用共享参数文件 ${file}（${count} 个参数）。别的零件和装配写同一个 uses（share_params）就共用这些尺寸；改它们用 set_params，会写回这个文件。`,
+      `Now using the shared parameter file ${file} (${plural(count, "parameter")}). Other parts and assemblies that write the same uses (share_params) share these dimensions. Change them with set_params: it writes back to this file.`,
+    )
+    return { ok: this.allOk(doc), text: `${using}${shadow.length ? `\n${shadowWarning(shadow)}` : ""}\n${treeText(doc.tree, doc.report!)}` }
   }
 
   /** A whole tree from the window (it shows shared parameters in the table): those go back to the shared file. */
@@ -820,15 +880,15 @@ export class Engine {
     let contextNote = ""
     if (context !== doc.context) {
       if (context) {
-        if (isAssembly(path)) return fail("context 用来在装配里改一个零件；打开的是装配本身，不用写 context")
+        if (isAssembly(path)) return fail(ta("context 用来在装配里改一个零件；打开的是装配本身，不用写 context", "context is for editing a part inside an assembly. What you are opening is the assembly itself: leave out context"))
         const before = doc.context
         doc.context = context
         const found = await this.contextOf(doc, false)
         if (!found) {
           doc.context = before
-          return fail(`${input.context} 里没有用到这个零件（要有一个 component 的 file 指向 ${partName(path)}），或者装配文件读不了`)
+          return fail(ta(`${input.context} 里没有用到这个零件（要有一个 component 的 file 指向 ${partName(path)}），或者装配文件读不了`, `${input.context} doesn’t use this part (a component’s file must point to ${partName(path)}), or the assembly file can’t be read`))
         }
-        contextNote = found.note ? `\n${found.note}。` : ""
+        contextNote = found.note ? `\n${found.note}${ta("。", ".")}` : ""
       } else doc.context = null
       this.assetsKeys.delete(path)
       await this.ensureKernel(doc, true)
@@ -840,14 +900,23 @@ export class Engine {
     const opener = readerOf(ctx.actor)
     if (opener) this.markSeen(doc, opener)
     this.emitDoc(doc)
-    const what = isAssembly(path) ? "装配" : "零件"
-    const head = existed ? `已打开${what} ${path}（第 ${doc.rev} 版）` : `已新建${what} ${path}${input.template && !isAssembly(path) ? `（从「${STARTERS.find((s) => s.id === input.template)?.title}」开始）` : ""}`
+    const what = kindWord(path)
+    const starter = input.template && !isAssembly(path) ? STARTERS.find((s) => s.id === input.template)?.title : undefined
+    const head = existed
+      ? ta(`已打开${what} ${path}（第 ${doc.rev} 版）`, `Opened the ${what} ${path} (version ${doc.rev})`)
+      : ta(`已新建${what} ${path}${input.template && !isAssembly(path) ? `（从「${starter}」开始）` : ""}`, `Created the ${what} ${path}${input.template && !isAssembly(path) ? ` (starting from “${starter}”)` : ""}`)
     const open = doc.notes.notes.filter((n) => n.status === "open")
-    const notes = open.length ? `\n窗口里有 ${open.length} 条未处理的备注，用 get_notes 读。` : ""
-    const warn = existed && input.template ? "\n文件已经存在，没有用 template。" : ""
-    const inCtx = doc.context ? `\n在装配「${partName(doc.context)}」里编辑：装配里的其他零件（${(doc.report?.refs ?? []).map((r) => r.name).join("、") || "无"}）半透明地显示在旁边，可以 look、measure、check（gap / clearance / interference 写它们的名字）。${contextNote}` : ""
-    const asmHint = isAssembly(path) && !doc.tree.features.length ? "\n这是空装配：用 component 放零件（file 写零件文件，rotate、at 摆位置）。" : ""
-    return { ok: true, text: `${head}。Turnery 窗口已切到这个${what}。${warn}${notes}${inCtx}${asmHint}\n${treeText(doc.tree, doc.report!)}` }
+    const notes = open.length ? ta(`\n窗口里有 ${open.length} 条未处理的备注，用 get_notes 读。`, `\nThe window has ${plural(open.length, "open note")}: read them with get_notes.`) : ""
+    const warn = existed && input.template ? ta("\n文件已经存在，没有用 template。", "\nThe file already exists: template was not used.") : ""
+    const refs = (doc.report?.refs ?? []).map((r) => r.name)
+    const inCtx = doc.context
+      ? ta(
+          `\n在装配「${partName(doc.context)}」里编辑：装配里的其他零件（${refs.join("、") || "无"}）半透明地显示在旁边，可以 look、measure、check（gap / clearance / interference 写它们的名字）。${contextNote}`,
+          `\nEditing inside the assembly “${partName(doc.context)}”: the other parts in the assembly (${refs.join(", ") || "none"}) are shown see-through around it. You can look, measure and check with them (write their names in gap / clearance / interference).${contextNote}`,
+        )
+      : ""
+    const asmHint = isAssembly(path) && !doc.tree.features.length ? ta("\n这是空装配：用 component 放零件（file 写零件文件，rotate、at 摆位置）。", "\nThis is an empty assembly: place parts with component (file: the part file; rotate and at: where it goes).") : ""
+    return { ok: true, text: `${head}${ta(`。Turnery 窗口已切到这个${what}。`, `. The Turnery window now shows this ${what}.`)}${warn}${notes}${inCtx}${asmHint}\n${treeText(doc.tree, doc.report!)}` }
   }
 
   private async listParts(): Promise<CommandResult> {
@@ -856,12 +925,20 @@ export class Engine {
       return { ok: true, text: this.projectText() }
     }
     const parts = [...this.docs.values()]
-    if (!parts.length) return { ok: true, text: `没有打开的零件。${this.recent.length ? `\n最近打开过：\n${this.recent.slice(0, 10).map((p) => `- ${p}`).join("\n")}` : ""}` }
+    if (!parts.length) {
+      const recent = this.recent.length ? `\n${ta("最近打开过：", "Recently opened:")}\n${this.recent.slice(0, 10).map((p) => `- ${p}`).join("\n")}` : ""
+      return { ok: true, text: `${ta("没有打开的零件。", "No parts are open.")}${recent}` }
+    }
     const lines = parts.map((d) => {
       const open = d.notes.notes.filter((n) => n.status === "open").length
-      return `${d.path === this.active ? "▸" : "-"} ${d.path}（${isAssembly(d.path) ? "装配" : "零件"}）：${d.tree.features.length} 个${isAssembly(d.path) ? "零件" : "特征"}${open ? `，${open} 条未处理备注` : ""}${d.error ? `，文件有错：${d.error}` : ""}`
+      const asm = isAssembly(d.path)
+      const mark = d.path === this.active ? "▸" : "-"
+      return ta(
+        `${mark} ${d.path}（${asm ? "装配" : "零件"}）：${d.tree.features.length} 个${asm ? "零件" : "特征"}${open ? `，${open} 条未处理备注` : ""}${d.error ? `，文件有错：${d.error}` : ""}`,
+        `${mark} ${d.path} (${asm ? "assembly" : "part"}): ${plural(d.tree.features.length, asm ? "part" : "feature")}${open ? `, ${plural(open, "open note")}` : ""}${d.error ? `, the file has an error: ${d.error}` : ""}`,
+      )
     })
-    return { ok: true, text: `打开的零件（▸ = 窗口里正在看的）：\n${lines.join("\n")}` }
+    return { ok: true, text: `${ta("打开的零件（▸ = 窗口里正在看的）：", "Open parts (▸ = the one shown in the window):")}\n${lines.join("\n")}` }
   }
 
   // ---------------------------------------------------------------- renaming
@@ -871,23 +948,23 @@ export class Engine {
    * that name them, follow. Undoable like any change to the assembly (the notes stay renamed).
    */
   private async renamePart(doc: Doc, input: { id: string; name: string }, ctx: CallContext): Promise<CommandResult> {
-    if (!isAssembly(doc.path)) return fail("只有装配里的零件能这样改名；零件文件改的是文件名（rename_file）。")
+    if (!isAssembly(doc.path)) return fail(ta("只有装配里的零件能这样改名；零件文件改的是文件名（rename_file）。", "Only parts in an assembly can be renamed this way. For a part file, rename the file (rename_file)."))
     const hit = componentById(doc.tree, input.id)
-    if (!hit) return fail(`装配里没有 id 为 ${input.id} 的零件`)
+    if (!hit) return fail(ta(`装配里没有 id 为 ${input.id} 的零件`, `The assembly has no part with id ${input.id}`))
     const to = input.name.trim()
     const bad = badPartName(to)
     if (bad) return fail(bad)
-    if (to === hit.name) return { ok: true, text: "名字没变。" }
+    if (to === hit.name) return { ok: true, text: ta("名字没变。", "The name didn’t change.") }
     const taken = doc.tree.features.some((f) => f.op === "component" && f.id !== input.id && componentName(f) === to)
-    if (taken) return fail(`装配里已经有叫「${to}」的零件了`)
+    if (taken) return fail(ta(`装配里已经有叫「${to}」的零件了`, `The assembly already has a part called “${to}”`))
     const tree = renameInAssembly(doc.tree, hit.name, to, (f) => (f.id === input.id ? { ...f, name: to } : null))
     const notes = renameInNotes(doc.notes.notes, hit.name, to)
     if (notes !== doc.notes.notes) {
       doc.notes = { ...doc.notes, notes }
       await this.saveNotes(doc)
     }
-    await this.adopt(doc, tree, ctx.actor, { summary: `零件「${hit.name}」改名为「${to}」` })
-    return { ok: true, text: `已把「${hit.name}」改名为「${to}」（只在这个装配里，零件文件不变）。` }
+    await this.adopt(doc, tree, ctx.actor, { summary: ta(`零件「${hit.name}」改名为「${to}」`, `renamed the part “${hit.name}” to “${to}”`) })
+    return { ok: true, text: ta(`已把「${hit.name}」改名为「${to}」（只在这个装配里，零件文件不变）。`, `Renamed “${hit.name}” to “${to}” (only in this assembly; the part file is unchanged).`) }
   }
 
   /**
@@ -899,26 +976,27 @@ export class Engine {
   private async renameFile(input: { path: string; name: string }, ctx: CallContext): Promise<CommandResult> {
     const files = this.opts.files
     const move = files.rename
-    if (!move) return fail("这里不能改文件名。")
+    if (!move) return fail(ta("这里不能改文件名。", "Files can’t be renamed here."))
     const from = this.partKey(input.path, ctx.cwd)
     const base = baseName(from)
     const ext = asmExtOf(base) ?? partExtOf(base)
-    if (!ext) return fail("只能改零件和装配文件的名字。")
+    if (!ext) return fail(ta("只能改零件和装配文件的名字。", "Only part and assembly files can be renamed."))
     const name = input.name.trim()
     const bad = badFileName(name)
     if (bad) return fail(bad)
     const oldName = base.slice(0, -ext.length)
-    if (name === oldName) return { ok: true, text: "名字没变。" }
+    if (name === oldName) return { ok: true, text: ta("名字没变。", "The name didn’t change.") }
     const to = this.partKey(`${dirName(from)}/${name}${ext}`)
-    if ((await files.read(from)) === null) return fail(`没有这个文件：${from}`)
+    if ((await files.read(from)) === null) return fail(ta(`没有这个文件：${from}`, `No such file: ${from}`))
 
     // Everything is checked before anything moves. Something already at a new path is in the way,
     // unless it is this very file under another case (most Mac disks ignore case).
     const inWay = async (a: string, b: string, there: boolean) => there && !(a.toLowerCase() === b.toLowerCase() && (await files.same?.(a, b)))
-    if (this.docs.has(to) || (await inWay(from, to, (await files.read(to)) !== null))) return fail(`这个文件夹里已经有 ${name}${ext} 了`)
-    if (await inWay(notesPath(from), notesPath(to), (await files.read(notesPath(to))) !== null)) return fail(`这个文件夹里已经有 ${name}${ext} 的备注文件，先把它移走`)
+    if (this.docs.has(to) || (await inWay(from, to, (await files.read(to)) !== null))) return fail(ta(`这个文件夹里已经有 ${name}${ext} 了`, `This folder already has ${name}${ext}`))
+    if (await inWay(notesPath(from), notesPath(to), (await files.read(notesPath(to))) !== null))
+      return fail(ta(`这个文件夹里已经有 ${name}${ext} 的备注文件，先把它移走`, `This folder already has a notes file for ${name}${ext}: move it away first`))
     if (await inWay(notesDir(from), notesDir(to), files.list ? (await files.list(notesDir(to))) !== null : false))
-      return fail(`这个文件夹里已经有 ${baseName(notesDir(to))} 文件夹（备注的截图放在这里），先把它移走`)
+      return fail(ta(`这个文件夹里已经有 ${baseName(notesDir(to))} 文件夹（备注的截图放在这里），先把它移走`, `This folder already has a folder ${baseName(notesDir(to))} (where the notes’ pictures go): move it away first`))
 
     // Assemblies that use it: the project's, and any open one (a file opened on its own may be outside it).
     const asms = new Set([...(this.project?.entries ?? []).filter((e) => e.kind === "assembly").map((e) => e.path), ...[...this.docs.keys()].filter(isAssembly)])
@@ -955,7 +1033,7 @@ export class Engine {
       const takes = (f: Feature) => f.op === "component" && !f.name && !!f.file && this.partKey(besides(asm, f.file)) === from
       if (!tree.features.some(takes)) continue
       if (tree.features.some((f) => f.op === "component" && !takes(f) && componentName(f) === name))
-        return fail(`装配「${partName(asm)}」里已经有叫「${name}」的零件，换个名字，或者先给那个零件改名`)
+        return fail(ta(`装配「${partName(asm)}」里已经有叫「${name}」的零件，换个名字，或者先给那个零件改名`, `The assembly “${partName(asm)}” already has a part called “${name}”: pick another name, or rename that part first`))
     }
 
     // The open file goes with what it remembers (undo, activity, what the agents have seen).
@@ -999,12 +1077,12 @@ export class Engine {
       for (const [a, b] of done.reverse()) await move(b, a).catch(() => {})
       await reopen(from)
       publish()
-      return fail(`没能改名：${(e as Error).message}`)
+      return fail(ta(`没能改名：${(e as Error).message}`, `Couldn’t rename: ${(e as Error).message}`))
     }
     this.recent = this.recent.map((p) => (p === from ? to : p))
     this.opts.onRecent?.(this.recent)
 
-    const summary = `文件改名：${oldName} → ${name}`
+    const summary = ta(`文件改名：${oldName} → ${name}`, `renamed the file: ${oldName} → ${name}`)
     const updated: string[] = []
     for (const asm of asms) {
       let renamedParts = false
@@ -1052,8 +1130,8 @@ export class Engine {
     await reopen(to, summary)
     if (this.project) this.project = await scanProject(files, this.project.root, this.scanCache)
     publish()
-    const asmText = updated.length ? `用到它的 ${updated.join("、")} 已经改成新名字。` : ""
-    return { ok: true, text: `已把 ${base} 改名为 ${name}${ext}。${asmText}` }
+    const asmText = updated.length ? ta(`用到它的 ${updated.join("、")} 已经改成新名字。`, ` What uses it now uses the new name: ${updated.join(", ")}.`) : ""
+    return { ok: true, text: `${ta(`已把 ${base} 改名为 ${name}${ext}。`, `Renamed ${base} to ${name}${ext}.`)}${asmText}` }
   }
 
   /** An assembly's notes on parts that were renamed (open or not). */
@@ -1079,7 +1157,7 @@ export class Engine {
   }
 
   private async rescan(): Promise<CommandResult> {
-    if (!this.project) return { ok: true, text: "没有打开项目。" }
+    if (!this.project) return { ok: true, text: ta("没有打开项目。", "No project is open.") }
     this.project = await scanProject(this.opts.files, this.project.root, this.scanCache)
     this.emitSnapshot()
     return { ok: true, text: this.projectText() }
@@ -1087,18 +1165,24 @@ export class Engine {
 
   private projectText() {
     const p = this.projectSummary()
-    if (!p) return "没有打开项目。"
-    const line = (f: ProjectFile) =>
-      `${f.path === this.active ? "▸" : "-"} ${relativePath(p.root, f.path)}（${f.kind === "assembly" ? "装配" : "零件"}）：${f.features ?? "?"} 个${f.kind === "assembly" ? "零件" : "特征"}${f.open ? "，打开着" : ""}${f.openNotes ? `，${f.openNotes} 条未处理备注` : ""}`
+    if (!p) return ta("没有打开项目。", "No project is open.")
+    const line = (f: ProjectFile) => {
+      const mark = f.path === this.active ? "▸" : "-"
+      const asm = f.kind === "assembly"
+      return ta(
+        `${mark} ${relativePath(p.root, f.path)}（${asm ? "装配" : "零件"}）：${f.features ?? "?"} 个${asm ? "零件" : "特征"}${f.open ? "，打开着" : ""}${f.openNotes ? `，${f.openNotes} 条未处理备注` : ""}`,
+        `${mark} ${relativePath(p.root, f.path)} (${asm ? "assembly" : "part"}): ${f.features == null ? `? ${asm ? "parts" : "features"}` : plural(f.features, asm ? "part" : "feature")}${f.open ? ", open" : ""}${f.openNotes ? `, ${plural(f.openNotes, "open note")}` : ""}`,
+      )
+    }
     const asm = p.files.filter((f) => f.kind === "assembly")
     const parts = p.files.filter((f) => f.kind === "part")
     const others = [...this.docs.values()].filter((d) => !inside(p.root, d.path))
     return [
-      `项目 ${p.name}（${p.root}）。▸ = 窗口里正在看的；路径相对项目文件夹。`,
-      asm.length ? `装配：\n${asm.map(line).join("\n")}` : "还没有装配。",
-      parts.length ? `零件：\n${parts.map(line).join("\n")}` : "还没有零件。",
-      others.length ? `项目外打开着的：\n${others.map((d) => `- ${d.path}`).join("\n")}` : "",
-      p.truncated ? "（文件太多，只列出了一部分）" : "",
+      ta(`项目 ${p.name}（${p.root}）。▸ = 窗口里正在看的；路径相对项目文件夹。`, `Project ${p.name} (${p.root}). ▸ = the one shown in the window; paths are relative to the project folder.`),
+      asm.length ? `${ta("装配：", "Assemblies:")}\n${asm.map(line).join("\n")}` : ta("还没有装配。", "No assemblies yet."),
+      parts.length ? `${ta("零件：", "Parts:")}\n${parts.map(line).join("\n")}` : ta("还没有零件。", "No parts yet."),
+      others.length ? `${ta("项目外打开着的：", "Open outside the project:")}\n${others.map((d) => `- ${d.path}`).join("\n")}` : "",
+      p.truncated ? ta("（文件太多，只列出了一部分）", "(Too many files: only some are listed)") : "",
     ]
       .filter(Boolean)
       .join("\n")
@@ -1107,11 +1191,11 @@ export class Engine {
   /** A folder as the project: `create` writes an empty assembly and parameter file named after it, and opens the assembly. */
   private async openProject(input: { path: string; create?: boolean }, ctx: CallContext): Promise<CommandResult> {
     const files = this.opts.files
-    if (!files.list) return fail("这里不能打开项目（没有文件夹列表）")
+    if (!files.list) return fail(ta("这里不能打开项目（没有文件夹列表）", "Projects can’t be opened here (no folder listing)"))
     let root = input.path.trim().replace(/\\/g, "/").replace(/\/+$/, "")
     if (!/^([A-Za-z]:)?\//.test(root) && ctx.cwd) root = `${ctx.cwd.replace(/[\\/]+$/, "")}/${root}`
     root = files.canonical?.(root) ?? root
-    if (!canBeRoot(root, this.opts.home)) return fail(`${root} 不能做项目文件夹（不能是主目录或更上层）`)
+    if (!canBeRoot(root, this.opts.home)) return fail(ta(`${root} 不能做项目文件夹（不能是主目录或更上层）`, `${root} can’t be a project folder (it can’t be the home folder or above it)`))
     const list = await files.list(root)
     let created = ""
     if (input.create) {
@@ -1121,9 +1205,12 @@ export class Engine {
         const hadParams = (await files.read(sk.params)) !== null
         if (!hadParams) await files.write(sk.params, sk.paramsText)
         await files.write(sk.assembly, sk.assemblyText)
-        created = `新建了装配 ${baseName(sk.assembly)}${hadParams ? `，用已有的参数文件 ${baseName(sk.params)}` : ` 和参数文件 ${baseName(sk.params)}`}。`
+        created = ta(
+          `新建了装配 ${baseName(sk.assembly)}${hadParams ? `，用已有的参数文件 ${baseName(sk.params)}` : ` 和参数文件 ${baseName(sk.params)}`}。`,
+          `Created the assembly ${baseName(sk.assembly)}${hadParams ? `, using the existing parameter file ${baseName(sk.params)}` : ` and the parameter file ${baseName(sk.params)}`}. `,
+        )
       }
-    } else if (list === null) return fail(`没有这个文件夹：${root}。要新建就设 create=true。`)
+    } else if (list === null) return fail(ta(`没有这个文件夹：${root}。要新建就设 create=true。`, `No such folder: ${root}. To create it, set create=true.`))
     // Another project: what was open from the last one goes (else the window keeps showing it, and its sidebar mixes both).
     if (this.project?.root !== root) {
       for (const p of [...this.docs.keys()]) if (!inside(root, p)) this.closePart(p, false)
@@ -1138,7 +1225,10 @@ export class Engine {
     } else this.emitSnapshot()
     return {
       ok: true,
-      text: `${created ? created : ""}${this.projectText()}\n多个零件的东西：零件放在 parts/ 下（open_part path=parts/<名字>.turnery.json create=true），用装配里的 component 放进来；共用的尺寸写进项目的参数文件（share_params）。`,
+      text: `${created ? created : ""}${this.projectText()}\n${ta(
+        "多个零件的东西：零件放在 parts/ 下（open_part path=parts/<名字>.turnery.json create=true），用装配里的 component 放进来；共用的尺寸写进项目的参数文件（share_params）。",
+        "For something made of several parts: put the parts under parts/ (open_part path=parts/<name>.turnery.json create=true) and place them with component in the assembly. Put shared dimensions in the project’s parameter file (share_params).",
+      )}`,
     }
   }
 
@@ -1148,15 +1238,15 @@ export class Engine {
    */
   private async addPart(input: { name?: string; file?: string; color?: string; finish?: Finish }, ctx: CallContext): Promise<CommandResult> {
     const asm = await this.resolveDoc(ctx)
-    if (!asm || !isAssembly(asm.path)) return fail("先打开一个装配")
+    if (!asm || !isAssembly(asm.path)) return fail(ta("先打开一个装配", "Open an assembly first"))
     const dir = dirName(asm.path)
     let file: string
     let label: string
     if (input.name !== undefined) {
       const fname = partFileName(input.name)
-      if (!fname) return fail("零件要有名字")
+      if (!fname) return fail(ta("零件要有名字", "The part needs a name"))
       const path = `${dir}/parts/${fname}`
-      if ((await this.opts.files.read(path)) !== null) return fail(`已经有这个零件了：parts/${fname}`)
+      if ((await this.opts.files.read(path)) !== null) return fail(ta(`已经有这个零件了：parts/${fname}`, `This part already exists: parts/${fname}`))
       const uses = asm.tree.uses ? relativePath(`${dir}/parts`, besides(asm.path, asm.tree.uses)) : undefined
       // A colour chosen with the name: the part file's own, so it shows wherever the part is used.
       const look = applyLook(undefined, { color: input.color, finish: input.finish })
@@ -1165,10 +1255,10 @@ export class Engine {
       label = stripEnding(fname)
     } else if (input.file) {
       const abs = this.opts.files.canonical?.(input.file) ?? input.file
-      if (abs === asm.path) return fail("装配不能放进它自己")
+      if (abs === asm.path) return fail(ta("装配不能放进它自己", "An assembly can’t go into itself"))
       file = relativePath(dir, abs)
       label = stripEnding(baseName(abs)).replace(/\.(step|stp)$/i, "")
-    } else return fail("写 name（新零件）或 file（已有的文件）")
+    } else return fail(ta("写 name（新零件）或 file（已有的文件）", "Write name (a new part) or file (an existing file)"))
     const taken = new Set(asm.tree.features.map((f) => f.id))
     let n = asm.tree.features.length + 1
     while (taken.has(`c${n}`)) n++
@@ -1190,12 +1280,12 @@ export class Engine {
     this.active = null
     this.sessions.clear()
     this.emitSnapshot()
-    return { ok: true, text: "已关闭项目。" }
+    return { ok: true, text: ta("已关闭项目。", "Closed the project.") }
   }
 
   private closePart(path: string, emit = true): CommandResult {
     const doc = this.docs.get(path)
-    if (!doc) return { ok: true, text: "没有打开这个零件。" }
+    if (!doc) return { ok: true, text: ta("没有打开这个零件。", "This part isn’t open.") }
     doc.unwatch()
     for (const stop of doc.assetWatch.values()) stop()
     this.docs.delete(path)
@@ -1204,11 +1294,11 @@ export class Engine {
     for (const [s, p] of this.sessions) if (p === path) this.sessions.delete(s)
     if (this.active === path) this.active = [...this.docs.keys()].pop() ?? null
     if (this.pending?.request.path === path) this.settlePick(null)
-    if (!emit) return { ok: true, text: "已关闭。" }
+    if (!emit) return { ok: true, text: ta("已关闭。", "Closed.") }
     const next = this.active ? this.docs.get(this.active) : null
     if (next) this.emitDoc(next)
     else this.emitSnapshot()
-    return { ok: true, text: "已关闭。" }
+    return { ok: true, text: ta("已关闭。", "Closed.") }
   }
 
   /** Open a part for the window (File → Open, the parts list): same as the agent's open_part, as the person. */
@@ -1237,11 +1327,11 @@ export class Engine {
     const text = await this.opts.files.read(path)
     let tree: Tree
     if (text === null) {
-      if (!opts.create) throw new InputError(`没有这个文件：${path}。要新建就设 create=true。`)
+      if (!opts.create) throw new InputError(ta(`没有这个文件：${path}。要新建就设 create=true。`, `No such file: ${path}. To create it, set create=true.`))
       tree = (opts.template && STARTERS.find((s) => s.id === opts.template)?.tree) || EMPTY_TREE
     } else {
       const parsed = parseTree(text)
-      if (!parsed.ok) throw new InputError(`${path} 不是合法的特征树：${parsed.error}`)
+      if (!parsed.ok) throw new InputError(ta(`${path} 不是合法的特征树：${parsed.error}`, `${path} is not a valid feature tree: ${parsed.error}`))
       tree = parsed.tree
     }
     const notes = parseNotes(await this.opts.files.read(notesPath(path)))
@@ -1280,14 +1370,14 @@ export class Engine {
     const text = await this.opts.files.read(doc.path)
     if (text === doc.written) return
     if (text === null) {
-      doc.error = "文件被删除或移走了；窗口里还是删之前的模型"
+      doc.error = ta("文件被删除或移走了；窗口里还是删之前的模型", "The file was deleted or moved; the window still shows the model from before")
       this.emitDoc(doc)
       return
     }
     doc.written = text
     const parsed = parseTree(text)
     if (!parsed.ok) {
-      doc.error = `文件不是合法的特征树：${parsed.error}`
+      doc.error = ta(`文件不是合法的特征树：${parsed.error}`, `The file is not a valid feature tree: ${parsed.error}`)
       this.emitDoc(doc)
       return
     }
@@ -1299,7 +1389,7 @@ export class Engine {
 
   /** Make `tree` the part's current tree: rebuild, record who did what, save, tell the window. Undoable. */
   private async adopt(doc: Doc, tree: Tree, actor: CallContext["actor"], opts: { report?: BuildReport; save?: boolean; summary?: string; undoable?: boolean; files?: FileEdit[] } = {}) {
-    const summary = opts.summary ?? (describeTreeChange(doc.tree, tree) || "重新保存（内容没变）")
+    const summary = opts.summary ?? (describeTreeChange(doc.tree, tree) || ta("重新保存（内容没变）", "saved again (no change)"))
     if (opts.undoable !== false) {
       doc.undo = [...doc.undo, { tree: doc.tree, summary, ...(opts.files?.length ? { files: opts.files } : {}) }].slice(-MAX_UNDO)
       doc.redo = []
@@ -1325,7 +1415,7 @@ export class Engine {
   private async undoRedo(doc: Doc, which: "undo" | "redo", ctx: CallContext): Promise<CommandResult> {
     const from = which === "undo" ? doc.undo : doc.redo
     const entry = from[from.length - 1]
-    if (!entry) return fail(which === "undo" ? "没有可以撤销的改动。" : "没有可以重做的改动。")
+    if (!entry) return fail(which === "undo" ? ta("没有可以撤销的改动。", "Nothing to undo.") : ta("没有可以重做的改动。", "Nothing to redo."))
     const files = entry.files
     if (which === "undo") {
       doc.undo = doc.undo.slice(0, -1)
@@ -1337,15 +1427,17 @@ export class Engine {
     // A colour given from the assembly went into a component's file: that file goes back (or forward) too,
     // unless someone changed it since (theirs stays, and the result says so).
     const kept: string[] = []
+    const undo = which === "undo"
+    const summary = ta(`${undo ? "撤销" : "重做"}：${entry.summary}`, `${undo ? "undo" : "redo"}: ${entry.summary}`)
     for (const f of files ?? []) {
-      const [from, to] = which === "undo" ? [f.after, f.before] : [f.before, f.after]
+      const [from, to] = undo ? [f.after, f.before] : [f.before, f.after]
       let changed = false
-      await this.rewrite(f.path, (text) => (text === from ? to : ((changed = text !== to), null)), ctx, `${which === "undo" ? "撤销" : "重做"}：${entry.summary}`, doc)
+      await this.rewrite(f.path, (text) => (text === from ? to : ((changed = text !== to), null)), ctx, summary, doc)
       if (changed) kept.push(partName(f.path))
     }
-    await this.adopt(doc, entry.tree, ctx.actor, { summary: `${which === "undo" ? "撤销" : "重做"}：${entry.summary}`, undoable: false })
-    const note = kept.length ? `\n⚠ ${kept.join("、")} 之后又被改过，没有${which === "undo" ? "改回去" : "重新写入"}。` : ""
-    return { ok: true, text: `已${which === "undo" ? "撤销" : "重做"}：${entry.summary}${note}\n${treeText(doc.tree, doc.report!)}` }
+    await this.adopt(doc, entry.tree, ctx.actor, { summary, undoable: false })
+    const note = kept.length ? ta(`\n⚠ ${kept.join("、")} 之后又被改过，没有${undo ? "改回去" : "重新写入"}。`, `\n⚠ ${kept.join(", ")} changed again after that: not ${undo ? "changed back" : "written again"}.`) : ""
+    return { ok: true, text: `${ta(`已${undo ? "撤销" : "重做"}：${entry.summary}`, `${undo ? "Undid" : "Redid"}: ${entry.summary}`)}${note}\n${treeText(doc.tree, doc.report!)}` }
   }
 
   /** Notes don't change the tree (no new version) but belong in the activity list: who wrote, handled or removed what. */
@@ -1397,7 +1489,11 @@ export class Engine {
     const file = this.docs.get(asm)?.notes ?? parseNotes(await this.opts.files.read(notesPath(asm)))
     const list = file.notes.filter((n) => (all || n.status === "open") && ((n.part && mine(n.part)) || n.parts?.some(mine)))
     if (!list.length) return ""
-    return `装配「${partName(asm)}」里关于这个零件的 ${list.length} 条备注（记在装配上：处理完用 open_part 打开装配再 resolve_note；位置是装配里的坐标）：\n\n${notesText(list, true, "装配")}`
+    const head = ta(
+      `装配「${partName(asm)}」里关于这个零件的 ${list.length} 条备注（记在装配上：处理完用 open_part 打开装配再 resolve_note；位置是装配里的坐标）：`,
+      `${plural(list.length, "note")} about this part in the assembly “${partName(asm)}” (kept on the assembly: when done, open the assembly with open_part, then resolve_note; positions are in the assembly’s coordinates):`,
+    )
+    return `${head}\n\n${notesText(list, true, ta("装配", "assembly"))}`
   }
 
   /** Where a note's picture is, as the agent can open it. */
@@ -1439,12 +1535,12 @@ export class Engine {
     const open = this.docs.get(path)
     if (open) await this.fileChanged(open)
     const before = await this.opts.files.read(path)
-    if (before === null) throw new InputError(`读不到 ${path}`)
+    if (before === null) throw new InputError(ta(`读不到 ${path}`, `Can’t read ${path}`))
     const after = change(before)
     if (after === null || after === before) return null
     if (open) {
       const parsed = parseTree(after)
-      if (!parsed.ok) throw new InputError(`${path} 不是合法的特征树：${parsed.error}`)
+      if (!parsed.ok) throw new InputError(ta(`${path} 不是合法的特征树：${parsed.error}`, `${path} is not a valid feature tree: ${parsed.error}`))
       await this.adopt(open, parsed.tree, ctx.actor, { summary, undoable: opts.undoable })
     } else {
       this.wrote.set(path, { text: after, actor: ctx.actor })
@@ -1472,22 +1568,28 @@ export class Engine {
    */
   private async setAppearance(doc: Doc, input: { parts?: string[]; color?: string | null; finish?: Finish | null; where?: "file" | "assembly" }, ctx: CallContext): Promise<CommandResult> {
     const change: LookChange = { color: input.color, finish: input.finish }
-    if (change.color === undefined && change.finish === undefined) return fail("写 color 或 finish（写 null 是清除）。")
+    if (change.color === undefined && change.finish === undefined) return fail(ta("写 color 或 finish（写 null 是清除）。", "Write color or finish (null clears it)."))
     const what = changeText(change)
     const parts = [...new Set((input.parts ?? []).map((p) => p.trim()).filter(Boolean))]
     if (!isAssembly(doc.path)) {
       await this.ensureKernel(doc)
       const names = doc.report?.parts?.map((p) => p.name) ?? []
       const unknown = parts.filter((p) => !names.includes(p))
-      if (unknown.length) return fail(names.length ? `没有叫「${unknown.join("、")}」的零件：现在有 ${names.join("、")}` : "这个零件没有拆开：不写 parts，就是整个零件。")
+      if (unknown.length)
+        return fail(
+          names.length
+            ? ta(`没有叫「${unknown.join("、")}」的零件：现在有 ${names.join("、")}`, `No part called “${unknown.join(", ")}”: there are ${names.join(", ")}`)
+            : ta("这个零件没有拆开：不写 parts，就是整个零件。", "This part isn’t split: leave out parts for the whole part."),
+        )
       const tree = setPartLook(doc.tree, parts.length ? parts : undefined, change)
-      if (tree === doc.tree) return { ok: true, text: `外观没变。\n${await this.looksText(doc)}` }
-      await this.adopt(doc, tree, ctx.actor, { summary: `${parts.length ? `「${parts.join("」「")}」` : "整个零件"}：${what}` })
+      if (tree === doc.tree) return { ok: true, text: `${ta("外观没变。", "The appearance didn’t change.")}\n${await this.looksText(doc)}` }
+      await this.adopt(doc, tree, ctx.actor, { summary: ta(`${parts.length ? `「${parts.join("」「")}」` : "整个零件"}：${what}`, `${parts.length ? quoted(parts) : "the whole part"}: ${what}`) })
       const own = !parts.length ? Object.keys(doc.tree.appearance?.parts ?? {}) : []
-      return { ok: true, text: `已设置（不改几何，不重建）。${own.length ? `\n${own.join("、")} 另有自己的外观，以它们自己的为准。` : ""}\n${await this.looksText(doc)}` }
+      const ownText = own.length ? ta(`\n${own.join("、")} 另有自己的外观，以它们自己的为准。`, `\n${own.join(", ")} have their own appearance, which wins.`) : ""
+      return { ok: true, text: `${ta("已设置（不改几何，不重建）。", "Set (the geometry is unchanged, no rebuild).")}${ownText}\n${await this.looksText(doc)}` }
     }
 
-    if (!parts.length) return fail("装配里要写 parts：装配里的零件名（get_state 的「外观」一行列着）。")
+    if (!parts.length) return fail(ta("装配里要写 parts：装配里的零件名（get_state 的「外观」一行列着）。", "In an assembly, write parts: the names of the parts in the assembly (the “Appearance” line of get_state lists them)."))
     // The part names below come from the last build: catch up with component files saved since.
     await this.ensureKernel(doc)
     const comps = doc.tree.features.filter((f): f is Extract<Feature, { op: "component" }> => f.op === "component")
@@ -1510,9 +1612,12 @@ export class Engine {
     const shadowed: string[] = []
     for (const name of parts) {
       const hit = owner(name)
-      if (!hit) return fail(`装配里没有叫「${name}」的零件：现在有 ${comps.map((f) => componentName(f)).join("、") || "（还没有零件）"}`)
+      if (!hit) {
+        const have = comps.map((f) => componentName(f))
+        return fail(ta(`装配里没有叫「${name}」的零件：现在有 ${have.join("、") || "（还没有零件）"}`, `The assembly has no part called “${name}”: it has ${have.join(", ") || "(no parts yet)"}`))
+      }
       const sub = subOf(name, hit.base)
-      if (sub && built.length && !built.includes(name)) return fail(`装配里没有叫「${name}」的零件：现在有 ${built.join("、")}`)
+      if (sub && built.length && !built.includes(name)) return fail(ta(`装配里没有叫「${name}」的零件：现在有 ${built.join("、")}`, `The assembly has no part called “${name}”: it has ${built.join(", ")}`))
       const file = hit.f.file
       const own = !!file && !hit.f.standard && !/\.(step|stp)$/i.test(file) && !isAssembly(file)
       if (input.where === "assembly" || !own) {
@@ -1524,7 +1629,7 @@ export class Engine {
         continue
       }
       const here = ownLook(hit.f.appearance, sub)
-      if ((change.color !== undefined && here.color) || (change.finish !== undefined && here.finish)) shadowed.push(`「${name}」${lookText(here)}`)
+      if ((change.color !== undefined && here.color) || (change.finish !== undefined && here.finish)) shadowed.push(ta(`「${name}」${lookText(here)}`, `“${name}” ${lookText(here)}`))
       const abs = this.partKey(besides(doc.path, file!))
       const entry = inFiles.get(abs) ?? { file: file!, parts: new Set<string>(), names: [] }
       // The whole part (no sub) covers any of its parts named too.
@@ -1535,10 +1640,15 @@ export class Engine {
     }
     if (input.where === "file" && onAssembly.size) {
       const names = [...onAssembly.values()].flatMap((e) => e.names)
-      return fail(`「${names.join("、")}」没有自己的零件文件（标准件、STEP 外购件或子装配）：颜色只能写在装配里，去掉 where 或写 where: "assembly"。`)
+      return fail(
+        ta(
+          `「${names.join("、")}」没有自己的零件文件（标准件、STEP 外购件或子装配）：颜色只能写在装配里，去掉 where 或写 where: "assembly"。`,
+          `“${names.join(", ")}” have no part file of their own (standard parts, bought-in STEP parts or subassemblies): their color can only be written in the assembly. Leave out where, or write where: "assembly".`,
+        ),
+      )
     }
 
-    const summary = `「${parts.join("」「")}」：${what}`
+    const summary = ta(`「${parts.join("」「")}」：${what}`, `${quoted(parts)}: ${what}`)
     const features = doc.tree.features.map((f) => {
       const e = f.op === "component" ? onAssembly.get(f.id) : undefined
       if (!e || f.op !== "component") return f
@@ -1570,7 +1680,7 @@ export class Engine {
         abs,
         (text) => {
           const parsed = parseTree(text)
-          if (!parsed.ok) throw new InputError(`${e.file} 不是合法的特征树：${parsed.error}`)
+          if (!parsed.ok) throw new InputError(ta(`${e.file} 不是合法的特征树：${parsed.error}`, `${e.file} is not a valid feature tree: ${parsed.error}`))
           const next = setPartLook(parsed.tree, e.parts ? [...e.parts] : undefined, change)
           return next === parsed.tree ? null : `${JSON.stringify(next, null, 2)}\n`
         },
@@ -1579,27 +1689,44 @@ export class Engine {
         doc,
       )
       if (edit) files.push(edit)
-      lines.push(`「${e.names.join("」「")}」写进 ${e.file}${edit ? "" : "（本来就是这样）"}：用到这个零件的装配都跟着变。`)
+      lines.push(
+        ta(
+          `「${e.names.join("」「")}」写进 ${e.file}${edit ? "" : "（本来就是这样）"}：用到这个零件的装配都跟着变。`,
+          `${quoted(e.names)} written into ${e.file}${edit ? "" : " (it already was)"}: every assembly that uses this part follows.`,
+        ),
+      )
     }
     for (const [id, e] of onAssembly) {
       const f = comps.find((x) => x.id === id)!
-      const copies = e.names.some((n) => /^#\d+/.test(n.slice(componentName(f).length))) ? "；同一个 component 放的几个一起变" : ""
-      lines.push(`「${e.names.join("」「")}」写在装配的 component「${componentName(f)}」上，只在这个装配里${copies}。`)
+      const several = e.names.some((n) => /^#\d+/.test(n.slice(componentName(f).length)))
+      const copies = several ? ta("；同一个 component 放的几个一起变", "; the copies one component places change together") : ""
+      lines.push(ta(`「${e.names.join("」「")}」写在装配的 component「${componentName(f)}」上，只在这个装配里${copies}。`, `${quoted(e.names)} written on the assembly’s component “${componentName(f)}”, only in this assembly${copies}.`))
     }
-    if (shadowed.length) lines.push(`这个装配里单独设过的仍然优先，这里看不到变化：${shadowed.join("、")}。要改回跟零件文件一致，parts 写它们、where 写 "assembly"，color 和 finish 写 null。`)
-    if (tree === doc.tree && !files.length) return { ok: true, text: `外观没变。\n${await this.looksText(doc)}` }
+    if (shadowed.length)
+      lines.push(
+        ta(
+          `这个装配里单独设过的仍然优先，这里看不到变化：${shadowed.join("、")}。要改回跟零件文件一致，parts 写它们、where 写 "assembly"，color 和 finish 写 null。`,
+          `What this assembly sets on its own still wins, so no change shows here: ${shadowed.join(", ")}. To make them match the part file again, write them in parts, where: "assembly", and color and finish: null.`,
+        ),
+      )
+    if (tree === doc.tree && !files.length) return { ok: true, text: `${ta("外观没变。", "The appearance didn’t change.")}\n${await this.looksText(doc)}` }
     await this.adopt(doc, tree, ctx.actor, { summary, files })
-    return { ok: true, text: `已设置（不改几何，不重建）。\n${lines.join("\n")}\n${await this.looksText(doc)}` }
+    return { ok: true, text: `${ta("已设置（不改几何，不重建）。", "Set (the geometry is unchanged, no rebuild).")}\n${lines.join("\n")}\n${await this.looksText(doc)}` }
   }
 
-  /** 「外观：上盖 橙、底壳 未设置（白模）」 for get_state and set_appearance. */
+  /** 「外观：上盖 橙、底壳 未设置（白模）」 ("Appearance: …") for get_state and set_appearance. */
   private async looksText(doc: Doc) {
     await this.ensureKernel(doc)
     const list = (await this.opts.kernel.looks?.()) ?? []
-    if (!list.length) return "外观：还没有实体。"
-    const one = (l: Look) => (isSet(l) ? lookText(l) : l.fileColor ? `未设置（按 STEP 自带的颜色，主要是${colorWord(l.fileColor)}）` : `未设置（${SOURCE_DEFAULT[l.source]}）`)
-    if (list.length === 1 && !isAssembly(doc.path)) return `外观：${one(list[0].look)}`
-    return `外观：${list.map((p) => `${p.name} ${one(p.look)}${p.here ? "（这个装配里单独设的）" : ""}`).join("、")}`
+    if (!list.length) return ta("外观：还没有实体。", "Appearance: no solid yet.")
+    const one = (l: Look) =>
+      isSet(l)
+        ? lookText(l)
+        : l.fileColor
+          ? ta(`未设置（按 STEP 自带的颜色，主要是${colorWord(l.fileColor)}）`, `not set (the STEP file’s own colors, mostly ${colorWord(l.fileColor).trim()})`)
+          : ta(`未设置（${SOURCE_DEFAULT[l.source]}）`, `not set (${SOURCE_DEFAULT[l.source]})`)
+    if (list.length === 1 && !isAssembly(doc.path)) return `${ta("外观：", "Appearance: ")}${one(list[0].look)}`
+    return `${ta("外观：", "Appearance: ")}${listed(list.map((p) => `${p.name} ${one(p.look)}${p.here ? ta("（这个装配里单独设的）", " (set in this assembly)") : ""}`))}`
   }
 
   // ------------------------------------------------------------------ kernel
@@ -1649,10 +1776,11 @@ export class Engine {
     this.emitDoc(doc)
     try {
       const result = await work()
-      if (doc.error?.startsWith("加载失败：")) doc.error = undefined
+      // Set in either language (it can change between the two builds).
+      if (LOAD_FAILED.some((p) => doc.error?.startsWith(p))) doc.error = undefined
       return result
     } catch (e) {
-      doc.error = `加载失败：${(e as Error)?.message ?? e}`
+      doc.error = ta(`加载失败：${(e as Error)?.message ?? e}`, `Failed to load: ${(e as Error)?.message ?? e}`)
       throw e
     } finally {
       doc.preview = undefined
@@ -1672,7 +1800,7 @@ export class Engine {
     if (!sh || sh.error) return doc.tree
     const eff = effectiveTree(doc.tree, sh)
     const notes = { ...(eff.paramNotes ?? {}) }
-    for (const k of Object.keys(sh.params)) notes[k] = `${sh.notes[k] ? `${sh.notes[k]}` : ""}（共享：${sh.file}）`
+    for (const k of Object.keys(sh.params)) notes[k] = ta(`${sh.notes[k] ? `${sh.notes[k]}` : ""}（共享：${sh.file}）`, `${sh.notes[k] ? `${sh.notes[k]} ` : ""}(shared: ${sh.file})`)
     return { ...eff, paramNotes: notes }
   }
 
@@ -1730,7 +1858,8 @@ export class Engine {
     // The kernel builds the assembly to place everything (mates need the parts' shapes).
     const source: ContextSource = { assembly: partName(asm), tree, components: g.components, self: mine[0].file! }
     const watch = [asm, ...g.watch, ...(shared ? [shared.path] : [])]
-    const note = mine.length > 1 ? `这个零件在装配里用了 ${mine.length} 次，按第一个（${mine[0].name ?? mine[0].id}）的位置显示其他零件` : undefined
+    const first = mine[0].name ?? mine[0].id
+    const note = mine.length > 1 ? ta(`这个零件在装配里用了 ${mine.length} 次，按第一个（${first}）的位置显示其他零件`, `This part is used ${mine.length} times in the assembly: the other parts are shown around the first one (${first})`) : undefined
     return { source, watch, key: JSON.stringify([text, g.signature, shared?.text ?? null]), note }
   }
 
@@ -1765,7 +1894,9 @@ export class Engine {
             doc.rev += 1
             // Only its colours changed: no rebuild (the shapes are cached by geometry).
             const restyled = await this.restyle(doc, doc.tree)
-            doc.changes = [{ rev: doc.rev, actor: mine ? ours.actor : ("file" as const), at: Date.now(), summary: `${p.split(/[\\/]/).pop()} 更新了${restyled ? "（只改了外观）" : "，已重建"}`, seq: ++doc.seq }, ...doc.changes].slice(0, MAX_CHANGES)
+            const file = p.split(/[\\/]/).pop()
+            const summary = ta(`${file} 更新了${restyled ? "（只改了外观）" : "，已重建"}`, `${file} changed${restyled ? " (appearance only)" : ", rebuilt"}`)
+            doc.changes = [{ rev: doc.rev, actor: mine ? ours.actor : ("file" as const), at: Date.now(), summary, seq: ++doc.seq }, ...doc.changes].slice(0, MAX_CHANGES)
             if (!restyled) await this.ensureKernel(doc, true)
             this.emitDoc(doc)
           }),
@@ -1800,7 +1931,7 @@ export class Engine {
   kernelCall(path: string, call: KernelCall): Promise<unknown> {
     return this.exclusive(async () => {
       const doc = this.docs.get(path)
-      if (!doc) throw new Error("这个零件已经关闭了")
+      if (!doc) throw new Error(ta("这个零件已经关闭了", "This part has been closed"))
       await this.ensureKernel(doc)
       const k = this.opts.kernel
       switch (call.op) {
@@ -1831,10 +1962,11 @@ export class Engine {
     if (t.part) return { kind: "part", name: t.part }
     const kind = t.face ? "face" : "edge"
     const selector = t.face ?? t.edge
-    if (!selector) throw new InputError("要写 face、edge、feature 或 part 之一")
+    if (!selector) throw new InputError(ta("要写 face、edge、feature 或 part 之一", "Write one of face, edge, feature or part"))
     const hashes = await this.opts.kernel.locate(kind, selector)
-    if (!hashes?.length) throw new InputError(`选择器什么都没选中：${JSON.stringify(selector)}`)
-    if (hashes.length > 1) throw new InputError(`选择器选中了 ${hashes.length} 个，要正好一个（加 near 或更多条件）：${JSON.stringify(selector)}`)
+    if (!hashes?.length) throw new InputError(ta(`选择器什么都没选中：${JSON.stringify(selector)}`, `The selector selects nothing: ${JSON.stringify(selector)}`))
+    if (hashes.length > 1)
+      throw new InputError(ta(`选择器选中了 ${hashes.length} 个，要正好一个（加 near 或更多条件）：${JSON.stringify(selector)}`, `The selector selects ${hashes.length}; it must select exactly one (add near or more conditions): ${JSON.stringify(selector)}`))
     return { kind, hash: hashes[0], point: [0, 0, 0] }
   }
 
@@ -1843,32 +1975,52 @@ export class Engine {
   private async stateText(doc: Doc, reader: Reader | null = null) {
     const report = await this.ensureKernel(doc)
     const open = doc.notes.notes.filter((n) => n.status === "open")
-    const lines = [`${isAssembly(doc.path) ? "装配" : "零件"}：${doc.path}（第 ${doc.rev} 版）`]
+    const lines = [ta(`${isAssembly(doc.path) ? "装配" : "零件"}：${doc.path}（第 ${doc.rev} 版）`, `${isAssembly(doc.path) ? "Assembly" : "Part"}: ${doc.path} (version ${doc.rev})`)]
     if (doc.error) lines.push(`⚠ ${doc.error}`)
-    if (doc.tree.uses) lines.push(doc.shared?.error ? `⚠ ${doc.shared.error}` : `共享参数文件：${doc.tree.uses}（${Object.keys(doc.shared?.params ?? {}).join("、") || "空"}）`)
+    if (doc.tree.uses) {
+      const names = Object.keys(doc.shared?.params ?? {})
+      lines.push(doc.shared?.error ? `⚠ ${doc.shared.error}` : ta(`共享参数文件：${doc.tree.uses}（${names.join("、") || "空"}）`, `Shared parameter file: ${doc.tree.uses} (${names.join(", ") || "empty"})`))
+    }
     const shadow = shadowed(doc.tree, doc.shared)
-    if (shadow.length) lines.push(`⚠ 参数 ${shadow.join("、")} 在共享参数文件里也有，以共享的为准`)
-    if (doc.context) lines.push(`在装配「${partName(doc.context)}」里编辑：其他零件 ${(report.refs ?? []).map((r) => r.name).join("、") || "（没有）"} 半透明显示，只读`)
-    if (report.parts?.length) lines.push(`零件：${report.parts.map((p) => `${p.name}（${p.size.map((x) => Math.round(x * 10) / 10).join("×")}）`).join("、")}`)
+    if (shadow.length) lines.push(shadowWarning(shadow))
+    if (doc.context) {
+      const refs = (report.refs ?? []).map((r) => r.name)
+      lines.push(ta(`在装配「${partName(doc.context)}」里编辑：其他零件 ${refs.join("、") || "（没有）"} 半透明显示，只读`, `Editing inside the assembly “${partName(doc.context)}”: the other parts ${refs.join(", ") || "(none)"} are shown see-through, read-only`))
+    }
+    if (report.parts?.length) {
+      const sized = report.parts.map((p) => ({ name: p.name, size: p.size.map((x) => Math.round(x * 10) / 10).join("×") }))
+      lines.push(ta(`零件：${sized.map((p) => `${p.name}（${p.size}）`).join("、")}`, `Parts: ${sized.map((p) => `${p.name} (${p.size})`).join(", ")}`))
+    }
     if (report.body) lines.push(await this.looksText(doc))
     lines.push(treeText(this.effective(doc, doc.tree), report))
-    lines.push(open.length ? `未处理的备注 ${open.length} 条：${open.map((n) => `${n.id}「${clip(n.text)}」`).join("、")}（get_notes 看详情）` : "没有未处理的备注。")
+    lines.push(
+      open.length
+        ? ta(`未处理的备注 ${open.length} 条：${open.map((n) => `${n.id}「${clip(n.text)}」`).join("、")}（get_notes 看详情）`, `${plural(open.length, "open note")}: ${open.map((n) => `${n.id} “${clip(n.text)}”`).join(", ")} (get_notes for details)`)
+        : ta("没有未处理的备注。", "No open notes."),
+    )
     if (doc.changes.length) {
-      const who = (a: Actor) => (a === reader ? "你" : WHO[a].trim())
-      lines.push(`最近的改动：\n${doc.changes.slice(0, 6).map((c) => `- 第 ${c.rev} 版 · ${who(c.actor)}：${c.summary}`).join("\n")}`)
+      const who = (a: Actor) => (a === reader ? ta("你", "you") : WHO(a).trim())
+      const changes = doc.changes.slice(0, 6).map((c) => ta(`- 第 ${c.rev} 版 · ${who(c.actor)}：${c.summary}`, `- version ${c.rev} · ${who(c.actor)}: ${c.summary}`))
+      lines.push(`${ta("最近的改动：", "Recent changes:")}\n${changes.join("\n")}`)
     }
     return lines.join("\n")
   }
 
   private async look(doc: Doc, input: Record<string, unknown>): Promise<CommandResult> {
     const screen = this.opts.screen?.()
-    if (!screen) return fail("看图要在 Turnery 窗口里渲染：先打开 Turnery App（命令行 turnery open <零件>），再调用 look。其余命令不需要窗口。")
+    if (!screen)
+      return fail(
+        ta(
+          "看图要在 Turnery 窗口里渲染：先打开 Turnery App（命令行 turnery open <零件>），再调用 look。其余命令不需要窗口。",
+          "Pictures are rendered in the Turnery window: open the Turnery app first (from the command line: turnery open <part>), then call look. The other commands don’t need the window.",
+        ),
+      )
     const report = await this.ensureKernel(doc)
     const at = input.at as string | undefined
     const index = at ? doc.tree.features.findIndex((f) => f.id === at) : -1
-    if (at && index < 0) return fail(`找不到特征「${at}」`)
+    if (at && index < 0) return fail(ta(`找不到特征「${at}」`, `Can’t find the feature “${at}”`))
     const display = await this.opts.kernel.display(index >= 0 ? index : undefined)
-    if (!display.mesh && !display.refs?.length) return fail("还没有实体可以看。")
+    if (!display.mesh && !display.refs?.length) return fail(ta("还没有实体可以看。", "There is no solid to look at yet."))
     const size = (input.size as "normal" | "large" | undefined) ?? "normal"
     const H = LOOK_SIZE[size][1]
     const whole = modelBox(display) ?? refsBox(display)
@@ -1885,7 +2037,13 @@ export class Engine {
     const hide = (input.hide as string[] | undefined) ?? []
     const known = new Set([...(display.parts ?? []).map((p) => p.name), ...(display.refs ?? []).flatMap((r) => [r.name, r.id])])
     const unknown = hide.filter((n) => !known.has(n))
-    if (unknown.length) return fail(`hide 里的「${unknown.join("、")}」不是零件或参考体的名字${known.size ? `：现在有 ${[...known].join("、")}` : "：现在只有一个没名字的实体"}`)
+    if (unknown.length)
+      return fail(
+        ta(
+          `hide 里的「${unknown.join("、")}」不是零件或参考体的名字${known.size ? `：现在有 ${[...known].join("、")}` : "：现在只有一个没名字的实体"}`,
+          `“${unknown.join(", ")}” in hide: not the name of a part or a reference body${known.size ? `: there are ${[...known].join(", ")}` : ": there is only one solid, with no name"}`,
+        ),
+      )
 
     // Framing: an explicit focus frames every view on it; otherwise a small last change gets a close-up of its own.
     const focusIn = input.focus as string | { part: string } | { faces: Record<string, unknown> } | undefined
@@ -1905,44 +2063,70 @@ export class Engine {
           : focus
             ? ["iso", "front"]
             : ["iso", "front", "top", "right"]
+    const closeUp = ta("特写：", "Close-up: ")
     const shots: LookShot[] = views.map((v) =>
       focus
-        ? { label: `特写：${focus.name} · ${VIEW_LABEL[v] ?? v}`, dir: VIEW_DIR[v] ?? VIEW_DIR.iso, box: focus.box, padding: FOCUS_PADDING }
-        : { label: VIEW_LABEL[v] ?? v, dir: VIEW_DIR[v] ?? VIEW_DIR.iso },
+        ? { label: `${closeUp}${focus.name} · ${viewLabel(v) ?? v}`, dir: VIEW_DIR[v] ?? VIEW_DIR.iso, box: focus.box, padding: FOCUS_PADDING }
+        : { label: viewLabel(v) ?? v, dir: VIEW_DIR[v] ?? VIEW_DIR.iso },
     )
     // Faces that all face one way: one more picture straight at them (a front view would show a side wall edge-on).
     if (focus?.facing && !(input.views as string[] | undefined)?.length) {
       const f = focus.facing
       // Never exactly along Z: the snapshotter's up vector is +Z.
       const dir: V3 = Math.abs(f[2]) > 0.9999 ? [0, -1e-4 * Math.sign(f[2] || 1), f[2]] : f
-      shots.push({ label: `特写：${focus.name} · 正对着看`, dir, box: focus.box, padding: FOCUS_PADDING })
+      shots.push({ label: `${closeUp}${focus.name} · ${ta("正对着看", "looking straight at them")}`, dir, box: focus.box, padding: FOCUS_PADDING })
     }
     const dir = input.dir as number[] | undefined
     if (dir) {
       const l = Math.hypot(...dir)
-      if (!l) return fail("dir 不能是 [0, 0, 0]")
-      shots.push({ label: `从 (${dir.join(", ")}) 方向看${focus ? `（特写：${focus.name}）` : ""}`, dir: [dir[0] / l, dir[1] / l, dir[2] / l], box: focus?.box, padding: focus ? FOCUS_PADDING : undefined })
+      if (!l) return fail(ta("dir 不能是 [0, 0, 0]", "dir can’t be [0, 0, 0]"))
+      const label = ta(`从 (${dir.join(", ")}) 方向看${focus ? `（特写：${focus.name}）` : ""}`, `From direction (${dir.join(", ")})${focus ? ` (close-up: ${focus.name})` : ""}`)
+      shots.push({ label, dir: [dir[0] / l, dir[1] / l, dir[2] / l], box: focus?.box, padding: focus ? FOCUS_PADDING : undefined })
     }
     let auto: Box | null = null
     if (!focus) {
       auto = autoFocus(display)
       const f = doc.tree.features[display.index]
-      if (auto) shots.push({ label: `特写：${f ? displayName(doc.tree, f) : "最后一步"}（自动）`, dir: VIEW_DIR.iso, box: auto, padding: FOCUS_PADDING })
+      if (auto) shots.push({ label: ta(`特写：${f ? displayName(doc.tree, f) : "最后一步"}（自动）`, `Close-up: ${f ? displayName(doc.tree, f) : "the last step"} (automatic)`), dir: VIEW_DIR.iso, box: auto, padding: FOCUS_PADDING })
     }
 
     const pins = input.notes === false ? [] : doc.notes.notes.filter((n) => n.status === "open" && pinned(n)).map((n) => ({ n: n.n, point: n.point }))
     const plain = input.plain === true
     const images = await screen.look({ display, views, highlight: input.highlight as string | undefined, pins, shots, section, hide: hide.length ? hide : undefined, size, plain })
-    const step = at ? `（回滚到「${displayName(doc.tree, doc.tree.features[index])}」这一步）` : ""
+    const step = at ? ta(`（回滚到「${displayName(doc.tree, doc.tree.features[index])}」这一步）`, ` (rolled back to the step “${displayName(doc.tree, doc.tree.features[index])}”)`) : ""
     const colours = plain ? "" : lookLegend(display, hide)
-    const legend = input.highlight ? `蓝色 = 高亮的特征，${colours ? "其余按零件的颜色" : "灰色 = 其余"}` : colours ? `按零件的颜色画（${colours}）` : plain ? "白模" : "蓝色 = 这一步新生成的面，橙色 = 被它修改的面"
-    const lines = [`视图：${shots.map((s) => s.label).join("、")}${step}。${legend}${pins.length ? "；圆圈数字 = 备注编号" : ""}。`]
-    if (section) lines.push(`剖视：在 ${section.axis} = ${round2(section.at)} 处剖开，去掉了${{ Z: "上面（+Z）", Y: "前面（-Y）", X: "右面（+X）" }[section.axis]}那一侧。`)
-    if (whole) {
-      const scales = [...new Set(shots.map((s) => s.box ?? null))].map((b) => `${b ? `特写（${sizeText(b)} mm）` : "整件"} 1 px ≈ ${scaleText(mmPerPixel(b ?? whole, H, b ? FOCUS_PADDING : LOOK_PADDING))} mm`)
-      lines.push(`整件 ${sizeText(whole)} mm；${scales.join("；")}。小于 3 px 的细节看不清：用 focus（特征 id、{ part } 或 { faces }）放大，用 section 剖开看里面。`)
+    const legend = input.highlight
+      ? ta(`蓝色 = 高亮的特征，${colours ? "其余按零件的颜色" : "灰色 = 其余"}`, `Blue = the highlighted feature, ${colours ? "the rest in the parts’ colors" : "gray = the rest"}`)
+      : colours
+        ? ta(`按零件的颜色画（${colours}）`, `Drawn in the parts’ colors (${colours})`)
+        : plain
+          ? ta("白模", "Clay")
+          : ta("蓝色 = 这一步新生成的面，橙色 = 被它修改的面", "Blue = faces this step created, orange = faces it changed")
+    const labels = shots.map((s) => s.label)
+    const pinsText = pins.length ? ta("；圆圈数字 = 备注编号", "; circled numbers = note numbers") : ""
+    const lines = [ta(`视图：${labels.join("、")}${step}。${legend}${pinsText}。`, `Views: ${labels.join(", ")}${step}. ${legend}${pinsText}.`)]
+    if (section) {
+      const cut = round2(section.at)
+      lines.push(
+        ta(
+          `剖视：在 ${section.axis} = ${cut} 处剖开，去掉了${{ Z: "上面（+Z）", Y: "前面（-Y）", X: "右面（+X）" }[section.axis]}那一侧。`,
+          `Section: cut at ${section.axis} = ${cut}, with the ${{ Z: "top (+Z)", Y: "front (-Y)", X: "right (+X)" }[section.axis]} side removed.`,
+        ),
+      )
     }
-    if (auto) lines.push("最后一步的改动只占整件的一小块，已自动加了一张特写。")
+    if (whole) {
+      const scales = [...new Set(shots.map((s) => s.box ?? null))].map((b) => {
+        const scale = scaleText(mmPerPixel(b ?? whole, H, b ? FOCUS_PADDING : LOOK_PADDING))
+        return ta(`${b ? `特写（${sizeText(b)} mm）` : "整件"} 1 px ≈ ${scale} mm`, `${b ? `close-up (${sizeText(b)} mm)` : "whole model"} 1 px ≈ ${scale} mm`)
+      })
+      lines.push(
+        ta(
+          `整件 ${sizeText(whole)} mm；${scales.join("；")}。小于 3 px 的细节看不清：用 focus（特征 id、{ part } 或 { faces }）放大，用 section 剖开看里面。`,
+          `Whole model ${sizeText(whole)} mm; ${scales.join("; ")}. Details under 3 px can’t be made out: zoom in with focus (a feature id, { part } or { faces }), cut it open with section to see inside.`,
+        ),
+      )
+    }
+    if (auto) lines.push(ta("最后一步的改动只占整件的一小块，已自动加了一张特写。", "The last step changed only a small area of the model: a close-up was added automatically."))
     return { ok: true, text: lines.join("\n"), images }
   }
 
@@ -1950,9 +2134,16 @@ export class Engine {
   private async focusBox(doc: Doc, d: DisplayData, focus: string | { part: string } | { faces: Record<string, unknown> }): Promise<{ box: Box; name: string; facing?: V3 } | { error: string }> {
     if (typeof focus === "string") {
       const f = doc.tree.features.find((x) => x.id === focus)
-      if (!f) return { error: `找不到特征「${focus}」` }
+      if (!f) return { error: ta(`找不到特征「${focus}」`, `Can’t find the feature “${focus}”`) }
       const box = boxOfGroups(d, (g) => g.origin === focus)
-      return box ? { box, name: displayName(doc.tree, f) } : { error: `「${displayName(doc.tree, f)}」生成的面现在都不在了（被后面的特征盖掉或切掉了），框不出来：换一个特征，或者用 at 回滚到它那一步看` }
+      if (box) return { box, name: displayName(doc.tree, f) }
+      const name = displayName(doc.tree, f)
+      return {
+        error: ta(
+          `「${name}」生成的面现在都不在了（被后面的特征盖掉或切掉了），框不出来：换一个特征，或者用 at 回滚到它那一步看`,
+          `None of the faces “${name}” made are left (later features covered or cut them away), so it can’t be framed: pick another feature, or roll back to its step with at and look there`,
+        ),
+      }
     }
     if ("part" in focus) {
       const k = d.parts?.findIndex((p) => p.name === focus.part) ?? -1
@@ -1960,15 +2151,17 @@ export class Engine {
       const ref = d.refs?.find((r) => r.name === focus.part || r.id === focus.part)
       if (ref) return { box: meshBox(ref.mesh.vertices), name: ref.name }
       const names = [...(d.parts ?? []).map((p) => p.name), ...(d.refs ?? []).map((r) => r.name)]
-      return { error: `没有叫「${focus.part}」的零件或参考体${names.length ? `：现在有 ${names.join("、")}` : ""}` }
+      return { error: ta(`没有叫「${focus.part}」的零件或参考体${names.length ? `：现在有 ${names.join("、")}` : ""}`, `No part or reference body called “${focus.part}”${names.length ? `: there are ${names.join(", ")}` : ""}`) }
     }
     const hashes = await this.opts.kernel.locate("face", focus.faces)
-    if (!hashes?.length) return { error: `选择器什么都没选中：${JSON.stringify(focus.faces)}` }
+    if (!hashes?.length) return { error: ta(`选择器什么都没选中：${JSON.stringify(focus.faces)}`, `The selector selects nothing: ${JSON.stringify(focus.faces)}`) }
     const set = new Set(hashes)
     const box = boxOfGroups(d, (g) => set.has(g.hash))
     // A flat face is framed with some of what is around it, and looked at straight on.
     const facing = facingOf(d, (g) => set.has(g.hash)) ?? undefined
-    return box ? { box: padFlat(box), name: `${hashes.length} 个面`, facing } : { error: "选中的面不在显示的这一步里（用了 at 时，focus.faces 按最新一步选）" }
+    return box
+      ? { box: padFlat(box), name: ta(`${hashes.length} 个面`, plural(hashes.length, "face")), facing }
+      : { error: ta("选中的面不在显示的这一步里（用了 at 时，focus.faces 按最新一步选）", "The selected faces aren’t in the step shown (with at, focus.faces selects on the latest step)") }
   }
 
   private async show(doc: Doc, input: Record<string, unknown>): Promise<CommandResult> {
@@ -1978,22 +2171,22 @@ export class Engine {
     }
     if (input.clear) {
       this.emit({ type: "show", request: { path: doc.path, clear: true } })
-      return { ok: true, text: "已取消高亮。" }
+      return { ok: true, text: ta("已取消高亮。", "Cleared the highlight.") }
     }
     const label = input.label as string | undefined
     if (input.feature) {
       const f = doc.tree.features.find((x) => x.id === input.feature)
-      if (!f) return fail(`找不到特征「${input.feature}」`)
+      if (!f) return fail(ta(`找不到特征「${input.feature}」`, `Can’t find the feature “${input.feature}”`))
       this.emit({ type: "show", request: { path: doc.path, feature: f.id, label: label ?? displayName(doc.tree, f) } })
-      return { ok: true, text: `已在窗口里高亮「${displayName(doc.tree, f)}」。` }
+      return { ok: true, text: ta(`已在窗口里高亮「${displayName(doc.tree, f)}」。`, `Highlighted “${displayName(doc.tree, f)}” in the window.`) }
     }
     const kind = input.faces ? "face" : input.edges ? "edge" : null
-    if (!kind) return fail("写 feature、faces 或 edges 之一。")
+    if (!kind) return fail(ta("写 feature、faces 或 edges 之一。", "Write one of feature, faces or edges."))
     await this.ensureKernel(doc)
     const hashes = await this.opts.kernel.locate(kind, input.faces ?? input.edges)
-    if (!hashes?.length) return fail("选择器什么都没选中。")
+    if (!hashes?.length) return fail(ta("选择器什么都没选中。", "The selector selects nothing."))
     this.emit({ type: "show", request: { path: doc.path, kind, hashes, label } })
-    return { ok: true, text: `已在窗口里高亮 ${hashes.length} ${kind === "face" ? "个面" : "条边"}。` }
+    return { ok: true, text: ta(`已在窗口里高亮 ${hashes.length} ${kind === "face" ? "个面" : "条边"}。`, `Highlighted ${plural(hashes.length, kind)} in the window.`) }
   }
 
   private async exportPart(doc: Doc, input: ExportInput, ctx: CallContext): Promise<CommandResult> {
@@ -2003,10 +2196,15 @@ export class Engine {
     const format = input.format ?? (ext === "stp" ? "step" : ext === "md" ? "bom" : ext)
     if (format === "png" || format === "svg") return this.exportFigure(doc, input, path, format)
     if (format !== "step" && format !== "stl" && format !== "3mf" && format !== "py" && format !== "json" && format !== "bom")
-      return fail("不知道导出成什么：扩展名用 .step / .stl / .3mf / .py / .json / .md（零件清单）/ .png / .svg，或者写 format。")
+      return fail(
+        ta(
+          "不知道导出成什么：扩展名用 .step / .stl / .3mf / .py / .json / .md（零件清单）/ .png / .svg，或者写 format。",
+          "Unknown export format: use the extension .step / .stl / .3mf / .py / .json / .md (parts list) / .png / .svg, or write format.",
+        ),
+      )
     let data: string | Uint8Array | null
     if (format === "py") {
-      if (isAssembly(doc.path)) return fail("装配不能导出成 build123d 代码：请分别打开每个零件导出")
+      if (isAssembly(doc.path)) return fail(ta("装配不能导出成 build123d 代码：请分别打开每个零件导出", "An assembly can’t be exported as build123d code: open each part and export it on its own"))
       data = toBuild123d(this.effective(doc, doc.tree), { title: doc.name })
     } else if (format === "json") data = `${JSON.stringify(doc.tree, null, 2)}\n`
     else if (format === "bom") {
@@ -2018,11 +2216,18 @@ export class Engine {
       // Several parts: one STL each, zipped.
       if (format === "stl" && (report.parts?.length ?? 0) > 1 && !/\.zip$/i.test(path)) path = path.replace(/\.stl$/i, "") + ".zip"
     }
-    if (!data) return fail("还没有实体可以导出。")
+    if (!data) return fail(ta("还没有实体可以导出。", "There is no solid to export yet."))
     await this.opts.files.write(path, data)
     const bytes = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength
     const failed = format === "step" || format === "stl" || format === "3mf" ? doc.report?.features.filter((f) => f.state === "error").length : 0
-    return { ok: true, text: `已导出 ${format.toUpperCase()} 到 ${path}（${(bytes / 1024).toFixed(1)} KB）${failed ? `。注意：有 ${failed} 个特征失败，导出的是最后一个成功的步骤` : ""}` }
+    const kb = (bytes / 1024).toFixed(1)
+    return {
+      ok: true,
+      text: ta(
+        `已导出 ${format.toUpperCase()} 到 ${path}（${kb} KB）${failed ? `。注意：有 ${failed} 个特征失败，导出的是最后一个成功的步骤` : ""}`,
+        `Exported ${format.toUpperCase()} to ${path} (${kb} KB)${failed ? `. Note: ${plural(failed, "feature")} failed; the export is the last step that succeeded` : ""}`,
+      ),
+    }
   }
 
   /**
@@ -2032,55 +2237,89 @@ export class Engine {
   private async exportFigure(doc: Doc, input: ExportInput, path: string, format: FigureFormat): Promise<CommandResult> {
     await this.ensureKernel(doc)
     const display = await this.opts.kernel.display()
-    if (!display.mesh) return fail("还没有实体可以出图。")
+    if (!display.mesh) return fail(ta("还没有实体可以出图。", "There is no solid to draw yet."))
     const names = (display.parts ?? []).map((p) => p.name)
     const hide = input.hide ?? []
     const unknown = hide.filter((n) => !names.includes(n))
-    if (unknown.length) return fail(`hide 里的「${unknown.join("、")}」不是零件的名字${names.length ? `：现在有 ${names.join("、")}` : "：现在只有一个没名字的实体"}`)
+    if (unknown.length)
+      return fail(
+        ta(
+          `hide 里的「${unknown.join("、")}」不是零件的名字${names.length ? `：现在有 ${names.join("、")}` : "：现在只有一个没名字的实体"}`,
+          `“${unknown.join(", ")}” in hide: not the name of a part${names.length ? `: there are ${names.join(", ")}` : ": there is only one solid, with no name"}`,
+        ),
+      )
     let dir: V3 = VIEW_DIR[input.view ?? "iso"] ?? VIEW_DIR.iso
     if (input.dir) {
       const l = Math.hypot(...input.dir)
-      if (!l) return fail("dir 不能是 [0, 0, 0]")
+      if (!l) return fail(ta("dir 不能是 [0, 0, 0]", "dir can’t be [0, 0, 0]"))
       dir = input.dir.map((x) => x / l) as V3
     }
     const explode = Math.min(1, Math.max(0, input.explode ?? 0))
-    const label = input.dir ? `从 (${input.dir.join(", ")}) 方向看` : (VIEW_LABEL[input.view ?? "iso"] ?? input.view ?? "等轴测")
+    const label = input.dir ? ta(`从 (${input.dir.join(", ")}) 方向看`, `from direction (${input.dir.join(", ")})`) : (viewLabel(input.view ?? "iso") ?? input.view ?? ta("等轴测", "Isometric"))
+    const exploded = explode ? ta(`，爆炸 ${Math.round(explode * 100)}%`, `, exploded ${Math.round(explode * 100)}%`) : ""
     if (format === "png") {
       const screen = this.opts.screen?.()
-      if (!screen) return fail("png 要在 Turnery 窗口里画：先打开 Turnery App（命令行 turnery open <零件>）。svg 线稿不需要窗口。")
+      if (!screen) return fail(ta("png 要在 Turnery 窗口里画：先打开 Turnery App（命令行 turnery open <零件>）。svg 线稿不需要窗口。", "png is drawn in the Turnery window: open the Turnery app first (from the command line: turnery open <part>). An svg line drawing doesn’t need the window."))
       const style = input.style ?? "shaded"
       const [image] = await screen.look({ display, views: [], pins: [], figure: { dir, projection: input.projection ?? "perspective", style, explode, hide, background: input.background ?? "white", looks: true } })
-      if (!image?.startsWith("data:image/png;base64,")) return fail("窗口没画出图片。")
+      if (!image?.startsWith("data:image/png;base64,")) return fail(ta("窗口没画出图片。", "The window didn’t draw a picture."))
       const bytes = Uint8Array.from(atob(image.slice("data:image/png;base64,".length)), (c) => c.charCodeAt(0))
       await this.opts.files.write(path, bytes)
-      return { ok: true, text: `已导出图片到 ${path}（${label}，${{ shaded: "着色", lines: "线描", xray: "半透明" }[style]}${explode ? `，爆炸 ${Math.round(explode * 100)}%` : ""}，${(bytes.byteLength / 1024).toFixed(1)} KB）` }
+      const kb = (bytes.byteLength / 1024).toFixed(1)
+      return {
+        ok: true,
+        text: ta(
+          `已导出图片到 ${path}（${label}，${{ shaded: "着色", lines: "线描", xray: "半透明" }[style]}${exploded}，${kb} KB）`,
+          `Exported the picture to ${path} (${label}, ${{ shaded: "shaded", lines: "line drawing", xray: "see-through" }[style]}${exploded}, ${kb} KB)`,
+        ),
+      }
     }
     const hidden = new Set(names.flatMap((n, i) => (hide.includes(n) ? [i] : [])))
     const view: PartsView = { explode, hidden }
     const box = drawnBox(display, view)
-    if (!box) return fail("hide 把零件都去掉了，没有可画的。")
+    if (!box) return fail(ta("hide 把零件都去掉了，没有可画的。", "hide leaves out every part: nothing to draw."))
     const W = 1600
     const H = 1200
     const camera = fitCamera(box, new THREE.Vector3(...dir), input.projection ?? "orthographic", W, H)
     const labels: FigureLabels = input.labels ?? "none"
     if (typeof labels === "object") {
       const wrong = Object.keys(labels).filter((n) => !names.includes(n) && !names.some((x) => x.split("/").pop() === n))
-      if (wrong.length) return fail(`labels 里的「${wrong.join("、")}」不是零件的名字：现在有 ${names.join("、")}`)
+      if (wrong.length) return fail(ta(`labels 里的「${wrong.join("、")}」不是零件的名字：现在有 ${names.join("、")}`, `“${wrong.join(", ")}” in labels: not the name of a part. There are ${names.join(", ")}`))
     }
     const figure = lineFigure(display, { camera, width: W, height: H, view, section: null, hidden: input.hidden_lines, labels })
-    if (!figure) return fail("这个视角下没有可画的线。")
+    if (!figure) return fail(ta("这个视角下没有可画的线。", "There are no lines to draw from this view."))
     await this.opts.files.write(path, figure.svg)
-    const numbered = labels === "none" ? "" : `，${labels === "numbers" ? "按 10、20、30… 标号" : labels === "names" ? "标了零件名" : "按 labels 标号"}（${figure.labels} 个）`
-    const crowded = figure.labels > 40 ? `\n⚠ 标了 ${figure.labels} 个零件，两边的标号排得很长，引线会斜着拉很远：用 labels 写 { "零件名": "标号" } 只标要说明的几个零件更清楚。` : ""
-    return { ok: true, text: `已导出线稿到 ${path}（${label}，${input.projection === "perspective" ? "透视" : "正交"}${explode ? `，爆炸 ${Math.round(explode * 100)}%` : ""}${numbered}${input.hidden_lines ? "，挡住的线画成虚线" : ""}，${figure.lines} 段线）${crowded}` }
+    const numbered =
+      labels === "none"
+        ? ""
+        : ta(
+            `，${labels === "numbers" ? "按 10、20、30… 标号" : labels === "names" ? "标了零件名" : "按 labels 标号"}（${figure.labels} 个）`,
+            `, ${labels === "numbers" ? "numbered 10, 20, 30…" : labels === "names" ? "labeled with part names" : "labeled as labels says"} (${figure.labels})`,
+          )
+    const crowded =
+      figure.labels > 40
+        ? ta(
+            `\n⚠ 标了 ${figure.labels} 个零件，两边的标号排得很长，引线会斜着拉很远：用 labels 写 { "零件名": "标号" } 只标要说明的几个零件更清楚。`,
+            `\n⚠ ${figure.labels} parts are labeled: the labels make long columns on both sides, and the leader lines run far at a slant. It is clearer to label only the parts that need explaining: write labels as { "part name": "label" }.`,
+          )
+        : ""
+    const projection = input.projection === "perspective" ? ta("透视", "perspective") : ta("正交", "orthographic")
+    const dashed = input.hidden_lines ? ta("，挡住的线画成虚线", ", hidden lines dashed") : ""
+    return {
+      ok: true,
+      text: ta(
+        `已导出线稿到 ${path}（${label}，${projection}${exploded}${numbered}${dashed}，${figure.lines} 段线）${crowded}`,
+        `Exported the line drawing to ${path} (${label}, ${projection}${exploded}${numbered}${dashed}, ${figure.lines} line segments)${crowded}`,
+      ),
+    }
   }
 
   // ------------------------------------------------------------------ picks
 
   private async requestPick(input: Record<string, unknown>, ctx: CallContext): Promise<CommandResult> {
-    if (!this.opts.screen?.()) return fail("要请用户在 Turnery 窗口里点选：先打开 Turnery App。")
+    if (!this.opts.screen?.()) return fail(ta("要请用户在 Turnery 窗口里点选：先打开 Turnery App。", "To ask the user to pick in the Turnery window, open the Turnery app first."))
     const doc = await this.exclusive(() => this.resolveDoc(ctx))
-    if (!doc) return fail("还没有打开零件：先用 open_part。")
+    if (!doc) return fail(ta("还没有打开零件：先用 open_part。", "No part is open yet: call open_part first."))
     const prompt = String(input.prompt)
     if (this.late && this.late.path === doc.path && this.late.prompt === prompt) {
       const { answer } = this.late
@@ -2109,8 +2348,15 @@ export class Engine {
       }, ((input.timeout_sec as number | undefined) ?? 120) * 1000)
       req.waiters.push(waiter)
     })
-    if (answer === "timeout") return { ok: false, text: "用户还没点。请求还显示在窗口里：可以用同一句 prompt 再调用 request_pick 接着等，或者先做别的。" }
-    if (!answer) return { ok: false, text: "用户取消了点选。" }
+    if (answer === "timeout")
+      return {
+        ok: false,
+        text: ta(
+          "用户还没点。请求还显示在窗口里：可以用同一句 prompt 再调用 request_pick 接着等，或者先做别的。",
+          "The user hasn’t picked yet. The request is still shown in the window: call request_pick again with the same prompt to keep waiting, or do something else first.",
+        ),
+      }
+    if (!answer) return { ok: false, text: ta("用户取消了点选。", "The user canceled the pick.") }
     return pickResult(answer)
   }
 
@@ -2142,12 +2388,21 @@ export class Engine {
     const fresh = skipNewNotes ? [] : doc.notes.notes.filter((n) => n.status === "open" && n.n > seen.note)
     const lines: string[] = []
     if (tree.length) {
-      lines.push(`⚠ 自你上次调用以来，模型被改过（以现在的状态为准，不要改回去）：`)
-      for (const c of tree.slice(-8)) lines.push(`- ${BY[c.actor]}：${c.summary}`)
-      lines.push(`现在是第 ${doc.rev} 版。`)
+      lines.push(ta(`⚠ 自你上次调用以来，模型被改过（以现在的状态为准，不要改回去）：`, `⚠ Since your last call, the model was changed (go by its current state; don’t change it back):`))
+      for (const c of tree.slice(-8)) lines.push(`- ${BY(c.actor)}${ta("：", ": ")}${c.summary}`)
+      lines.push(ta(`现在是第 ${doc.rev} 版。`, `It is now at version ${doc.rev}.`))
     }
-    if (notes.length) lines.push(`备注有变化：${notes.slice(-6).map((c) => `${c.actor === "user" ? "用户" : WHO[c.actor]}${c.summary}`).join("；")}。`)
-    if (fresh.length) lines.push(`◆ 用户在窗口里留了 ${fresh.length} 条新备注：${fresh.map((n) => `${n.id}「${clip(n.text)}」`).join("、")}。用 get_notes 读详情。`)
+    if (notes.length) {
+      const what = notes.slice(-6).map((c) => ta(`${c.actor === "user" ? "用户" : WHO(c.actor)}${c.summary}`, `${WHO(c.actor)} ${c.summary}`))
+      lines.push(ta(`备注有变化：${what.join("；")}。`, `Notes changed: ${what.join("; ")}.`))
+    }
+    if (fresh.length)
+      lines.push(
+        ta(
+          `◆ 用户在窗口里留了 ${fresh.length} 条新备注：${fresh.map((n) => `${n.id}「${clip(n.text)}」`).join("、")}。用 get_notes 读详情。`,
+          `◆ The user left ${plural(fresh.length, "new note")} in the window: ${fresh.map((n) => `${n.id} “${clip(n.text)}”`).join(", ")}. Read the details with get_notes.`,
+        ),
+      )
     return lines.join("\n")
   }
 
@@ -2167,8 +2422,8 @@ export class Engine {
 }
 
 function pickResult(answer: PickAnswer): CommandResult {
-  const lines = ["用户在窗口里点了：", ...pickLines({ ...answer.info, point: answer.info.point as V3 })]
-  if (answer.text?.trim()) lines.push(`- 用户补充：${answer.text.trim()}`)
+  const lines = [ta("用户在窗口里点了：", "The user picked in the window:"), ...pickLines({ ...answer.info, point: answer.info.point as V3 })]
+  if (answer.text?.trim()) lines.push(ta(`- 用户补充：${answer.text.trim()}`, `- The user added: ${answer.text.trim()}`))
   return { ok: true, text: lines.join("\n") }
 }
 
@@ -2188,12 +2443,12 @@ function bomText(doc: Doc, report: BuildReport, looks: Map<string, Look> = new M
         std = undefined
       }
     }
-    what.set(componentName(f), { file: f.file ?? "标准件", std })
+    what.set(componentName(f), { file: f.file ?? ta("标准件", "standard part"), std })
   }
   const parts = report.parts ?? (report.body ? [{ name: doc.name, volume: report.body.volume, size: report.body.size }] : [])
   // An unsplit body is listed under the file's name: its one look is the only entry.
   const lookOf = (name: string) => looks.get(name) ?? (looks.size === 1 ? [...looks.values()][0] : undefined)
-  const colour = (l: Look | undefined) => (l && isSet(l) ? lookText(l) : l?.fileColor ? `${colorName(l.fileColor)}（STEP 自带）` : "—")
+  const colour = (l: Look | undefined) => (l && isSet(l) ? lookText(l) : l?.fileColor ? ta(`${colorName(l.fileColor)}（STEP 自带）`, `${colorName(l.fileColor)} (from the STEP file)`) : "—")
   const rows = new Map<string, { name: string; file: string; count: number; volume: number; size: number[]; look: string }>()
   for (const p of parts) {
     // 「螺钉#3/垫圈」: component 螺钉, its third copy, the part 垫圈 of it.
@@ -2211,14 +2466,15 @@ function bomText(doc: Doc, report: BuildReport, looks: Map<string, Look> = new M
     else rows.set(key, { name, file, count: 1, volume: p.volume, size: p.size, look })
   }
   const r1 = (x: number) => Math.round(x * 10) / 10
+  const total = [...rows.values()].reduce((n, r) => n + r.count, 0)
   const lines = [
-    `# 零件清单：${doc.name}`,
+    ta(`# 零件清单：${doc.name}`, `# Parts list: ${doc.name}`),
     "",
-    "| 序号 | 名称 | 文件 | 数量 | 颜色 | 单件体积 (cm³) | 外形 (mm) |",
+    ta("| 序号 | 名称 | 文件 | 数量 | 颜色 | 单件体积 (cm³) | 外形 (mm) |", "| No. | Name | File | Qty | Color | Volume each (cm³) | Size (mm) |"),
     "| --- | --- | --- | --- | --- | --- | --- |",
     ...[...rows.values()].map((r, i) => `| ${i + 1} | ${r.name} | ${r.file} | ${r.count} | ${r.look} | ${Math.round(r.volume / 10) / 100} | ${r.size.map(r1).join(" × ")} |`),
     "",
-    `共 ${[...rows.values()].reduce((n, r) => n + r.count, 0)} 件。`,
+    ta(`共 ${total} 件。`, `${plural(total, "piece")} in all.`),
     "",
   ]
   return lines.join("\n")
@@ -2234,22 +2490,22 @@ function lookLegend(d: DisplayData, hide: string[]) {
       e.look && isSet(e.look)
         ? lookText(e.look)
         : e.look?.fileColor
-          ? `STEP 文件自带的颜色（主要是${colorWord(e.look.fileColor)}）`
+          ? ta(`STEP 文件自带的颜色（主要是${colorWord(e.look.fileColor)}）`, `the STEP file’s own colors (mostly ${colorWord(e.look.fileColor).trim()})`)
           : e.look?.source === "standard"
-            ? "金属灰（标准件，没设颜色）"
+            ? ta("金属灰（标准件，没设颜色）", "metal gray (standard part, no color set)")
             : e.look?.source === "step"
-              ? "深灰（外购件，没设颜色）"
-              : "白模（没设颜色）"
+              ? ta("深灰（外购件，没设颜色）", "dark gray (bought-in part, no color set)")
+              : ta("白模（没设颜色）", "clay (no color set)")
     groups.set(key, [...(groups.get(key) ?? []), e.name])
   }
-  const names = (list: string[]) => (list.length > 4 ? `${list.slice(0, 4).join("、")} 等 ${list.length} 个` : list.join("、"))
-  return [...groups].map(([k, list]) => (list.some(Boolean) ? `${k}：${names(list)}` : k)).join("；")
+  const names = (list: string[]) => (list.length > 4 ? ta(`${list.slice(0, 4).join("、")} 等 ${list.length} 个`, `${list.slice(0, 4).join(", ")} … (${list.length} in all)`) : listed(list))
+  return [...groups].map(([k, list]) => (list.some(Boolean) ? `${k}${ta("：", ": ")}${names(list)}` : k)).join(ta("；", "; "))
 }
 
 export function measureText(res: MeasureResult) {
-  const KIND = { face: "面", edge: "边", feature: "特征", part: "零件" } as const
-  const items = res.items.map((i, k) => `${res.items.length > 1 ? (k ? "B" : "A") + "：" : ""}${KIND[i.kind]} · ${i.what} · ${i.facts.join("，")}`)
-  const between = res.between.map((b) => `${b.name}：${b.value}`)
+  const KIND = { face: ta("面", "face"), edge: ta("边", "edge"), feature: ta("特征", "feature"), part: ta("零件", "part") } as const
+  const items = res.items.map((i, k) => `${res.items.length > 1 ? (k ? "B" : "A") + ta("：", ": ") : ""}${KIND[i.kind]} · ${i.what} · ${i.facts.join(ta("，", ", "))}`)
+  const between = res.between.map((b) => `${b.name}${ta("：", ": ")}${b.value}`)
   return [...items, ...between].join("\n")
 }
 

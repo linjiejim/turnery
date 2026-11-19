@@ -1,3 +1,4 @@
+import { workerName } from "../lib/agent-lang"
 import type { MeasureResult, MeasureTarget } from "./kernel/measure"
 import type { KernelPort } from "./apply"
 import type { Tree } from "./dsl"
@@ -27,7 +28,8 @@ export class KernelClient implements KernelPort {
   }
 
   private spawn() {
-    this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+    // Its name carries the language its messages are written in (lib/agent-lang.ts).
+    this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module", name: workerName("turnery-kernel") })
     this.worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
       const m = e.data
       if ("type" in m) return this.onProgress?.(m.loadedMB)

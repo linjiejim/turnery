@@ -2,6 +2,7 @@
 // desktop engine can plan and the tests can check it): which pictures, from
 // where, framing what, and how many millimetres one pixel is.
 import type { DisplayData } from "./kernel/build"
+import { ta } from "../lib/agent-lang"
 
 type V3 = [number, number, number]
 export type Box = [V3, V3]
@@ -45,6 +46,18 @@ export const VIEW_LABEL: Record<string, string> = {
   left: "左视（从 -X 看）",
   current: "学习者当前的视角",
 }
+const VIEW_LABEL_EN: Record<string, string> = {
+  iso: "Isometric",
+  front: "Front (from -Y)",
+  back: "Back (from +Y)",
+  top: "Top (from +Z)",
+  bottom: "Bottom (from -Z)",
+  right: "Right (from +X)",
+  left: "Left (from -X)",
+  current: "The learner’s current view",
+}
+/** A view's label in the agent's language: drawn on the pictures the model looks at (VIEW_LABEL is the Chinese). */
+export const viewLabel = (v: string): string | undefined => ta(VIEW_LABEL[v], VIEW_LABEL_EN[v])
 
 /** Bounding box of the triangles of the face groups `keep` accepts (null: none). */
 export function boxOfGroups(d: DisplayData, keep: (g: DisplayData["groups"][number]) => boolean): Box | null {

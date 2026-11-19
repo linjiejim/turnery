@@ -302,7 +302,8 @@ function bestView(d: Dim): ViewName | null {
 /** The words on a drawing: the value with its sign, no parameter name (「⌀8」「R4」「6×⌀8 均布」). */
 function plainText(d: Dim): string {
   if (d.kind === "linear") {
-    const words = d.text.match(/^(壁厚 |偏移 |长 |宽 |\d+× 间距 )/)?.[1] ?? ""
+    // The words dims.ts puts before a number, in either language (English ones never followed by "= ", a parameter's name).
+    const words = d.text.match(/^(壁厚 |偏移 |长 |宽 |\d+× 间距 |(?:Wall|Offset|Length|Width|\d+× spacing) (?!= ))/)?.[1] ?? ""
     return `${words}${fmt(d.value)}`
   }
   return d.text.replace(/（[^）]*）/g, "").replace(/^[A-Za-z_]\w*\/?\d* = /, "").trim()

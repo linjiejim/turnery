@@ -503,7 +503,8 @@ export function StudioViewport({
 
   // The shortest segment between two measured items, with its length on it.
   const segment = result?.segment
-  const distance = result?.between.find((b) => b.name === "最短距离")?.value
+  // Named in the kernel's language (BETWEEN in kernel/measure.ts).
+  const distance = result?.between.find((b) => b.name === "最短距离" || b.name === "Shortest distance")?.value
   React.useEffect(() => {
     if (!viewer || !segment) return
     const group = new THREE.Group()

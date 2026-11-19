@@ -4,12 +4,13 @@ import { getOC, makeCompound, measureShapeVolumeProperties, type AnyShape, type 
 import type { Check, EdgeSelector, FaceSelector } from "../dsl"
 import type { Scope } from "../expr"
 import { METRIC, type ScrewSize } from "../holes"
-import { measure, positionOf } from "./measure"
+import { isBetween, measure, positionOf, type BetweenKey } from "./measure"
 import { meshShape } from "./mesh"
 import { Pieces, relation, TooComplex } from "./pieces"
 import { relationText, thinnestWall } from "./proximity"
 import { compoundOf } from "./topo"
 import { disposeInfos, edgeInfos, faceInfos, selectEdges, selectFaces, type EdgeInfo, type FaceInfo } from "./select"
+import { agentLang, ta } from "../../lib/agent-lang"
 
 type V3 = [number, number, number]
 
@@ -118,8 +119,9 @@ export function runChecks(body: Shape3D, origins: string[], checks: Check[], sco
                     : one(c, body, origins, topo().faces, topo().edges, scope)),
         }
       } catch (e) {
-        if (e instanceof TooComplex) return { ...base, pass: false, invalid: true, tooComplex: true, expected: expectedOf(c), actual: `太复杂，没有算：${e.message}` }
-        const first = ((e as Error).message || "没找到要量的东西").split("\n")[0].replace(/。?候选：$/, "")
+        if (e instanceof TooComplex) return { ...base, pass: false, invalid: true, tooComplex: true, expected: expectedOf(c), actual: ta(`太复杂，没有算：${e.message}`, `Too complex, not worked out: ${e.message}`) }
+        // The first line of a selector's error, without the candidates it lists (select.ts, either language).
+        const first = ((e as Error).message || ta("没找到要量的东西", "Found nothing to measure")).split("\n")[0].replace(/(。?候选：|\.? Candidates:)$/, "")
         return { ...base, pass: false, invalid: true, expected: expectedOf(c), actual: first }
       }
     })
@@ -134,6 +136,7 @@ export function runChecks(body: Shape3D, origins: string[], checks: Check[], sco
 }
 
 function expectedOf(c: Check): string {
+  if (agentLang() === "en") return expectedEn(c)
   switch (c.kind) {
     case "size":
       return c.expect.map(fmt).join(" × ")
@@ -164,6 +167,41 @@ function expectedOf(c: Check): string {
   }
 }
 
+/** expectedOf in English. */
+function expectedEn(c: Check): string {
+  switch (c.kind) {
+    case "size":
+      return c.expect.map(fmt).join(" × ")
+    case "holes":
+      return `${holeCount(c.count)}${c.thread ? ` ${c.thread}` : c.d !== undefined ? ` ⌀${fmt(c.d)}` : ""}`
+    case "pcd":
+      return `${holeCount(c.count)} on ⌀${fmt(c.expect)}`
+    case "angle":
+      return `${fmt(c.expect)}°`
+    case "volume":
+      return [c.min !== undefined && `≥ ${fmt(c.min / 1000)} cm³`, c.max !== undefined && `≤ ${fmt(c.max / 1000)} cm³`].filter(Boolean).join(", ")
+    case "clearance":
+      return `at least ${fmt(c.min)} mm from “${c.ref}”`
+    case "interference":
+      return `doesn't intersect “${c.ref}”`
+    case "position":
+      return Array.isArray(c.expect) ? `(${c.expect.map(fmt).join(", ")})` : `${c.axis ?? "?"} = ${fmt(c.expect)}`
+    case "overhang":
+      return `overhang at most ${fmt(c.max ?? 45)}°${c.up && c.up !== "+Z" ? ` (${c.up} up)` : ""}`
+    case "min_wall":
+      return `wall at least ${fmt(c.min)} mm thick`
+    case "bed":
+      return c.min !== undefined ? `area on the bed ≥ ${fmt(c.min)} mm²` : "area on the bed"
+    case "gap":
+      return [c.max === 0 ? "touching" : c.max !== undefined && `≤ ${fmt(c.max)} mm`, c.min !== undefined && `≥ ${fmt(c.min)} mm`].filter(Boolean).join(", ") || "measure the gap"
+    default:
+      return `${fmt(c.expect)} mm`
+  }
+}
+
+/** 「4 个」 / "4 holes". */
+const holeCount = (n: number) => ta(`${n} 个`, `${n} ${n === 1 ? "hole" : "holes"}`)
+
 type PrintCheck = Extract<Check, { kind: "overhang" | "min_wall" | "bed" }>
 const UP: Record<string, V3> = { "+X": [1, 0, 0], "-X": [-1, 0, 0], "+Y": [0, 1, 0], "-Y": [0, -1, 0], "+Z": [0, 0, 1], "-Z": [0, 0, -1] }
 /** A triangle within this of the lowest point along `up` lies on the build plate. */
@@ -178,8 +216,14 @@ const ANGLE_SLACK = 0.5
 function printable(c: PrintCheck, body: Shape3D, bodies: CheckBodies): Pick<CheckResult, "pass" | "expected" | "actual" | "faces" | "edges"> {
   const all = bodies.parts.length > 1 ? bodies.parts : [{ name: "", body }]
   const targets = c.part ? all.filter((p) => p.name === c.part) : all
-  if (c.part && !targets.length) throw new Error(`没有叫「${c.part}」的零件${bodies.parts.length ? `（有：${bodies.parts.map((p) => p.name).join("、")}）` : ""}`)
-  const tag = (name: string) => (name && targets.length > 1 ? `${name}：` : "")
+  if (c.part && !targets.length)
+    throw new Error(
+      ta(
+        `没有叫「${c.part}」的零件${bodies.parts.length ? `（有：${bodies.parts.map((p) => p.name).join("、")}）` : ""}`,
+        `No part named “${c.part}”${bodies.parts.length ? ` (there are: ${bodies.parts.map((p) => p.name).join(", ")})` : ""}`,
+      ),
+    )
+  const tag = (name: string) => (name && targets.length > 1 ? ta(`${name}：`, `${name}: `) : "")
   const expected = expectedOf(c)
 
   if (c.kind === "min_wall") {
@@ -199,9 +243,9 @@ function printable(c: PrintCheck, body: Shape3D, bodies: CheckBodies): Pick<Chec
         disposeInfos(infos, [])
       }
     }
-    const note = capped ? "（面太多，只量了最可能的 400 对）" : ""
-    if (worst) return { pass: false, expected, actual: `${tag(worst.name)}最薄 ${fmt(worst.d)} mm${note}`, faces: hit, edges: [] }
-    return { pass: true, expected, actual: `没有比 ${fmt(c.min)} mm 更薄的地方${note}`, faces: [], edges: [] }
+    const note = capped ? ta("（面太多，只量了最可能的 400 对）", " (too many faces: only the 400 likeliest pairs were measured)") : ""
+    if (worst) return { pass: false, expected, actual: ta(`${tag(worst.name)}最薄 ${fmt(worst.d)} mm${note}`, `${tag(worst.name)}thinnest ${fmt(worst.d)} mm${note}`), faces: hit, edges: [] }
+    return { pass: true, expected, actual: ta(`没有比 ${fmt(c.min)} mm 更薄的地方${note}`, `nothing thinner than ${fmt(c.min)} mm${note}`), faces: [], edges: [] }
   }
 
   const up = UP[c.up ?? "+Z"]
@@ -240,10 +284,19 @@ function printable(c: PrintCheck, body: Shape3D, bodies: CheckBodies): Pick<Chec
     if (mine > 0 && mine >= support - mine) worstPart = t.name
     support += mine
   }
-  if (c.kind === "bed") return { pass: c.min === undefined || contact >= c.min - 1e-6, expected, actual: `贴在平台上 ${fmt(contact)} mm²`, faces: [], edges: [] }
+  if (c.kind === "bed") return { pass: c.min === undefined || contact >= c.min - 1e-6, expected, actual: ta(`贴在平台上 ${fmt(contact)} mm²`, `${fmt(contact)} mm² on the bed`), faces: [], edges: [] }
   const allowed = c.area ?? 1
-  if (support <= allowed) return { pass: true, expected, actual: support > 0 ? `需要支撑的只有 ${fmt(support)} mm²` : "不需要支撑", faces: [], edges: [] }
-  return { pass: false, expected, actual: `${tag(worstPart)}需要支撑 ${fmt(support)} mm²（最大 ${fmt(steepest)}°，水平朝下的面也算，短的桥接打印机能跨过去）`, faces: [...hit], edges: [] }
+  if (support <= allowed) return { pass: true, expected, actual: support > 0 ? ta(`需要支撑的只有 ${fmt(support)} mm²`, `only ${fmt(support)} mm² needs support`) : ta("不需要支撑", "no support needed"), faces: [], edges: [] }
+  return {
+    pass: false,
+    expected,
+    actual: ta(
+      `${tag(worstPart)}需要支撑 ${fmt(support)} mm²（最大 ${fmt(steepest)}°，水平朝下的面也算，短的桥接打印机能跨过去）`,
+      `${tag(worstPart)}${fmt(support)} mm² needs support (up to ${fmt(steepest)}°; faces pointing straight down count too; the printer can bridge short spans)`,
+    ),
+    faces: [...hit],
+    edges: [],
+  }
 }
 
 type FitCheck = Extract<Check, { kind: "clearance" | "interference" }>
@@ -267,9 +320,14 @@ function fit(c: FitCheck, body: Shape3D, bodies: CheckBodies): Omit<CheckResult,
   const hit = named(c.ref, bodies)
   if (!hit) {
     const names = namesOf(bodies)
-    throw new Error(`没有参考体或零件「${c.ref}」${names.length ? `：现在有 ${names.join("、")}` : "：要先用 import 导入，ref 写那个特征的 id"}`)
+    throw new Error(
+      ta(
+        `没有参考体或零件「${c.ref}」${names.length ? `：现在有 ${names.join("、")}` : "：要先用 import 导入，ref 写那个特征的 id"}`,
+        `No reference body or part “${c.ref}”${names.length ? `: there are ${names.join(", ")}` : ": bring it in with import first, and set ref to that feature's id"}`,
+      ),
+    )
   }
-  if (hit.rest === null && bodies.parts.some((p) => p.name === c.ref)) throw new Error(`只有「${c.ref}」一个零件，没有别的可以比`)
+  if (hit.rest === null && bodies.parts.some((p) => p.name === c.ref)) throw new Error(ta(`只有「${c.ref}」一个零件，没有别的可以比`, `“${c.ref}” is the only part: there is nothing to compare it with`))
   return fitOf(c, expected, hit.rest ?? [body], hit.shape)
 }
 
@@ -277,7 +335,8 @@ function fitOf(c: FitCheck, expected: string, other: AnyShape[], ref: AnyShape):
   // Solid by solid (pieces.ts): a vendor's board model is hundreds of solids, and as one compound a
   // single boolean against it ran for many minutes and out of memory. Apart: no boolean at all.
   const { d: gap, overlap } = relation(other, ref, true, PIECES ?? undefined)
-  const where = overlap > 1e-6 ? `相交 ${fmt(overlap)} mm³` : gap > 1e-6 ? `最小间隙 ${fmt(gap)} mm` : "贴在一起"
+  const where =
+    overlap > 1e-6 ? ta(`相交 ${fmt(overlap)} mm³`, `intersecting ${fmt(overlap)} mm³`) : gap > 1e-6 ? ta(`最小间隙 ${fmt(gap)} mm`, `smallest gap ${fmt(gap)} mm`) : ta("贴在一起", "touching")
   if (c.kind === "interference") return { pass: overlap <= 1e-6, expected, actual: where, faces: [], edges: [] }
   return { pass: overlap <= 1e-6 && gap >= c.min - (c.tol ?? 0.01), expected, actual: where, faces: [], edges: [] }
 }
@@ -290,34 +349,37 @@ function whereShape(w: Where, topo: Topo, scope: Scope, bodies: CheckBodies, own
     const p = bodies.parts.find((x) => x.name === w.part)
     if (!p) {
       const names = namesOf(bodies)
-      throw new Error(`没有零件或参考体「${w.part}」${names.length ? `：现在有 ${names.join("、")}` : ""}`)
+      throw new Error(ta(`没有零件或参考体「${w.part}」${names.length ? `：现在有 ${names.join("、")}` : ""}`, `No part or reference body “${w.part}”${names.length ? `: there are ${names.join(", ")}` : ""}`))
     }
     return { shape: p.body, solid: true, faces: [], edges: [] }
   }
   const { faces, edges } = topo()
   if (w.feature) {
     const mine = faces.filter((f) => f.origin === w.feature)
-    if (!mine.length) throw new Error(`特征「${w.feature}」现在没有面（被后面的特征盖掉了，或者 id 写错了）`)
+    if (!mine.length) throw new Error(ta(`特征「${w.feature}」现在没有面（被后面的特征盖掉了，或者 id 写错了）`, `Feature “${w.feature}” has no faces now (a later feature covered them, or the id is wrong)`))
     const shape = makeCompound(mine.map((f) => f.face.clone())) as unknown as AnyShape
     owned.push(shape)
     return { shape, solid: false, faces: mine.map((f) => f.face.hashCode), edges: [] }
   }
   if (w.face) {
     const got = selectFaces(w.face, facesFor(w.face, faces), scope)
-    if (got.length !== 1) throw new Error(`选择器要正好选中一个面，现在选中了 ${got.length} 个`)
+    if (got.length !== 1) throw new Error(oneFace(got.length))
     return { shape: got[0].face, solid: false, faces: [got[0].face.hashCode], edges: [] }
   }
   if (w.edge) {
     const got = pickEdges(w.edge, edges, faces, scope)
-    if (got.length !== 1) throw new Error(`选择器要正好选中一条边，现在选中了 ${got.length} 条`)
+    if (got.length !== 1) throw new Error(oneEdge(got.length))
     return { shape: got[0].edge, solid: false, faces: [], edges: [got[0].edge.hashCode] }
   }
-  throw new Error("a、b 各写 face、edge、feature、part 之一")
+  throw new Error(ta("a、b 各写 face、edge、feature、part 之一", "Give a and b one each of face, edge, feature, part"))
 }
+
+const oneFace = (n: number) => ta(`选择器要正好选中一个面，现在选中了 ${n} 个`, `The selector must select exactly one face; it selects ${n}`)
+const oneEdge = (n: number) => ta(`选择器要正好选中一条边，现在选中了 ${n} 条`, `The selector must select exactly one edge; it selects ${n}`)
 
 /** The shortest distance between two places (0 when solids overlap, with the overlap reported). */
 function gap(c: Extract<Check, { kind: "gap" }>, topo: Topo, scope: Scope, bodies: CheckBodies): Omit<CheckResult, "id" | "said"> {
-  if (c.min === undefined && c.max === undefined) throw new Error("gap 至少写 min 或 max 之一（max: 0 = 必须贴上）")
+  if (c.min === undefined && c.max === undefined) throw new Error(ta("gap 至少写 min 或 max 之一（max: 0 = 必须贴上）", "gap needs at least one of min or max (max: 0 = must touch)"))
   const owned: AnyShape[] = []
   try {
     const a = whereShape(c.a, topo, scope, bodies, owned)
@@ -339,22 +401,22 @@ function position(c: Extract<Check, { kind: "position" }>, faces: FaceInfo[], ed
   let lit: { faces: number[]; edges: number[] }
   if (c.at.face) {
     const got = selectFaces(c.at.face, facesFor(c.at.face, faces), scope)
-    if (got.length !== 1) throw new Error(`选择器要正好选中一个面，现在选中了 ${got.length} 个`)
+    if (got.length !== 1) throw new Error(oneFace(got.length))
     p = positionOf("face", got[0])
     lit = { faces: [got[0].face.hashCode], edges: [] }
   } else if (c.at.edge) {
     const got = pickEdges(c.at.edge, edges, faces, scope)
-    if (got.length !== 1) throw new Error(`选择器要正好选中一条边，现在选中了 ${got.length} 条`)
+    if (got.length !== 1) throw new Error(oneEdge(got.length))
     p = positionOf("edge", got[0])
     lit = { faces: [], edges: [got[0].edge.hashCode] }
-  } else throw new Error("at 写 face 或 edge")
+  } else throw new Error(ta("at 写 face 或 edge", "Set at to face or edge"))
   const AX = { X: 0, Y: 1, Z: 2 } as const
   if (Array.isArray(c.expect)) {
-    if (c.axis) throw new Error("写了 axis 时，expect 是一个数")
+    if (c.axis) throw new Error(ta("写了 axis 时，expect 是一个数", "With axis, expect is a single number"))
     const want = c.expect
     return { pass: want.every((w, i) => Math.abs(w - p[i]) <= tol), expected: expectedOf(c), actual: `(${p.map(fmt).join(", ")})`, ...lit }
   }
-  if (!c.axis) throw new Error("expect 是一个数时要写 axis（X、Y 或 Z）")
+  if (!c.axis) throw new Error(ta("expect 是一个数时要写 axis（X、Y 或 Z）", "When expect is a single number, write axis (X, Y or Z)"))
   const v = p[AX[c.axis]]
   return { pass: Math.abs(v - c.expect) <= tol, expected: expectedOf(c), actual: `${c.axis} = ${fmt(v)}`, ...lit }
 }
@@ -373,8 +435,8 @@ function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position
   const expected = expectedOf(c)
   const pickFaces = (sel: FaceSelector) => {
     const got = selectFaces(sel, facesFor(sel, faces), scope)
-    if (!got.length) throw new Error("没找到要量的东西")
-    if (got.length > MAX_ITEMS) throw new Error("量的范围太大，缩小选择器")
+    if (!got.length) throw new Error(ta("没找到要量的东西", "Found nothing to measure"))
+    if (got.length > MAX_ITEMS) throw new Error(ta("量的范围太大，缩小选择器", "Too much to measure: narrow the selector"))
     return got
   }
   switch (c.kind) {
@@ -390,7 +452,7 @@ function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position
           if (gap > 1e-6 && gap < best && Math.abs(faceDistance(a, b) - gap) < 1e-6) best = gap
         }
       }
-      if (!Number.isFinite(best)) throw new Error("选中的面对面没有平行的另一侧")
+      if (!Number.isFinite(best)) throw new Error(ta("选中的面对面没有平行的另一侧", "The selected faces have no parallel face opposite them"))
       return { pass: Math.abs(best - c.expect) <= tol, expected, actual: `${fmt(best)} mm`, faces: sel.map((f) => f.face.hashCode), edges: [] }
     }
     case "holes":
@@ -400,17 +462,17 @@ function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position
       const hashes = sel.map((f) => f.face.hashCode)
       if (c.kind === "holes") {
         const d = c.thread ? METRIC[c.thread as ScrewSize]?.tap : c.d
-        if (c.thread && d === undefined) throw new Error(`不认识的螺纹规格「${c.thread}」`)
+        if (c.thread && d === undefined) throw new Error(ta(`不认识的螺纹规格「${c.thread}」`, `Unknown thread size “${c.thread}”`))
         const ds = holes.map((h) => 2 * h.r)
         const sizeOk = d === undefined || ds.every((x) => Math.abs(x - d) <= tol)
-        const actual = `${holes.length} 个${ds.length ? ` ⌀${[...new Set(ds.map(fmt))].join("/")}` : ""}`
+        const actual = `${holeCount(holes.length)}${ds.length ? ` ⌀${[...new Set(ds.map(fmt))].join("/")}` : ""}`
         return { pass: holes.length === c.count && sizeOk, expected, actual, faces: hashes, edges: [] }
       }
       const axis: V3 = c.axis === "X" ? [1, 0, 0] : c.axis === "Y" ? [0, 1, 0] : [0, 0, 1]
       const radii = holes.map((h) => len(cross(h.p, axis)))
       const pcds = [...new Set(radii.map((r) => fmt(2 * r)))]
       const pass = holes.length === c.count && radii.every((r) => Math.abs(2 * r - c.expect) <= tol)
-      return { pass, expected, actual: `${holes.length} 个在 ⌀${pcds.join("/")} 上`, faces: hashes, edges: [] }
+      return { pass, expected, actual: ta(`${holes.length} 个在 ⌀${pcds.join("/")} 上`, `${holeCount(holes.length)} on ⌀${pcds.join("/")}`), faces: hashes, edges: [] }
     }
     case "distance":
     case "angle": {
@@ -419,11 +481,11 @@ function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position
         if (isFace) {
           const sel = c.kind === "angle" ? (p as FaceSelector) : (p as { face: FaceSelector }).face
           const got = pickFaces(sel)
-          if (got.length !== 1) throw new Error(`选择器要正好选中一个面，现在选中了 ${got.length} 个`)
+          if (got.length !== 1) throw new Error(oneFace(got.length))
           return { kind: "face" as const, hash: got[0].face.hashCode, point: got[0].center }
         }
         const got = pickEdges((p as { edge?: EdgeSelector }).edge ?? {}, edges, faces, scope)
-        if (got.length !== 1) throw new Error(`选择器要正好选中一条边，现在选中了 ${got.length} 条`)
+        if (got.length !== 1) throw new Error(oneEdge(got.length))
         return { kind: "edge" as const, hash: got[0].edge.hashCode, point: got[0].mid }
       })
       // One end on a reference body: measure in the model and those bodies together (faces keep their identity).
@@ -435,13 +497,13 @@ function one(c: Exclude<Check, FitCheck | PrintCheck | { kind: "gap" | "position
       } finally {
         if (whole !== body) whole.delete()
       }
-      if (!m) throw new Error("没找到要量的东西")
-      const pick = (names: string[]) => m.between.find((b) => names.includes(b.name))
+      if (!m) throw new Error(ta("没找到要量的东西", "Found nothing to measure"))
+      const pick = (...keys: BetweenKey[]) => m.between.find((b) => isBetween(b.name, ...keys))
       const row =
         c.kind === "angle"
-          ? (pick(["两面夹角", "轴线与平面夹角", "轴线夹角"]) ?? (pick(["平行面间距"]) ? { name: "", value: "0°" } : undefined))
-          : pick(["平行面间距", "圆心到平面", "轴线间距", "圆心距", "边到平面", "平行，间距"]) ?? pick(["最短距离"])
-      if (!row) throw new Error("这两处之间量不出这个量")
+          ? (pick("planeAngle", "axisPlaneAngle", "axisAngle") ?? (pick("planeGap") ? { name: "", value: "0°" } : undefined))
+          : pick("planeGap", "centreToPlane", "axisGap", "centres", "edgeToPlane", "parallelGap") ?? pick("shortest")
+      if (!row) throw new Error(ta("这两处之间量不出这个量", "This can't be measured between these two places"))
       const v = parseFloat(row.value)
       return {
         pass: Math.abs(v - c.expect) <= tol,

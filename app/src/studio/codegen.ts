@@ -9,6 +9,7 @@
 // known parameters, operators, the functions expr.ts allows), ids must be ids,
 // text goes through JSON.stringify, and comments lose their line breaks. What
 // can't be printed safely becomes None and is listed at the top of the file.
+import { ta } from "../lib/agent-lang"
 import { hexOf, lookText, ownLook, rgbOf, type Appearance } from "./appearance"
 import { standardHole } from "./holes"
 import type { EdgeSelector, FaceSelector, Feature, PlaneRef, Point, SketchShape } from "./dsl"
@@ -28,7 +29,7 @@ const oneLine = (s: string) => s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u202
 const clip = (s: string) => (s.length > 40 ? `${s.slice(0, 40)}…` : s)
 
 function problem(why: string, field?: string) {
-  const msg = oneLine(`${ctx.where}${field ? `的 ${field}` : ""}：${why}`)
+  const msg = oneLine(ta(`${ctx.where}${field ? `的 ${field}` : ""}：${why}`, `${ctx.where}${field ? `, ${field}` : ""}: ${why}`))
   if (!ctx.problems.includes(msg)) ctx.problems.push(msg)
   return "None"
 }
@@ -53,18 +54,20 @@ const bad = (raw: N, why: string) => problem(why, (ctx.feature && fieldOf(ctx.fe
 
 /** A number or an expression, as Python: printed back from its parse, never copied. */
 const py = (raw: N): string => {
-  if (typeof raw === "number") return Number.isFinite(raw) ? fmt(raw) : bad(raw, "数值不是有限数")
-  if (typeof raw !== "string") return bad(raw, "不是数值或表达式")
+  if (typeof raw === "number") return Number.isFinite(raw) ? fmt(raw) : bad(raw, ta("数值不是有限数", "the number isn't finite"))
+  if (typeof raw !== "string") return bad(raw, ta("不是数值或表达式", "not a number or an expression"))
   let node: ExprNode
   try {
     node = parse(raw)
   } catch (e) {
     // The reason without the expression itself: what can't be parsed is never written out, not even in a comment.
-    return bad(raw, `表达式解析不了（${(e as Error).message.split("：")[0]}）`)
+    // Messages read "reason：expression" (English: "reason: expression"); a ":" inside the reason, as in 「:」, isn't followed by a space.
+    const reason = (e as Error).message.split(/：|: /)[0]
+    return bad(raw, ta(`表达式解析不了（${reason}）`, `the expression can't be parsed (${reason})`))
   }
   for (const name of names(node)) {
-    if (ctx.badParams.has(name)) return bad(raw, `参数名「${clip(name)}」不能用作 Python 变量名`)
-    if (!ctx.params.has(name) && !CONST_NAMES.includes(name)) return bad(raw, `没有名为「${clip(name)}」的参数`)
+    if (ctx.badParams.has(name)) return bad(raw, ta(`参数名「${clip(name)}」不能用作 Python 变量名`, `the parameter name “${clip(name)}” can't be a Python variable name`))
+    if (!ctx.params.has(name) && !CONST_NAMES.includes(name)) return bad(raw, ta(`没有名为「${clip(name)}」的参数`, `there is no parameter named “${clip(name)}”`))
   }
   const out = pyExpr(node)
   return node.k === "name" || node.k === "num" || node.k === "call" ? out : `(${out})`
@@ -108,7 +111,10 @@ const neg = (v: N) => (typeof v === "number" ? py(-v) : `-${py(v)}`)
 
 const ID = /^[A-Za-z][A-Za-z0-9_]*$/
 /** A feature id inside a Python name (sk_base, tool_base). */
-const ref = (prefix: string, id: string) => (typeof id === "string" && ID.test(id) ? `${prefix}_${id}` : problem(`引用的特征 id「${clip(oneLine(String(id)))}」不合法`))
+const ref = (prefix: string, id: string) =>
+  typeof id === "string" && ID.test(id)
+    ? `${prefix}_${id}`
+    : problem(ta(`引用的特征 id「${clip(oneLine(String(id)))}」不合法`, `the referenced feature id “${clip(oneLine(String(id)))}” isn't valid`))
 
 /** Python keywords and the names the file's own helpers live under: not usable as parameter names. */
 const RESERVED = new Set([
@@ -254,7 +260,7 @@ function combine(id: string, mode: "add" | "cut" | "intersect" | undefined) {
 }
 
 function feature(f: Feature, tree: Tree): string[] {
-  const head = [`# ${oneLine(`${displayName(tree, f)}（${f.id}）${f.intent ? `：${f.intent}` : ""}`)}`]
+  const head = [`# ${oneLine(ta(`${displayName(tree, f)}（${f.id}）${f.intent ? `：${f.intent}` : ""}`, `${displayName(tree, f)} (${f.id})${f.intent ? `: ${f.intent}` : ""}`))}`]
   switch (f.op) {
     case "sketch": {
       const regions = f.shapes.filter((s) => s.type !== "path")
@@ -282,7 +288,12 @@ function feature(f: Feature, tree: Tree): string[] {
         const t = py(f.thin.t)
         const side = f.thin.side ?? "center"
         if (open) {
-          out.push(`# 薄壁：沿开放的线长出厚 ${t} 的壁${side === "center" ? "" : "（build123d 的 trace 是两侧各一半，偏向一侧时位置会差半个壁厚）"}`)
+          out.push(
+            ta(
+              `# 薄壁：沿开放的线长出厚 ${t} 的壁${side === "center" ? "" : "（build123d 的 trace 是两侧各一半，偏向一侧时位置会差半个壁厚）"}`,
+              `# Thin wall: a wall ${t} thick along the open line${side === "center" ? "" : " (build123d's trace puts half on each side; with the wall on one side, the position is off by half the wall thickness)"}`,
+            ),
+          )
           out.push(`${ref("thin", f.id)} = trace(${ref("path", f.sketch)}, line_width=${t})`)
         } else {
           const [a, b] = side === "center" ? [`${t} / 2`, `${t} / 2`] : side === "inside" ? ["0", t] : [t, "0"]
@@ -297,7 +308,7 @@ function feature(f: Feature, tree: Tree): string[] {
         const off = f.until.offset !== undefined ? `.offset(-(${py(f.until.offset)}))` : ""
         return [
           ...out,
-          "# 成形到面：拉得足够长，再用那个面所在的平面切掉多出来的部分",
+          ta("# 成形到面：拉得足够长，再用那个面所在的平面切掉多出来的部分", "# Up to face: extrude far enough, then cut off the excess with the plane of that face"),
           `${ref("limit", f.id)} = Plane(${faces(f.until.face)}[0])${off}`,
           `${ref("tool", f.id)} = split(extrude(${sk}, amount=1000${f.direction === "reverse" ? `, dir=-${sk}.faces()[0].normal_at()` : ""}), bisect_by=${ref("limit", f.id)}, keep=Keep.BOTTOM)`,
           combine(f.id, f.mode),
@@ -307,7 +318,10 @@ function feature(f: Feature, tree: Tree): string[] {
       if (f.onto)
         return [
           ...out,
-          "# 沿面等深：草图投影到面上，和面下（切除）或面上（加料）这一层求交",
+          ta(
+            "# 沿面等深：草图投影到面上，和面下（切除）或面上（加料）这一层求交",
+            "# Constant depth along a face: project the sketch onto the face and intersect it with the layer under (cut) or over (add) the face",
+          ),
           `${ref("tool", f.id)} = extrude(${sk}, amount=1000, both=True) & onto_band(${faces(f.onto)}[0], ${d}, cut=${f.mode === "cut" ? "True" : "False"}, plane=${ref("plane", f.sketch)})`,
           combine(f.id, f.mode),
         ]
@@ -326,22 +340,34 @@ function feature(f: Feature, tree: Tree): string[] {
     case "rib":
       return [...head, `${ref("tool", f.id)} = rib(part, ${ref("plane", f.sketch)}, ${ref("pts", f.sketch)}, ${py(f.t)}${f.flip ? ", flip=True" : ""})`, combine(f.id, "add")]
     case "component":
-      return [...head, `# 装配里的零件 ${f.file}：装配不能导出成 build123d 代码，请分别导出每个零件`]
+      return [
+        ...head,
+        ta(
+          `# 装配里的零件 ${f.file}：装配不能导出成 build123d 代码，请分别导出每个零件`,
+          `# Part ${f.file} in the assembly: an assembly can't be exported as build123d code; export each part separately`,
+        ),
+      ]
     case "thread":
       // build123d's core has no threads (bd_warehouse does): the export keeps the plain cylinder.
-      return [...head, `# 螺纹：build123d 本身没有螺纹命令，导出时省略（可以用 bd_warehouse.thread 补上）`]
+      return [
+        ...head,
+        ta(
+          `# 螺纹：build123d 本身没有螺纹命令，导出时省略（可以用 bd_warehouse.thread 补上）`,
+          `# Thread: build123d itself has no thread command, so the export leaves it out (bd_warehouse.thread can add it)`,
+        ),
+      ]
     case "import": {
       const v = ref("tool", f.id)
-      const out = [...head, `${v} = import_step(${JSON.stringify(f.file)})  # 相对零件文件所在的文件夹`]
+      const out = [...head, `${v} = import_step(${JSON.stringify(f.file)})  ${ta("# 相对零件文件所在的文件夹", "# relative to the part file's folder")}`]
       for (const r of f.rotate ?? []) out.push(`${v} = ${v}.rotate(Axis.${r.axis}, ${py(r.angle)})`)
       if (f.at) out.push(`${v} = ${v}.translate((${f.at.map(py).join(", ")}))`)
       const mode = f.mode ?? "reference"
-      if (mode === "reference") return [...out, `# 参考体：只用来对齐和核对间隙，不并入零件`]
+      if (mode === "reference") return [...out, ta(`# 参考体：只用来对齐和核对间隙，不并入零件`, `# Reference body: only for alignment and clearance checks, not merged into the part`)]
       return [...out, combine(f.id, mode)]
     }
     case "revolve": {
       const turn = f.symmetric ? `-(${py(f.angle ?? 360)}) / 2` : f.start !== undefined ? py(f.start) : null
-      const rot = turn ? [`${ref("tool", f.id)} = ${ref("tool", f.id)}.rotate(${AXIS[f.axis]}, ${turn})  # 起始角`] : []
+      const rot = turn ? [`${ref("tool", f.id)} = ${ref("tool", f.id)}.rotate(${AXIS[f.axis]}, ${turn})  ${ta("# 起始角", "# start angle")}`] : []
       return [...head, `${ref("tool", f.id)} = revolve(${ref("sk", f.sketch)},axis=${AXIS[f.axis]}${f.angle !== undefined ? `, revolution_arc=${py(f.angle)}` : ""})`, ...rot, combine(f.id, f.mode)]
     }
     case "fillet":
@@ -374,7 +400,7 @@ function feature(f: Feature, tree: Tree): string[] {
       const at = f.at.map(([x, y]) => `(${py(x)}, ${py(y)})`).join(", ")
       return [
         ...head,
-        ...(std ? [`# ${std.label}${std.thread ? "：只钻底孔，装饰螺纹不导出" : ""}`] : []),
+        ...(std ? [`# ${std.label}${std.thread ? ta("：只钻底孔，装饰螺纹不导出", ": tap drill only; the cosmetic thread isn't exported") : ""}`] : []),
         `hole_plane = ${sketchPlane(f.on)}`,
         `${ref("tool", f.id)} = Compound([Plane(origin=hole_plane.from_local_coords(xy), z_dir=${out}) * (${tool}) for xy in [${at}]])`,
         combine(f.id, "cut"),
@@ -447,9 +473,9 @@ function params(tree: Tree) {
         /* py() reports it */
       }
     }
-    ctx.where = `参数「${clip(oneLine(k))}」`
+    ctx.where = ta(`参数「${clip(oneLine(k))}」`, `Parameter “${clip(oneLine(k))}”`)
     ctx.feature = null
-    if (ctx.badParams.has(k)) return void problem("名字不能用作 Python 变量名，没有导出")
+    if (ctx.badParams.has(k)) return void problem(ta("名字不能用作 Python 变量名，没有导出", "the name can't be a Python variable name; not exported"))
     const note = tree.paramNotes?.[k]
     out.push(`${k} = ${py(v)}${note ? `  # ${oneLine(note).trim()}` : ""}`)
   }
@@ -460,7 +486,7 @@ function params(tree: Tree) {
 /** The code plus what could not be written safely (field by field); those spots read None. */
 export function buildCode(raw: Tree, opts: { title?: string; body?: boolean } = {}): { code: string; problems: string[] } {
   const parsed = Tree.safeParse(raw)
-  if (!parsed.success) return { code: "# 特征树格式不对，没有生成代码", problems: ["特征树格式不对"] }
+  if (!parsed.success) return { code: ta("# 特征树格式不对，没有生成代码", "# The feature tree is malformed; no code was generated"), problems: [ta("特征树格式不对", "The feature tree is malformed")] }
   const tree = parsed.data
   const names = Object.keys(tree.params)
   ctx = { problems: [], params: new Set(names.filter(safeName)), badParams: new Set(names.filter((k) => !safeName(k))), where: "", feature: null }
@@ -472,7 +498,7 @@ export function buildCode(raw: Tree, opts: { title?: string; body?: boolean } = 
   let mainName: string | undefined
   let hasBody = false
   for (const f of tree.features) {
-    ctx.where = `特征「${clip(oneLine(displayName(tree, f)))}」（${f.id}）`
+    ctx.where = ta(`特征「${clip(oneLine(displayName(tree, f)))}」（${f.id}）`, `Feature “${clip(oneLine(displayName(tree, f)))}” (${f.id})`)
     ctx.feature = f
     const out = feature(f, tree)
     const adds = ((f.op === "extrude" || f.op === "revolve" || f.op === "sweep" || f.op === "loft") && (f.mode ?? "add") === "add") || (f.op === "import" && f.mode === "add")
@@ -482,7 +508,14 @@ export function buildCode(raw: Tree, opts: { title?: string; body?: boolean } = 
       if (!partNames.length) partNames = [main]
       partNames.push(f.part)
       const tool = out[out.length - 1].match(/^part = (tool_\w+) if part is None/)?.[1]
-      body.push(...pre, ...out.slice(0, -1), `# 新零件「${oneLine(f.part)}」：不和别的零件合并`, tool ? `parts[${JSON.stringify(f.part)}] = ${tool}` : "# （这一步没有生成工具体）", "part = Compound(list(parts.values()))", "")
+      body.push(
+        ...pre,
+        ...out.slice(0, -1),
+        ta(`# 新零件「${oneLine(f.part)}」：不和别的零件合并`, `# New part “${oneLine(f.part)}”: not merged with the other parts`),
+        tool ? `parts[${JSON.stringify(f.part)}] = ${tool}` : ta("# （这一步没有生成工具体）", "# (this step made no tool body)"),
+        "part = Compound(list(parts.values()))",
+        "",
+      )
       continue
     }
     if (adds && !hasBody && f.part) mainName = f.part
@@ -492,10 +525,17 @@ export function buildCode(raw: Tree, opts: { title?: string; body?: boolean } = 
   }
   const { problems } = ctx
   ctx = { problems: [], params: new Set(), badParams: new Set(), where: "", feature: null }
-  const warn = problems.length ? [`# 有 ${problems.length} 处没能导出，代码里写成了 None，运行前要先改好：`, ...problems.map((p) => `#   ${p}`), ""] : []
+  const warn = problems.length
+    ? [
+        ta(`# 有 ${problems.length} 处没能导出，代码里写成了 None，运行前要先改好：`, `# ${problems.length} ${problems.length === 1 ? "place" : "places"} couldn't be exported and read None in the code; fix them before running:`),
+        ...problems.map((p) => `#   ${p}`),
+        "",
+      ]
+    : []
+  const paramsHead = ta("# 参数", "# Parameters")
   const colours = lookLines(tree, partNames)
-  if (opts.body) return { code: [...warn, "# 参数", ...head, "", "part = None", "", ...body, ...colours].join("\n").trimEnd(), problems }
-  return { code: [...prelude(opts.title ?? "Turnery 工作台导出"), ...warn, "# 参数", ...head, "", "part = None", "", ...body, ...colours, "show_object(part) if 'show_object' in globals() else None", ""].join("\n"), problems }
+  if (opts.body) return { code: [...warn, paramsHead, ...head, "", "part = None", "", ...body, ...colours].join("\n").trimEnd(), problems }
+  return { code: [...prelude(opts.title ?? ta("Turnery 工作台导出", "Exported from the Turnery workbench")), ...warn, paramsHead, ...head, "", "part = None", "", ...body, ...colours, "show_object(part) if 'show_object' in globals() else None", ""].join("\n"), problems }
 }
 
 /**
@@ -511,14 +551,16 @@ function lookLines(tree: Tree, partNames: string[]): string[] {
   }
   if (!partNames.length) {
     const c = colour(ownLook(tree.appearance))
-    return c ? ["# 颜色（在 Turnery 里设的）", `part.color = ${c}`, ""] : []
+    return c ? [colorsHead(), `part.color = ${c}`, ""] : []
   }
   const lines = partNames.flatMap((name) => {
     const c = colour(ownLook(tree.appearance, name))
     return c ? [`parts[${JSON.stringify(name)}].color = ${c}`] : []
   })
-  return lines.length ? ["# 颜色（在 Turnery 里设的）", ...lines, "part = Compound(list(parts.values()))", ""] : []
+  return lines.length ? [colorsHead(), ...lines, "part = Compound(list(parts.values()))", ""] : []
 }
+
+const colorsHead = () => ta("# 颜色（在 Turnery 里设的）", "# Colors (set in Turnery)")
 
 /** `body: true` = just parameters and features (for reading); otherwise a runnable file. */
 
@@ -536,7 +578,7 @@ function onParts(lines: string[], f: Feature, names: string[]): string[] {
   if (cut) return [...lines.slice(0, -1), `parts = {k: v - ${cut[1]} for k, v in parts.items()}`, whole]
   const add = last.match(/^part = (tool_\w+) if part is None else part \+ \1$/)
   if (add)
-    return [...lines.slice(0, -1), "# 加料接在它碰到的那个零件上", `joined = next(k for k, v in parts.items() if v.distance_to(${add[1]}) < 1e-6)`, `parts[joined] = parts[joined] + ${add[1]}`, whole]
+    return [...lines.slice(0, -1), ta("# 加料接在它碰到的那个零件上", "# Added material joins the part it touches"), `joined = next(k for k, v in parts.items() if v.distance_to(${add[1]}) < 1e-6)`, `parts[joined] = parts[joined] + ${add[1]}`, whole]
   return [...names.flatMap(on), whole]
 }
 
@@ -548,11 +590,18 @@ function prelude(title: string): string[] {
   // A docstring: one line, and nothing that could close it.
   const safeTitle = oneLine(title).replace(/\\/g, "\\\\").replace(/"/g, '\\"')
   return [
-    `"""${safeTitle}
+    ta(
+      `"""${safeTitle}
 
 由 Turnery 工作台的特征树生成（build123d 代数写法）。
 Z 轴朝上，单位毫米。选择器按语义转成 build123d 的过滤；「来自某特征」按「落在该特征的工具体表面上」近似。
 """`,
+      `"""${safeTitle}
+
+Generated from a Turnery workbench feature tree (build123d algebra mode).
+Z up, millimeters. Selectors become build123d filters by meaning; “made by a feature” is approximated as “lies on that feature's tool body surface”.
+"""`,
+    ),
     "import math",
     "from build123d import *",
     "",
@@ -574,7 +623,10 @@ Z 轴朝上，单位毫米。选择器按语义转成 build123d 的过滤；「�
     "",
     "",
     "def rib(part, plane, pts, t, flip=False):",
-    '    """筋：线的两端延长到很远，取被实体围住的那一侧，在草图平面两侧各 t/2。"""',
+    ta(
+      '    """筋：线的两端延长到很远，取被实体围住的那一侧，在草图平面两侧各 t/2。"""',
+      '    """Rib: extend both ends of the line far out, keep the side the solid encloses, t/2 on each side of the sketch plane."""',
+    ),
     "    far = 10 * part.bounding_box().diagonal",
     "    p = [Vector(*q) for q in pts]",
     "    a = p[0] - (p[1] - p[0]).normalized() * far",
@@ -589,7 +641,7 @@ Z 轴朝上，单位毫米。选择器按语义转成 build123d 的过滤；「�
     "        kept = [x for x in ((slab & box) - part).solids() if inside(x)]",
     "        if kept:",
     "            return Compound(kept)",
-    '    raise ValueError("筋碰不到实体")',
+    ta('    raise ValueError("筋碰不到实体")', `    raise ValueError("The rib doesn't reach the solid")`),
     "",
     "",
     "def round_corners(face, corners):",

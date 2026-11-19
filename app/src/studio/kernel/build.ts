@@ -36,8 +36,9 @@ import { num, resolveParams, type Scope } from "../expr"
 import { MAX_COUNT } from "../limits"
 import { referencesOf } from "../apply"
 import { describeError, explain, InputError } from "./errors"
+import { agentLang, byAgentLang, ta } from "../../lib/agent-lang"
 import { normalizeText, textDrawing } from "./fonts"
-import { measure, type MeasureResult, type MeasureSpec, type MeasureTarget } from "./measure"
+import { betweenName, measure, type MeasureResult, type MeasureSpec, type MeasureTarget } from "./measure"
 import { closest, narrowSpot, TOUCH } from "./proximity"
 import { overlapVolume, Pieces, relation, TooComplex } from "./pieces"
 import { bounded, compoundOf, countOf, edgesOf, facesOf, solidsOf } from "./topo"
@@ -59,6 +60,7 @@ import {
   describeEdge,
   describeFace,
   disposeInfos,
+  faceShape,
   edgeInfos,
   faceInfos,
   groupEdgeSelector,
@@ -75,11 +77,26 @@ type V3 = [number, number, number]
 type PlaneName = "XY" | "XZ" | "YZ"
 type Tool = { tool: Shape3D; mode: "add" | "cut" | "intersect" }
 
-const PLANES: Record<PlaneName, { normal: V3; x: V3; y: V3; axis: 0 | 1 | 2; label: string }> = {
-  XY: { normal: [0, 0, 1], x: [1, 0, 0], y: [0, 1, 0], axis: 2, label: "上视基准面" },
-  XZ: { normal: [0, -1, 0], x: [1, 0, 0], y: [0, 0, 1], axis: 1, label: "前视基准面" },
-  YZ: { normal: [1, 0, 0], x: [0, 1, 0], y: [0, 0, 1], axis: 0, label: "右视基准面" },
+const PLANES: Record<PlaneName, { normal: V3; x: V3; y: V3; axis: 0 | 1 | 2; label: string; en: string }> = {
+  XY: { normal: [0, 0, 1], x: [1, 0, 0], y: [0, 1, 0], axis: 2, label: "上视基准面", en: "Top plane" },
+  XZ: { normal: [0, -1, 0], x: [1, 0, 0], y: [0, 0, 1], axis: 1, label: "前视基准面", en: "Front plane" },
+  YZ: { normal: [1, 0, 0], x: [0, 1, 0], y: [0, 0, 1], axis: 0, label: "右视基准面", en: "Right plane" },
 }
+/** A datum plane's name in the agent's language. */
+const planeLabel = (p: PlaneName) => ta(PLANES[p].label, PLANES[p].en)
+/** 「3 个面」 / "3 faces": a count in the agent's language (`zh` the measure word and noun). */
+const many = (n: number, zh: string, one: string, more = `${one}s`) => ta(`${n} ${zh}`, `${n} ${n === 1 ? one : more}`)
+/** Names listed in a message: 「a、b」 / "a, b". */
+const listed = (names: string[]) => names.join(ta("、", ", "))
+const suppressedBy = (name: string) => ta(`已压缩（它用到的「${name}」被压缩了）`, `Suppressed (“${name}”, which it uses, is suppressed)`)
+const moreFaces = (n: number) => ta(`\n…共 ${n} 个面`, `\n…${n} faces in all`)
+const moreEdges = (n: number) => ta(`\n…共 ${n} 条边`, `\n…${n} edges in all`)
+const lostTarget = () => ta("要量的面或边找不到了", "The face or edge to measure can't be found anymore")
+const noSolid = () => ta("还没有实体", "No solid yet")
+const noAxis = () => ta("读不出这个圆柱面的轴线", "Can't read this cylinder face's axis")
+/** Warnings about the body as a whole, which a step run on one part drops (matched in either language). */
+const APART = /不相连的实体|separate solids/
+const MISSED = /没有碰到实体|doesn't touch the solid/
 const AXIS: Record<string, V3> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -165,7 +182,12 @@ function taperedExtrude(profile: Drawing, angle: number, d: number, plane: Resol
       }
       const shrunk = () => span(end!).every((w, i) => w <= span(outline)[i] - 2 * inset + 1e-6)
       if (!one || one instanceof Blueprints || one instanceof CompoundBlueprint || !shrunk())
-        throw new InputError(`拔模角太大：${what}在拉伸的另一头收没了或断成了几块，减小拔模角或拉伸距离`)
+        throw new InputError(
+          ta(
+            `拔模角太大：${what}在拉伸的另一头收没了或断成了几块，减小拔模角或拉伸距离`,
+            `Draft angle too big: the ${what} shrinks to nothing or breaks into pieces at the far end of the extrusion. Reduce the draft angle or the extrude distance`,
+          ),
+        )
       return end!
     }
     const end = inset > 0 ? farEnd() : null
@@ -180,9 +202,9 @@ function taperedExtrude(profile: Drawing, angle: number, d: number, plane: Resol
   }
   const solids = pieces.map((p) => {
     const [outer, ...holes] = p instanceof CompoundBlueprint ? p.blueprints : [p]
-    let solid = wall(outer as Blueprint, angle, "轮廓")
+    let solid = wall(outer as Blueprint, angle, ta("轮廓", "outline"))
     for (const h of holes) {
-      const tool = wall(h as Blueprint, -angle, "孔")
+      const tool = wall(h as Blueprint, -angle, ta("孔", "hole"))
       const next = solid.cut(tool)
       solid.delete()
       tool.delete()
@@ -190,7 +212,7 @@ function taperedExtrude(profile: Drawing, angle: number, d: number, plane: Resol
     }
     return solid
   })
-  if (!solids.length) throw new InputError("草图里没有能拉伸的面")
+  if (!solids.length) throw new InputError(ta("草图里没有能拉伸的面", "The sketch has no region to extrude"))
   return solids.length === 1 ? solids[0] : mergeOverlaps(makeCompound(solids) as unknown as Shape3D)
 }
 
@@ -469,7 +491,7 @@ export class Kernel {
     const next = new Map<string, Asset>()
     for (const a of list) {
       if (!a.bytes) {
-        next.set(a.name, { hash: `missing:${a.error ?? ""}`, shape: null, error: a.error ?? "读不到这个文件" })
+        next.set(a.name, { hash: `missing:${a.error ?? ""}`, shape: null, error: a.error ?? ta("读不到这个文件", "Can't read this file") })
         continue
       }
       const hash = contentHash(a.bytes)
@@ -534,7 +556,7 @@ export class Kernel {
       const prev = this.lastBuilt(i)
       // A suppressed feature passes the body through untouched; what depends on it fails on its own.
       const step = off.has(f.id)
-        ? this.base(f, key, prev, tree, { state: "suppressed", summary: off.get(f.id) ? `已压缩（它用到的「${displayName(tree, tree.features.find((x) => x.id === off.get(f.id))!)}」被压缩了）` : "已压缩" })
+        ? this.base(f, key, prev, tree, { state: "suppressed", summary: off.get(f.id) ? suppressedBy(displayName(tree, tree.features.find((x) => x.id === off.get(f.id))!)) : ta("已压缩", "Suppressed") })
         : failed
           ? this.skip(f, key, prev, tree)
           : this.run(f, key, prev, tree)
@@ -565,9 +587,16 @@ export class Kernel {
           const overlap = known.get(JSON.stringify([id, a.name, b.name])) ?? overlapVolume(a.body, b.body, pieces)
           const measured = step!.interferences ??= []
           measured.push({ feature: id, a: a.name, b: b.name, volume: overlap })
-          if (overlap > 1e-6) (result.warnings ??= []).push(`「${a.name}」和「${b.name}」重叠 ${fmt(overlap)} mm³`)
+          if (overlap > 1e-6) (result.warnings ??= []).push(ta(`「${a.name}」和「${b.name}」重叠 ${fmt(overlap)} mm³`, `“${a.name}” and “${b.name}” overlap by ${fmt(overlap)} mm³`))
         } catch (e) {
-          (result.warnings ??= []).push(e instanceof TooComplex ? `「${a.name}」和「${b.name}」太复杂，没有查干涉：${e.message}。可以换成精简的模型（例如外购件只留包络盒）再查` : `「${a.name}」和「${b.name}」的干涉检查失败：${describeError(e)}`)
+          (result.warnings ??= []).push(
+            e instanceof TooComplex
+              ? ta(
+                  `「${a.name}」和「${b.name}」太复杂，没有查干涉：${e.message}。可以换成精简的模型（例如外购件只留包络盒）再查`,
+                  `“${a.name}” and “${b.name}” are too complex; interference not checked: ${e.message}. You can swap in simplified models (e.g. only a bounding box for a purchased part) and check again`,
+                )
+              : ta(`「${a.name}」和「${b.name}」的干涉检查失败：${describeError(e)}`, `Interference check between “${a.name}” and “${b.name}” failed: ${describeError(e)}`),
+          )
         }
       }
     } finally {
@@ -575,7 +604,7 @@ export class Kernel {
     }
     if (!hooks.deferChecks) this.steps.forEach((s) => { s.pendingOverlaps = undefined })
     this.overlapJobs = []
-    hooks.progress?.({ stage: "checks", completed: 0, total: tree.checks?.length ?? 0, label: "装配要求" })
+    hooks.progress?.({ stage: "checks", completed: 0, total: tree.checks?.length ?? 0, label: ta("装配要求", "Assembly requirements") })
 
     const features = this.steps.map((s) => s.result)
     let lastOk = -1
@@ -831,13 +860,13 @@ export class Kernel {
         if (what === "faces") {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const list = selectFaces(selector as any, faces, this.scope)
-          return list.slice(0, 40).map(describeFace).join("\n") + (list.length > 40 ? `\n…共 ${list.length} 个面` : "")
+          return list.slice(0, 40).map(describeFace).join("\n") + (list.length > 40 ? moreFaces(list.length) : "")
         }
         const edges = edgeInfos(shape, faces)
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const list = selectEdges(selector as any, edges, faces, this.scope)
-          return list.slice(0, 40).map(describeEdge).join("\n") + (list.length > 40 ? `\n…共 ${list.length} 条边` : "")
+          return list.slice(0, 40).map(describeEdge).join("\n") + (list.length > 40 ? moreEdges(list.length) : "")
         } finally {
           disposeInfos([], edges)
         }
@@ -850,9 +879,32 @@ export class Kernel {
     const refLines = refs.map((r) => {
       const [a, b] = r.shape.boundingBox.bounds as [V3, V3]
       const size = sizeOf(r.shape)
-      return `参考体 ${r.id}（${r.name}）：包围盒 X ${fmt(a[0])}…${fmt(b[0])}，Y ${fmt(a[1])}…${fmt(b[1])}，Z ${fmt(a[2])}…${fmt(b[2])}，尺寸 ${size.map(fmt).join(" × ")} mm。它自己的面和边：inspect faces / edges 加 of: "${r.id}"`
+      return ta(
+        `参考体 ${r.id}（${r.name}）：包围盒 X ${fmt(a[0])}…${fmt(b[0])}，Y ${fmt(a[1])}…${fmt(b[1])}，Z ${fmt(a[2])}…${fmt(b[2])}，尺寸 ${size.map(fmt).join(" × ")} mm。它自己的面和边：inspect faces / edges 加 of: "${r.id}"`,
+        `Reference body ${r.id} (${r.name}): bounding box X ${fmt(a[0])}…${fmt(b[0])}, Y ${fmt(a[1])}…${fmt(b[1])}, Z ${fmt(a[2])}…${fmt(b[2])}, size ${size.map(fmt).join(" × ")} mm. Its own faces and edges: inspect faces / edges with of: "${r.id}"`,
+      )
     })
-    if (!step?.body) return what === "body" && refLines.length ? ["还没有实体。", ...refLines].join("\n") : "还没有实体。"
+    const none = ta("还没有实体。", "No solid yet.")
+    if (!step?.body) return what === "body" && refLines.length ? [none, ...refLines].join("\n") : none
+    if (what === "body" && agentLang() === "en") {
+      const s = stats(step.body)
+      return [
+        `Bounding box X ${fmt(s.bbox[0][0])}…${fmt(s.bbox[1][0])}, Y ${fmt(s.bbox[0][1])}…${fmt(s.bbox[1][1])}, Z ${fmt(s.bbox[0][2])}…${fmt(s.bbox[1][2])}`,
+        `Size ${s.size.map(fmt).join(" × ")} mm, volume ${fmt(s.volume / 1000)} cm³, center of mass (${s.centerOfMass.map(fmt).join(", ")})`,
+        `${many(s.solids, "", "solid")}, ${many(s.faces, "", "face")}, ${many(s.edges, "", "edge")}`,
+        ...(step.parts && step.parts.length > 1
+          ? [
+              `Parts: ${step.parts
+                .map((p) => {
+                  const ps = stats(p.body)
+                  return `${p.name} (${ps.size.map(fmt).join(" × ")} mm, Z ${fmt(ps.bbox[0][2])}…${fmt(ps.bbox[1][2])}, volume ${fmt(ps.volume / 1000)} cm³)`
+                })
+                .join("; ")}`,
+            ]
+          : []),
+        ...refLines,
+      ].join("\n")
+    }
     if (what === "body") {
       const s = stats(step.body)
       return [
@@ -877,13 +929,13 @@ export class Kernel {
       if (what === "faces") {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const list = selector ? selectFaces(selector as any, faces, this.scope) : faces
-        return list.slice(0, 40).map(describeFace).join("\n") + (list.length > 40 ? `\n…共 ${list.length} 个面` : "")
+        return list.slice(0, 40).map(describeFace).join("\n") + (list.length > 40 ? moreFaces(list.length) : "")
       }
       const edges = edgeInfos(step.body, faces)
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const list = selector ? selectEdges(selector as any, edges, faces, this.scope) : edges
-        return list.slice(0, 40).map(describeEdge).join("\n") + (list.length > 40 ? `\n…共 ${list.length} 条边` : "")
+        return list.slice(0, 40).map(describeEdge).join("\n") + (list.length > 40 ? moreEdges(list.length) : "")
       } finally {
         disposeInfos([], edges)
       }
@@ -930,9 +982,17 @@ export class Kernel {
         const face = faces.find((f) => f.face.hashCode === target.hash)
         if (!face) return null
         const n = face.normal ? axisDir(face.normal) : null
-        const kind = { plane: "平面", cylinder: "圆柱面", cone: "圆锥面", sphere: "球面", torus: "环面", freeform: "自由曲面" }[face.kind]
-        const facing = n ? `朝${{ "+Z": "上", "-Z": "下", "+X": "右（+X）", "-X": "左（-X）", "+Y": "后（+Y）", "-Y": "前（-Y）" }[n]}` : null
-        const what = [kind, facing && `${facing}${n?.[1] === "Z" ? `（${n}）` : ""}`, face.radius !== undefined && `R${fmt(face.radius)}`].filter(Boolean).join(" · ")
+        const en = agentLang() === "en"
+        const kind = byAgentLang(
+          { plane: "平面", cylinder: "圆柱面", cone: "圆锥面", sphere: "球面", torus: "环面", freeform: "自由曲面" },
+          { plane: "Plane", cylinder: "Cylinder", cone: "Cone", sphere: "Sphere", torus: "Torus", freeform: "Freeform surface" },
+        )[face.kind]
+        const facing = !n
+          ? null
+          : en
+            ? `facing ${{ "+Z": "up", "-Z": "down", "+X": "right (+X)", "-X": "left (-X)", "+Y": "back (+Y)", "-Y": "front (-Y)" }[n]}`
+            : `朝${{ "+Z": "上", "-Z": "下", "+X": "右（+X）", "-X": "左（-X）", "+Y": "后（+Y）", "-Y": "前（-Y）" }[n]}`
+        const what = [kind, facing && `${facing}${n?.[1] === "Z" ? (en ? ` (${n})` : `（${n}）`) : ""}`, face.radius !== undefined && `R${fmt(face.radius)}`].filter(Boolean).join(" · ")
         const origins = face.origin && face.origin !== "?" ? [face.origin] : []
         const plane = n ? ({ Z: "XY", Y: "XZ", X: "YZ" } as const)[n[1] as "X" | "Y" | "Z"] : null
         const uv = (p: V3): [number, number] => (plane === "XY" ? [p[0], p[1]] : plane === "XZ" ? [p[0], p[2]] : [p[1], p[2]])
@@ -941,9 +1001,9 @@ export class Kernel {
           hash: target.hash,
           point: target.point,
           what,
-          where: origins.length ? `来自「${name(origins[0])}」` : "来源不明",
+          where: origins.length ? ta(`来自「${name(origins[0])}」`, `from “${name(origins[0])}”`) : ta("来源不明", "origin unknown"),
           origins,
-          facts: `面积 ${fmt(measureArea(face.face))} mm²`,
+          facts: ta(`面积 ${fmt(measureArea(face.face))} mm²`, `Area ${fmt(measureArea(face.face))} mm²`),
           selector: uniqueFaceSelector(face, faces, this.scope, target.point),
           sketch:
             plane && n
@@ -958,11 +1018,15 @@ export class Kernel {
         const edge = edges.find((e) => e.edge.hashCode === target.hash)
         if (!edge) return null
         const d = edge.dir ? axisDir(edge.dir) : null
-        const kind = { line: "直线边", circle: "圆弧边", freeform: "曲线边" }[edge.kind]
-        const what = [kind, d && `沿 ${d[1]} 方向`, edge.radius !== undefined && `R${fmt(edge.radius)}`].filter(Boolean).join(" · ")
+        const kind = byAgentLang({ line: "直线边", circle: "圆弧边", freeform: "曲线边" }, { line: "Line edge", circle: "Arc edge", freeform: "Curve edge" })[edge.kind]
+        const what = [kind, d && ta(`沿 ${d[1]} 方向`, `along ${d[1]}`), edge.radius !== undefined && `R${fmt(edge.radius)}`].filter(Boolean).join(" · ")
         const origins = [...new Set(edge.faces.map((i) => faces[i]?.origin).filter((o): o is string => !!o && o !== "?"))]
         const where =
-          origins.length === 0 ? "来源不明" : origins.length === 1 ? `「${name(origins[0])}」的面相交处` : `在「${name(origins[0])}」和「${name(origins[1])}」的面之间`
+          origins.length === 0
+            ? ta("来源不明", "origin unknown")
+            : origins.length === 1
+              ? ta(`「${name(origins[0])}」的面相交处`, `where faces of “${name(origins[0])}” meet`)
+              : ta(`在「${name(origins[0])}」和「${name(origins[1])}」的面之间`, `between faces of “${name(origins[0])}” and “${name(origins[1])}”`)
         // Tangent line between a fillet and its neighbour: drawn like an edge, but there's no corner there.
         let smooth = false
         if (edge.faces.length === 2) {
@@ -978,7 +1042,7 @@ export class Kernel {
           what,
           where,
           origins,
-          facts: `长 ${fmt(edge.length)} mm`,
+          facts: ta(`长 ${fmt(edge.length)} mm`, `Length ${fmt(edge.length)} mm`),
           selector: uniqueEdgeSelector(edge, edges, faces, this.scope, target.point),
           smooth,
           sketch: null,
@@ -1070,7 +1134,7 @@ export class Kernel {
     // A big model (an assembly of many parts): the views come from its mesh, in seconds rather than minutes.
     this.meshed(step)
     const big = step.mesh && step.mesh.triangles.length / 3 > MESH_DRAWING_TRIANGLES
-    return makeDrawing(step.body, step.origins, dims, withIso, cut >= 0 ? "文字见模型" : undefined, big ? { mesh: step.mesh!, edges: step.edges } : undefined)
+    return makeDrawing(step.body, step.origins, dims, withIso, cut >= 0 ? ta("文字见模型", "For the text, see the model") : undefined, big ? { mesh: step.mesh!, edges: step.edges } : undefined)
   }
 
   /** A step's body meshed, once: assemblies place their parts' meshes rather than meshing the whole again. */
@@ -1127,10 +1191,10 @@ export class Kernel {
         r = relation(items[0].shape, items[1].shape, items[0].solid && items[1].solid)
       } catch (e) {
         if (!(e instanceof TooComplex)) throw e
-        return { items: items.map((x) => x.item), between: [{ name: "最短距离", value: `太复杂，没有算：${e.message}` }], segment: null }
+        return { items: items.map((x) => x.item), between: [{ name: betweenName("shortest"), value: ta(`太复杂，没有算：${e.message}`, `Too complex, not worked out: ${e.message}`) }], segment: null }
       }
-      const between = [{ name: "最短距离", value: r.d <= TOUCH ? "0（接触）" : `${fmt(r.d)} mm` }]
-      if (r.overlap > 1e-6) between.push({ name: "重叠体积", value: `${fmt(r.overlap)} mm³（相交）` })
+      const between = [{ name: betweenName("shortest"), value: r.d <= TOUCH ? ta("0（接触）", "0 (touching)") : `${fmt(r.d)} mm` }]
+      if (r.overlap > 1e-6) between.push({ name: betweenName("overlap"), value: ta(`${fmt(r.overlap)} mm³（相交）`, `${fmt(r.overlap)} mm³ (intersecting)`) })
       return { items: items.map((x) => x.item), between, segment: r.segment }
     } finally {
       owned.forEach((x) => x.delete())
@@ -1144,12 +1208,26 @@ export class Kernel {
       const part = step.parts?.find((p) => p.name === t.name)
       if (part) {
         const st = stats(part.body)
-        return { shape: part.body, solid: true, item: { kind: "part", hash: -1, what: `零件「${t.name}」`, facts: [`体积 ${fmt(st.volume)} mm³`, `外形 ${st.size.map(fmt).join("×")}`] } }
+        return {
+          shape: part.body,
+          solid: true,
+          item: { kind: "part", hash: -1, what: ta(`零件「${t.name}」`, `Part “${t.name}”`), facts: [ta(`体积 ${fmt(st.volume)} mm³`, `Volume ${fmt(st.volume)} mm³`), ta(`外形 ${st.size.map(fmt).join("×")}`, `Overall size ${st.size.map(fmt).join("×")}`)] },
+        }
       }
       const ref = [...(step.refs ?? []), ...this.context].find((r) => r.name === t.name || r.id === t.name)
-      if (ref) return { shape: ref.shape, solid: true, item: { kind: "part", hash: -1, what: `参考体「${ref.name}」`, facts: [`外形 ${sizeOf(ref.shape).map(fmt).join("×")}`] } }
+      if (ref)
+        return {
+          shape: ref.shape,
+          solid: true,
+          item: { kind: "part", hash: -1, what: ta(`参考体「${ref.name}」`, `Reference body “${ref.name}”`), facts: [ta(`外形 ${sizeOf(ref.shape).map(fmt).join("×")}`, `Overall size ${sizeOf(ref.shape).map(fmt).join("×")}`)] },
+        }
       const names = [...(step.parts ?? []).map((p) => p.name), ...(step.refs ?? []).map((r) => r.name), ...this.context.map((r) => r.name)]
-      throw new InputError(`没有叫「${t.name}」的零件或参考体${names.length ? `：现在有 ${names.join("、")}` : "（还没有拆件，整个模型只有一个实体）"}`)
+      throw new InputError(
+        ta(
+          `没有叫「${t.name}」的零件或参考体${names.length ? `：现在有 ${names.join("、")}` : "（还没有拆件，整个模型只有一个实体）"}`,
+          `No part or reference body named “${t.name}”${names.length ? `: there are ${names.join(", ")}` : " (nothing is split yet: the whole model is one solid)"}`,
+        ),
+      )
     }
     // A face or an edge is found by its hash, on the model or on a reference body.
     if (t.kind === "face" || t.kind === "edge")
@@ -1158,11 +1236,11 @@ export class Kernel {
         const es = t.kind === "edge" ? edgeInfos(all, fs) : []
         try {
           const x = t.kind === "face" ? fs.find((f) => f.face.hashCode === t.hash) : es.find((e) => e.edge.hashCode === t.hash)
-          if (!x) throw new InputError("要量的面或边找不到了")
+          if (!x) throw new InputError(lostTarget())
           const shape = ("face" in x ? x.face : x.edge).clone() as AnyShape
           owned.push(shape)
           const res = measure(all, step.origins, [t])
-          return { shape, solid: false, item: res?.items[0] ?? { kind: t.kind, hash: t.hash, what: t.kind === "face" ? "面" : "边", facts: [] } }
+          return { shape, solid: false, item: res?.items[0] ?? { kind: t.kind, hash: t.hash, what: t.kind === "face" ? ta("面", "Face") : ta("边", "Edge"), facts: [] } }
         } finally {
           disposeInfos(fs, es)
         }
@@ -1173,13 +1251,16 @@ export class Kernel {
       if (t.kind === "feature") {
         const mine = faces.filter((f) => f.origin === t.id)
         const f = this.tree.features.find((x) => x.id === t.id)
-        if (!f) throw new InputError(`找不到特征「${t.id}」`)
-        if (!mine.length) throw new InputError(`「${displayName(this.tree, f)}」生成的面现在都不在了（被后面的特征盖掉或切掉了）`)
+        if (!f) throw new InputError(ta(`找不到特征「${t.id}」`, `Can't find feature “${t.id}”`))
+        if (!mine.length)
+          throw new InputError(
+            ta(`「${displayName(this.tree, f)}」生成的面现在都不在了（被后面的特征盖掉或切掉了）`, `None of the faces “${displayName(this.tree, f)}” made are left (later features covered or cut them away)`),
+          )
         const shape = makeCompound(mine.map((x) => x.face.clone())) as unknown as AnyShape
         owned.push(shape)
-        return { shape, solid: false, item: { kind: "feature", hash: -1, what: `「${displayName(this.tree, f)}」的面`, facts: [`${mine.length} 个面`] } }
+        return { shape, solid: false, item: { kind: "feature", hash: -1, what: ta(`「${displayName(this.tree, f)}」的面`, `Faces of “${displayName(this.tree, f)}”`), facts: [many(mine.length, "个面", "face")] } }
       }
-      throw new InputError("要量的面或边找不到了")
+      throw new InputError(lostTarget())
     } finally {
       disposeInfos(faces, edges)
     }
@@ -1251,7 +1332,7 @@ export class Kernel {
   }
 
   private skip(f: Feature, key: string, prev: Step | null, tree: Tree): Step {
-    return this.base(f, key, prev, tree, { state: "skipped", message: "前面的特征失败了，这一步没有重建" })
+    return this.base(f, key, prev, tree, { state: "skipped", message: ta("前面的特征失败了，这一步没有重建", "An earlier feature failed: this step wasn't rebuilt") })
   }
 
   private run(f: Feature, key: string, prev: Step | null, tree: Tree): Step {
@@ -1260,14 +1341,20 @@ export class Kernel {
     const warnings: string[] = []
     try {
       const dup = tree.features.findIndex((x) => x.id === f.id)
-      if (tree.features[dup] !== f) throw new InputError(`特征 id「${f.id}」重复了`)
+      if (tree.features[dup] !== f) throw new InputError(ta(`特征 id「${f.id}」重复了`, `Feature id “${f.id}” is used twice`))
       const part = partOf(f, tree)
       const g = part !== f.part ? ({ ...f, part } as Feature) : f
       const isNew = startsPart(g, prev)
       if (!isNew && g.part && BODY_OPS.has(f.op) && prev?.body && !(prev.parts && prev.parts.length > 1) && g.part !== (prev.mainName ?? "主体"))
-        throw new InputError(`没有叫「${g.part}」的零件：现在只有一个实体${prev.mainName ? `「${prev.mainName}」` : ""}。要新建零件，就在加料（拉伸、旋转、扫掠、放样）时写这个名字`)
+        throw new InputError(
+          ta(
+            `没有叫「${g.part}」的零件：现在只有一个实体${prev.mainName ? `「${prev.mainName}」` : ""}。要新建零件，就在加料（拉伸、旋转、扫掠、放样）时写这个名字`,
+            `No part named “${g.part}”: there is only one solid${prev.mainName ? ` “${prev.mainName}”` : ""}. To make a new part, write this name on a feature that adds material (extrude, revolve, sweep, loft)`,
+          ),
+        )
       const assembly = tree.features.some((x) => x.op === "component")
-      if (assembly && f.op !== "component") throw new InputError("装配里只能放零件（component）。要改零件的形状，用 open_part 打开它的文件")
+      if (assembly && f.op !== "component")
+        throw new InputError(ta("装配里只能放零件（component）。要改零件的形状，用 open_part 打开它的文件", "An assembly can hold only parts (component). To change a part's shape, open its file with open_part"))
       const out =
         f.op === "split"
           ? this.split(f, prev)
@@ -1382,7 +1469,10 @@ export class Kernel {
         })
         if (!tiny.length) return null
       }
-      return `生成了 ${tiny.length} 个极小的面（最小 ${Math.min(...tiny).toPrecision(2)} mm²）：多半是两个面几乎重合，或者切除擦着面切过去`
+      return ta(
+        `生成了 ${tiny.length} 个极小的面（最小 ${Math.min(...tiny).toPrecision(2)} mm²）：多半是两个面几乎重合，或者切除擦着面切过去`,
+        `Made ${many(tiny.length, "", "tiny face")} (smallest ${Math.min(...tiny).toPrecision(2)} mm²): most likely two faces almost coincide, or a cut grazes a face`,
+      )
     } finally {
       faces.forEach((f) => f.delete())
     }
@@ -1413,7 +1503,12 @@ export class Kernel {
       }
       const spot = narrowSpot(faces, step.status.map((s) => s === "new"), group)
       if (!spot) return null
-      const at = `(${spot.at.map((x) => fmt(x)).join(", ")}) 附近`
+      const p = `(${spot.at.map((x) => fmt(x)).join(", ")})`
+      if (agentLang() === "en")
+        return spot.kind === "slit"
+          ? `Left a narrow slit only ${fmt(spot.d)} mm wide (near ${p}): two faces facing each other this close are most likely misaligned and meant to touch. If the gap is on purpose, 3D printing usually needs at least 0.4 mm`
+          : `Left a thin wall only ${fmt(spot.d)} mm thick (near ${p}): 3D printing usually needs at least 0.8 mm (two line widths), injection molding about 1 mm. If it's this thin on purpose, ignore this`
+      const at = `${p} 附近`
       return spot.kind === "slit"
         ? `留下了一条只有 ${fmt(spot.d)} mm 的窄缝（${at}）：两个面对面的面隔得这么近，多半是没对齐、本来要贴上；有意留缝的话，3D 打印一般至少要 0.4 mm`
         : `留下了只有 ${fmt(spot.d)} mm 的薄壁（${at}）：3D 打印一般至少要 0.8 mm（两圈线宽），注塑约 1 mm；有意这么薄就可以不管`
@@ -1432,28 +1527,28 @@ export class Kernel {
   private plane(ref: PlaneRef, prev: Step | null): ResolvedPlane {
     const P = PLANES[ref.plane]
     let coord = ref.offset !== undefined ? num(ref.offset, this.scope) : 0
-    let label = ref.offset !== undefined && coord !== 0 ? `${P.label}偏移 ${fmt(coord)}` : P.label
+    let label = ref.offset !== undefined && coord !== 0 ? ta(`${P.label}偏移 ${fmt(coord)}`, `${P.en} offset ${fmt(coord)}`) : planeLabel(ref.plane)
     let flipped = false
     if (ref.face) {
       const src = prev ? this.facesSource(prev, ref.face.of) : null
-      if (!src) throw new InputError("还没有实体，草图不能贴在面上")
+      if (!src) throw new InputError(ta("还没有实体，草图不能贴在面上", "No solid yet: the sketch can't go on a face"))
       const faces = faceInfos(src.shape, src.origins)
       try {
         const sel = selectFaces(ref.face, faces, this.scope)
-        if (sel.some((x) => x.kind !== "plane" || !x.normal)) throw new InputError("选中的面不是平面，草图贴不上去")
+        if (sel.some((x) => x.kind !== "plane" || !x.normal)) throw new InputError(ta("选中的面不是平面，草图贴不上去", "The selected face isn't planar: the sketch can't go on it"))
         // An inclined face: the sketch lies on it, centred on it, x level, y up the slope.
         if (sel.some((x) => Math.abs(dot(x.normal!, P.normal)) < 0.9999)) {
-          if (sel.length > 1) throw new InputError("斜面只能选一个：加 near 或 expect: 1")
-          if (ref.tilt) throw new InputError("贴在斜面上时不用 tilt")
+          if (sel.length > 1) throw new InputError(ta("斜面只能选一个：加 near 或 expect: 1", "Select only one inclined face: add near or expect: 1"))
+          if (ref.tilt) throw new InputError(ta("贴在斜面上时不用 tilt", "Don't use tilt on an inclined face"))
           const f = sel[0]
           const fr = faceFrame(f.center, f.normal!)
-          return { name: ref.plane, origin: add(fr.origin, mul(fr.normal, coord)), x: fr.x, y: fr.y, normal: fr.normal, label: `斜面（${describeFace(f).split(" 来自")[0]}）`, custom: true }
+          return { name: ref.plane, origin: add(fr.origin, mul(fr.normal, coord)), x: fr.x, y: fr.y, normal: fr.normal, label: ta(`斜面（${faceShape(f)}）`, `Inclined face (${faceShape(f)})`), custom: true }
         }
         const coords = new Set(sel.map((x) => r2(x.center[P.axis])))
-        if (coords.size > 1) throw new InputError("选中的面不在同一高度，加 near 或 expect 只选一个")
+        if (coords.size > 1) throw new InputError(ta("选中的面不在同一高度，加 near 或 expect 只选一个", "The selected faces aren't at the same height: add near or expect to select only one"))
         coord += sel[0].center[P.axis]
         flipped = dot(sel[0].normal!, P.normal) < 0
-        label = `面（${describeFace(sel[0]).split(" 来自")[0]}）`
+        label = ta(`面（${faceShape(sel[0])}）`, `Face (${faceShape(sel[0])})`)
       } finally {
         disposeInfos(faces)
       }
@@ -1470,24 +1565,24 @@ export class Kernel {
       const k = AXIS[ref.tilt.axis]
       const a = num(ref.tilt.angle, this.scope)
       const turn = (v: V3) => rotate(v, k, a)
-      return { name: ref.plane, origin: turn(origin), x: turn(P.x), y: turn(P.y), normal: turn(P.normal), label: `${label} · 绕 ${ref.tilt.axis} 转 ${fmt(a)}°`, custom: true }
+      return { name: ref.plane, origin: turn(origin), x: turn(P.x), y: turn(P.y), normal: turn(P.normal), label: ta(`${label} · 绕 ${ref.tilt.axis} 转 ${fmt(a)}°`, `${label} · turned ${fmt(a)}° about ${ref.tilt.axis}`), custom: true }
     }
     return { name: ref.plane, origin, x: P.x, y: P.y, normal: P.normal, label, flipped }
   }
 
   private sketchOf(id: string): NonNullable<Step["sketch"]> {
     const s = this.steps.find((x) => x.feature.id === id)
-    if (!s) throw new InputError(`找不到草图「${id}」（必须在这个特征之前）`)
-    if (s.result.state === "suppressed") throw new InputError(`草图「${id}」被压缩了`)
-    if (s.feature.op !== "sketch" || !s.sketch) throw new InputError(`「${id}」不是草图`)
+    if (!s) throw new InputError(ta(`找不到草图「${id}」（必须在这个特征之前）`, `Can't find sketch “${id}” (it must come before this feature)`))
+    if (s.result.state === "suppressed") throw new InputError(ta(`草图「${id}」被压缩了`, `Sketch “${id}” is suppressed`))
+    if (s.feature.op !== "sketch" || !s.sketch) throw new InputError(ta(`「${id}」不是草图`, `“${id}” isn't a sketch`))
     return s.sketch
   }
 
   private toolsOf(id: string): Tool[] {
     const s = this.steps.find((x) => x.feature.id === id)
-    if (!s) throw new InputError(`找不到特征「${id}」（必须在这个特征之前）`)
-    if (s.result.state === "suppressed") throw new InputError(`「${id}」被压缩了，不能阵列或镜像`)
-    if (!s.tools?.length) throw new InputError(`「${id}」不是加料、切除或孔特征，不能阵列或镜像`)
+    if (!s) throw new InputError(ta(`找不到特征「${id}」（必须在这个特征之前）`, `Can't find feature “${id}” (it must come before this feature)`))
+    if (s.result.state === "suppressed") throw new InputError(ta(`「${id}」被压缩了，不能阵列或镜像`, `“${id}” is suppressed: it can't be patterned or mirrored`))
+    if (!s.tools?.length) throw new InputError(ta(`「${id}」不是加料、切除或孔特征，不能阵列或镜像`, `“${id}” isn't a feature that adds material, cuts or makes holes: it can't be patterned or mirrored`))
     return s.tools
   }
 
@@ -1528,22 +1623,27 @@ export class Kernel {
         // Open paths drawn as their segments, on the plane.
         const at = (p: [number, number]) => add(plane.origin, add(mul(plane.x, p[0]), mul(plane.y, p[1])))
         const pathLines = paths.flatMap((pts) => pts.slice(1).flatMap((p, i) => [...at(pts[i]), ...at(p)]))
-        return { sketch: { drawing, paths, plane, lines: Float32Array.from([...lines, ...pathLines]) }, geom: { op: "sketch", plane: frameOf(plane) }, summary: `${plane.label} · ${f.shapes.map(shapeName).join("、")}` }
+        return { sketch: { drawing, paths, plane, lines: Float32Array.from([...lines, ...pathLines]) }, geom: { op: "sketch", plane: frameOf(plane) }, summary: `${plane.label} · ${listed(f.shapes.map(shapeName))}` }
       }
       case "import": {
         const asset = this.assets.get(f.file)
-        if (!asset) throw new InputError(this.assetsGiven ? `没有读到「${f.file}」` : "导入 STEP 只能在桌面版 Turnery 里用：网页读不到你电脑上的文件")
-        if (!asset.shape) throw new InputError(`「${f.file}」读不了：${asset.error ?? "不是能读的 STEP 文件"}`)
+        if (!asset)
+          throw new InputError(
+            this.assetsGiven
+              ? ta(`没有读到「${f.file}」`, `Couldn't read “${f.file}”`)
+              : ta("导入 STEP 只能在桌面版 Turnery 里用：网页读不到你电脑上的文件", "Importing STEP works only in the Turnery desktop app: a web page can't read files on your computer"),
+          )
+        if (!asset.shape) throw new InputError(ta(`「${f.file}」读不了：${asset.error ?? "不是能读的 STEP 文件"}`, `Can't read “${f.file}”: ${asset.error ?? "not a readable STEP file"}`))
         let shape = asset.shape.clone() as AnyShape
         for (const r of f.rotate ?? []) shape = shape.rotate(n(r.angle), [0, 0, 0], AXIS[r.axis])
         if (f.at) shape = shape.translate(f.at.map(n) as V3)
         const mode = f.mode ?? "reference"
-        const summary = `${mode === "reference" ? "参考体" : mode === "add" ? "并入" : "减去"} ${f.file} · ${sizeOf(shape).map(fmt).join(" × ")}`
+        const summary = `${mode === "reference" ? ta("参考体", "Reference body") : mode === "add" ? ta("并入", "Added") : ta("减去", "Subtracted")} ${f.file} · ${sizeOf(shape).map(fmt).join(" × ")}`
         if (mode === "reference") return { ref: shape, summary }
         if (!body) {
           if (mode === "add") return { body: shape as Shape3D, summary }
           shape.delete()
-          throw new InputError("还没有实体，没有东西可以减")
+          throw new InputError(ta("还没有实体，没有东西可以减", "No solid yet: nothing to subtract from"))
         }
         const out = mode === "add" ? body.fuse(shape as Shape3D) : body.cut(shape as Shape3D)
         shape.delete()
@@ -1554,7 +1654,7 @@ export class Kernel {
         const { plane } = sk
         const mode = f.mode ?? "add"
         const ways = [f.distance !== undefined, !!f.through, !!f.until].filter(Boolean).length
-        if (ways !== 1) throw new InputError("拉伸的 distance、until、through 正好写一个")
+        if (ways !== 1) throw new InputError(ta("拉伸的 distance、until、through 正好写一个", "Write exactly one of the extrude's distance, until, through"))
         const profile = f.thin ? thinProfile(sk.drawing, sk.paths, n(f.thin.t), f.thin.side ?? "center") : regionOf(sk, f.sketch)
         let origin = plane.origin
         let dir = plane.normal
@@ -1562,66 +1662,69 @@ export class Kernel {
         let tool: Shape3D
         let how: string
         if (f.through) {
-          if (mode !== "cut") throw new InputError("「贯穿」只用于切除")
-          if (f.draft) throw new InputError("贯穿切除不能带拔模角")
+          if (mode !== "cut") throw new InputError(ta("「贯穿」只用于切除", "“Through all” is only for cuts"))
+          if (f.draft) throw new InputError(ta("贯穿切除不能带拔模角", "A through-all cut can't have a draft angle"))
           const d = 2 * this.bigLength(body)
           origin = add(plane.origin, mul(plane.normal, -d / 2))
           dir = plane.normal
           tool = mergeOverlaps(sketchOn(profile.clone(), plane, origin).extrude(d, { extrusionDirection: dir }) as Shape3D)
-          how = "贯穿"
+          how = ta("贯穿", "through all")
         } else if (f.until) {
-          if (mode === "intersect") throw new InputError("求交不能和成形到（until）一起用")
-          if (f.direction === "both") throw new InputError("两侧对称（both）不能和成形到（until）一起用")
-          if (f.draft) throw new InputError("成形到不能带拔模角：先成形到，再用拔模特征")
-          if (!body || !prev) throw new InputError("还没有实体，没有可以成形到的面")
+          if (mode === "intersect") throw new InputError(ta("求交不能和成形到（until）一起用", "Intersect can't be used with up to (until)"))
+          if (f.direction === "both") throw new InputError(ta("两侧对称（both）不能和成形到（until）一起用", "Symmetric (both) can't be used with up to (until)"))
+          if (f.draft) throw new InputError(ta("成形到不能带拔模角：先成形到，再用拔模特征", "Up to can't have a draft angle: extrude up to first, then add a draft feature"))
+          if (!body || !prev) throw new InputError(ta("还没有实体，没有可以成形到的面", "No solid yet: there is no face to extrude up to"))
           if (f.until === "next") {
             const long = mergeOverlaps(sketchOn(profile.clone(), plane, origin).extrude(2 * this.bigLength(body), { extrusionDirection: dir }) as Shape3D)
             const got = untilNext(long, body, origin, dir, mode)
             long.delete()
             tool = got.tool
-            how = `成形到下一面（实际 ${fmt(got.length)} mm）`
+            how = ta(`成形到下一面（实际 ${fmt(got.length)} mm）`, `up to next (actually ${fmt(got.length)} mm)`)
           } else {
-            const target = planeFace(body, prev.origins, f.until.face, this.scope, "成形到的面")
+            const target = planeFace(body, prev.origins, f.until.face, this.scope, ta("成形到的面", "The up-to face"))
             const offset = f.until.offset !== undefined ? n(f.until.offset) : 0
             if (Math.abs(Math.abs(dot(target.normal, dir)) - 1) < 1e-6) {
               const d = dot(sub(target.center, origin), dir) - offset
-              if (!(d > 1e-6)) throw new InputError("这个面在草图的另一侧：换个方向（direction: reverse），或者选别的面")
+              if (!(d > 1e-6)) throw new InputError(ta("这个面在草图的另一侧：换个方向（direction: reverse），或者选别的面", "This face is on the other side of the sketch: flip the direction (direction: reverse), or select another face"))
               tool = mergeOverlaps(sketchOn(profile.clone(), plane, origin).extrude(d, { extrusionDirection: dir }) as Shape3D)
-              how = `成形到面（${fmt(d)} mm）`
+              how = ta(`成形到面（${fmt(d)} mm）`, `up to face (${fmt(d)} mm)`)
             } else {
-              if (offset) throw new InputError("成形到斜面时不能带 offset")
+              if (offset) throw new InputError(ta("成形到斜面时不能带 offset", "Up to an inclined face can't have an offset"))
               const faces = faceInfos(body, prev.origins)
               try {
                 const face = selectFaces(f.until.face, faces, this.scope)[0]
                 const skt = sketchOn(profile.clone(), plane, origin)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                if (!("extrudeUntil" in (skt as any))) throw new InputError("成形到斜面只支持一个闭合轮廓")
+                if (!("extrudeUntil" in (skt as any))) throw new InputError(ta("成形到斜面只支持一个闭合轮廓", "Up to an inclined face supports only one closed profile"))
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 tool = (skt as any).extrudeUntil(face.face, { extrusionDirection: dir }) as Shape3D
               } catch (e) {
                 if (e instanceof InputError) throw e
-                throw new InputError("这个面挡不住整个轮廓：选一个能盖住整个草图的面")
+                throw new InputError(ta("这个面挡不住整个轮廓：选一个能盖住整个草图的面", "This face doesn't cover the whole profile: select a face that covers the whole sketch"))
               } finally {
                 disposeInfos(faces)
               }
-              how = "成形到斜面"
+              how = ta("成形到斜面", "up to inclined face")
             }
           }
         } else {
           const d = n(f.distance!)
-          if (!(d > 0)) throw new InputError("拉伸距离必须大于 0")
+          if (!(d > 0)) throw new InputError(ta("拉伸距离必须大于 0", "The extrude distance must be greater than 0"))
           if (f.direction === "both") origin = add(origin, mul(plane.normal, -d / 2))
           if (f.draft !== undefined && n(f.draft) !== 0) {
             const angle = n(f.draft)
-            if (f.direction === "both") throw new InputError("两侧对称（both）不能带拔模角")
+            if (f.direction === "both") throw new InputError(ta("两侧对称（both）不能带拔模角", "Symmetric (both) can't have a draft angle"))
             tool = taperedExtrude(profile, angle, d, plane, origin, dir)
           } else tool = mergeOverlaps(sketchOn(profile.clone(), plane, origin).extrude(d, { extrusionDirection: dir }) as Shape3D)
-          how = `${f.direction === "both" ? "两侧对称 " : f.direction === "reverse" ? "反向 " : ""}${fmt(d)} mm${f.draft ? ` · 拔模 ${fmt(n(f.draft))}°` : ""}`
+          how = ta(
+            `${f.direction === "both" ? "两侧对称 " : f.direction === "reverse" ? "反向 " : ""}${fmt(d)} mm${f.draft ? ` · 拔模 ${fmt(n(f.draft))}°` : ""}`,
+            `${f.direction === "both" ? "symmetric " : f.direction === "reverse" ? "reversed " : ""}${fmt(d)} mm${f.draft ? ` · draft ${fmt(n(f.draft))}°` : ""}`,
+          )
         }
         if (f.onto) {
-          if (f.through || f.until || f.draft) throw new InputError("onto（沿面等深）只和 distance 一起用，不能带 through、until、draft")
-          if (mode === "intersect") throw new InputError("onto 用于切除或加料")
-          if (!body || !prev) throw new InputError("还没有实体，没有面可以贴")
+          if (f.through || f.until || f.draft) throw new InputError(ta("onto（沿面等深）只和 distance 一起用，不能带 through、until、draft", "onto (same depth along a face) goes only with distance, not with through, until, draft"))
+          if (mode === "intersect") throw new InputError(ta("onto 用于切除或加料", "onto is for cutting or adding material"))
+          if (!body || !prev) throw new InputError(ta("还没有实体，没有面可以贴", "No solid yet: there is no face to follow"))
           tool.delete()
           const long = mergeOverlaps(sketchOn(profile.clone(), plane, add(plane.origin, mul(plane.normal, -this.bigLength(body)))).extrude(2 * this.bigLength(body), { extrusionDirection: plane.normal }) as Shape3D)
           const band = this.band(body, prev.origins, f.onto, n(f.distance!), mode)
@@ -1636,14 +1739,14 @@ export class Kernel {
                 const [a, b] = x.boundingBox.bounds as [V3, V3]
                 return dot(sub(mul(add(a, b), 0.5), band.axis!.p), plane.normal) * side > 0
               })
-              if (!near.length) throw new InputError("草图投影不到这个圆柱面上：把草图挪到面的正前方")
+              if (!near.length) throw new InputError(ta("草图投影不到这个圆柱面上：把草图挪到面的正前方", "The sketch doesn't project onto this cylinder face: move the sketch to directly in front of the face"))
               const kept = compoundOf(near)
               tool.delete()
               tool = kept
             }
           }
-          if (measureShapeVolumeProperties(tool).volume < 1e-9) throw new InputError("草图投影不到选中的面上：把草图挪到面的正前方")
-          how = `沿${band.what}等深 ${fmt(n(f.distance!))} mm`
+          if (measureShapeVolumeProperties(tool).volume < 1e-9) throw new InputError(ta("草图投影不到选中的面上：把草图挪到面的正前方", "The sketch doesn't project onto the selected face: move the sketch to directly in front of the face"))
+          how = ta(`沿${band.what}等深 ${fmt(n(f.distance!))} mm`, `${fmt(n(f.distance!))} mm deep along the ${band.what}`)
         }
         const next = applyTool(body, tool, mode, warnings, this.componentOnly)
         const box = profile.boundingBox.bounds as [[number, number], [number, number]]
@@ -1651,7 +1754,10 @@ export class Kernel {
           body: next,
           tools: [{ tool, mode }],
           geom: f.through ? undefined : { op: "extrude", plane: frameOf(plane), start: origin, dir, box: [box[0], box[1]] },
-          summary: `${f.thin ? `薄壁 ${fmt(n(f.thin.t))} · ` : ""}${mode === "cut" ? "切除" : mode === "intersect" ? "求交" : "加料"} ${how}`,
+          summary: ta(
+            `${f.thin ? `薄壁 ${fmt(n(f.thin.t))} · ` : ""}${mode === "cut" ? "切除" : mode === "intersect" ? "求交" : "加料"} ${how}`,
+            `${f.thin ? `Thin ${fmt(n(f.thin.t))} · ` : ""}${mode === "cut" ? "Cut" : mode === "intersect" ? "Intersect" : "Add"} ${how}`,
+          ),
         }
       }
       case "revolve": {
@@ -1661,33 +1767,36 @@ export class Kernel {
         const P = PLANES[plane.name]
         const axis = AXIS[f.axis]
         const angle = f.angle !== undefined ? n(f.angle) : 360
-        if (!(angle > 0 && angle <= 360)) throw new InputError("旋转角度要在 0–360° 之间")
+        if (!(angle > 0 && angle <= 360)) throw new InputError(ta("旋转角度要在 0–360° 之间", "The revolve angle must be between 0 and 360°"))
         // The profile may touch the axis but not cross it.
         if (!plane.custom && plane.origin[P.axis] === 0) {
           const bb = drawing.boundingBox.bounds
           const across = (lo: number, hi: number) => lo < -1e-6 && hi > 1e-6
           if ((dot(axis, P.y) > 0.999 && across(bb[0][0], bb[1][0])) || (dot(axis, P.x) > 0.999 && across(bb[0][1], bb[1][1])))
-            throw new InputError("轮廓跨过了旋转轴：旋转体只画轴一侧的半截面")
+            throw new InputError(ta("轮廓跨过了旋转轴：旋转体只画轴一侧的半截面", "The profile crosses the revolve axis: for a revolve, draw only the half section on one side of the axis"))
         }
         const mode = f.mode ?? "add"
-        if (f.symmetric && f.start !== undefined) throw new InputError("start 和 symmetric 只写一个")
+        if (f.symmetric && f.start !== undefined) throw new InputError(ta("start 和 symmetric 只写一个", "Write only one of start and symmetric"))
         const start = f.symmetric ? -angle / 2 : f.start !== undefined ? n(f.start) : 0
         let tool = mergeOverlaps(sketchOn(drawing.clone(), plane).revolve(axis, { origin: [0, 0, 0], angle }) as Shape3D)
         if (start) tool = tool.rotate(start, [0, 0, 0], axis)
         const next = applyTool(body, tool, mode, warnings, this.componentOnly)
-        const from = f.symmetric ? " · 两侧对称" : start ? ` · 从 ${fmt(start)}° 起` : ""
+        const from = f.symmetric ? ta(" · 两侧对称", " · symmetric") : start ? ta(` · 从 ${fmt(start)}° 起`, ` · from ${fmt(start)}°`) : ""
         return {
           body: next,
           tools: [{ tool, mode }],
           geom: { op: "revolve", plane: frameOf(plane) },
-          summary: `${mode === "cut" ? "旋转切除" : mode === "intersect" ? "旋转求交" : "旋转"} ${fmt(angle)}°${from} · 绕 ${f.axis} 轴`,
+          summary: ta(
+            `${mode === "cut" ? "旋转切除" : mode === "intersect" ? "旋转求交" : "旋转"} ${fmt(angle)}°${from} · 绕 ${f.axis} 轴`,
+            `${mode === "cut" ? "Revolve cut" : mode === "intersect" ? "Revolve intersect" : "Revolve"} ${fmt(angle)}°${from} · about the ${f.axis} axis`,
+          ),
         }
       }
       case "fillet":
       case "chamfer": {
-        if (!body) throw new InputError("还没有实体")
+        if (!body) throw new InputError(noSolid())
         const size = n(f.op === "fillet" ? f.r : f.d)
-        if (!(size > 0)) throw new InputError(`${f.op === "fillet" ? "半径" : "距离"}必须大于 0`)
+        if (!(size > 0)) throw new InputError(ta(`${f.op === "fillet" ? "半径" : "距离"}必须大于 0`, `The ${f.op === "fillet" ? "radius" : "distance"} must be greater than 0`))
         const faces = faceInfos(body, prev!.origins)
         const edges = edgeInfos(body, faces)
         try {
@@ -1696,15 +1805,15 @@ export class Kernel {
           const next = f.op === "fillet" ? body.fillet(size, (e) => e.inList(list)) : body.chamfer(size, (e) => e.inList(list))
           const first = sel[0]
           const geom: StepGeom = { op: "edges", at: first.mid, out: outward(first, faces), count: sel.length }
-          return { body: next, selected: sel.length, geom, summary: `${f.op === "fillet" ? "R" : "C"}${fmt(size)} · ${sel.length} 条边` }
+          return { body: next, selected: sel.length, geom, summary: `${f.op === "fillet" ? "R" : "C"}${fmt(size)} · ${many(sel.length, "条边", "edge")}` }
         } finally {
           disposeInfos(faces, edges)
         }
       }
       case "shell": {
-        if (!body) throw new InputError("还没有实体")
+        if (!body) throw new InputError(noSolid())
         const t = n(f.t)
-        if (!(t > 0)) throw new InputError("壁厚必须大于 0")
+        if (!(t > 0)) throw new InputError(ta("壁厚必须大于 0", "The wall thickness must be greater than 0"))
         const faces = faceInfos(body, prev!.origins)
         try {
           const sel = selectFaces(f.open, faces, this.scope)
@@ -1712,14 +1821,14 @@ export class Kernel {
           const next = body.shell(t, (ff) => ff.inList(list))
           const before = measureShapeVolumeProperties(body).volume
           const after = measureShapeVolumeProperties(next).volume
-          if (after > before * 0.98) throw new InputError("抽壳后体积几乎没变：内核没有真正抽空，试试更小的壁厚")
-          return { body: next, selected: sel.length, geom: shellGeom(sel[0]), summary: `壁厚 ${fmt(t)} · 开口 ${sel.length} 个面` }
+          if (after > before * 0.98) throw new InputError(ta("抽壳后体积几乎没变：内核没有真正抽空，试试更小的壁厚", "The volume barely changed after the shell: the kernel didn't really hollow it out. Try a smaller wall thickness"))
+          return { body: next, selected: sel.length, geom: shellGeom(sel[0]), summary: ta(`壁厚 ${fmt(t)} · 开口 ${sel.length} 个面`, `Wall ${fmt(t)} · ${many(sel.length, "", "open face")}`) }
         } finally {
           disposeInfos(faces)
         }
       }
       case "hole": {
-        if (!body) throw new InputError("还没有实体，不能打孔")
+        if (!body) throw new InputError(ta("还没有实体，不能打孔", "No solid yet: can't make a hole"))
         const plane = this.plane(f.on, prev)
         let std: ReturnType<typeof standardHole> | null = null
         try {
@@ -1727,9 +1836,9 @@ export class Kernel {
         } catch (e) {
           throw new InputError((e as Error).message)
         }
-        if (!std && f.d === undefined) throw new InputError("孔要么给 d（孔径），要么给 standard（标准孔）")
+        if (!std && f.d === undefined) throw new InputError(ta("孔要么给 d（孔径），要么给 standard（标准孔）", "A hole needs either d (the diameter) or standard (a standard hole)"))
         const d = std ? std.d : n(f.d!)
-        if (!(d > 0)) throw new InputError("孔径必须大于 0")
+        if (!(d > 0)) throw new InputError(ta("孔径必须大于 0", "The hole diameter must be greater than 0"))
         // A heat-set insert's hole is blind (insert length + 1); every other hole goes through unless told.
         const depth = f.depth !== undefined ? n(f.depth) : (std?.depth ?? this.bigLength(body))
         const drill = f.reverse ? plane.normal : mul(plane.normal, -1)
@@ -1740,40 +1849,40 @@ export class Kernel {
         const parts = centers.map((c) => orient(template(), drill, c))
         const tool = parts.length === 1 ? parts[0] : (makeCompound(parts) as unknown as Shape3D)
         const next = applyTool(body, tool, "cut", warnings, this.componentOnly)
-        const kind = std ? std.label : `${cbore ? "沉头孔" : csink ? "埋头孔" : "孔"} ⌀${fmt(d)}`
+        const kind = std ? std.label : `${cbore ? ta("沉头孔", "Counterbored hole") : csink ? ta("埋头孔", "Countersunk hole") : ta("孔", "Hole")} ⌀${fmt(d)}`
         return {
           body: next,
           tools: [{ tool, mode: "cut" }],
-          summary: `${kind} × ${f.at.length} · ${f.depth !== undefined || std?.depth !== undefined ? `深 ${fmt(depth)}` : "贯穿"}`,
+          summary: `${kind} × ${f.at.length} · ${f.depth !== undefined || std?.depth !== undefined ? ta(`深 ${fmt(depth)}`, `depth ${fmt(depth)}`) : ta("贯穿", "through all")}`,
           threads: std?.thread ? [{ r: d / 2, major: std.thread.major }] : undefined,
           geom: { op: "hole", plane: frameOf(plane), centers, r: d / 2 },
         }
       }
       case "linear_pattern":
       case "circular_pattern": {
-        if (!body) throw new InputError("还没有实体")
+        if (!body) throw new InputError(noSolid())
         const sources = f.features.flatMap((id) => this.toolsOf(id))
         const moves: ((s: Shape3D) => Shape3D)[] = []
         let summary: string
         if (f.op === "linear_pattern") {
           const v = mul(DIRS[f.dir], n(f.spacing))
           const v2 = f.dir2 && f.count2 !== undefined && f.spacing2 !== undefined ? mul(DIRS[f.dir2], n(f.spacing2)) : null
-          const c1 = int(f.count, 2, "个数")
-          const c2 = v2 ? int(f.count2!, 2, "第二方向的个数") : 1
-          if (c1 * c2 > MAX_COUNT) throw new InputError(`两个方向一共最多 ${MAX_COUNT} 个，现在是 ${c1} × ${c2}`)
+          const c1 = int(f.count, 2, ta("个数", "count"))
+          const c2 = v2 ? int(f.count2!, 2, ta("第二方向的个数", "count in the second direction")) : 1
+          if (c1 * c2 > MAX_COUNT) throw new InputError(ta(`两个方向一共最多 ${MAX_COUNT} 个，现在是 ${c1} × ${c2}`, `At most ${MAX_COUNT} in both directions together; it is ${c1} × ${c2}`))
           for (let i = 0; i < c1; i++)
             for (let j = 0; j < c2; j++) {
               if (i === 0 && j === 0) continue
               const t = add(mul(v, i), v2 ? mul(v2, j) : [0, 0, 0])
               moves.push((s) => s.translate(t))
             }
-          summary = `×${c1}${v2 ? ` × ${c2}` : ""} · 间距 ${fmt(n(f.spacing))}`
+          summary = `×${c1}${v2 ? ` × ${c2}` : ""} · ${ta("间距", "spacing")} ${fmt(n(f.spacing))}`
         } else {
           const total = f.angle !== undefined ? n(f.angle) : 360
-          const c = int(f.count, 2, "个数")
+          const c = int(f.count, 2, ta("个数", "count"))
           const stepA = total >= 360 - 1e-9 ? 360 / c : total / (c - 1)
           for (let i = 1; i < c; i++) moves.push((s) => s.rotate(stepA * i, [0, 0, 0], AXIS[f.axis]))
-          summary = `×${c} · ${fmt(total)}° · 绕 ${f.axis} 轴`
+          summary = `×${c} · ${fmt(total)}° · ${ta(`绕 ${f.axis} 轴`, `about the ${f.axis} axis`)}`
         }
         return { ...this.copyTools(body, sources, moves, summary, warnings), geom: { op: "pattern", seed: centerOf(sources) } as StepGeom }
       }
@@ -1785,7 +1894,7 @@ export class Kernel {
         const straight = (p: PathPoint) => !p.via && !p.spline
         pts.slice(1).forEach((p, i) => {
           const next = pts[i + 2]
-          if (p.r !== undefined && !next) throw new InputError("路径的终点不是拐角，不能倒圆角：r 写在中间的点上")
+          if (p.r !== undefined && !next) throw new InputError(ta("路径的终点不是拐角，不能倒圆角：r 写在中间的点上", "The path's end point isn't a corner and can't be rounded: put r on a point in between"))
           // path.corner rounds the corners between two straight segments a point doesn't round itself.
           const r = p.r ?? (corner > 0 && next && straight(p) && straight(next) ? corner : undefined)
           pen = penTo(pen, { ...p, r })
@@ -1798,7 +1907,7 @@ export class Kernel {
         const mode = f.mode ?? "add"
         const next = applyTool(body, tool, mode, warnings, this.componentOnly)
         const shape = prof.type === "circle" ? `⌀${fmt(n(prof.d))}` : `${fmt(n(prof.w))}×${fmt(n(prof.h))}`
-        return { body: next, tools: [{ tool, mode }], summary: `${mode === "cut" ? "扫掠切除" : "扫掠"} · 截面 ${shape} · 路径 ${pts.length} 点` }
+        return { body: next, tools: [{ tool, mode }], summary: ta(`${mode === "cut" ? "扫掠切除" : "扫掠"} · 截面 ${shape} · 路径 ${pts.length} 点`, `${mode === "cut" ? "Sweep cut" : "Sweep"} · profile ${shape} · path of ${pts.length} points`) }
       }
       case "loft": {
         const sketches = f.sketches.map((id) => {
@@ -1806,26 +1915,26 @@ export class Kernel {
           const { plane } = src
           const drawing = regionOf(src, id)
           const sk = sketchOn(drawing.clone(), plane)
-          if (!("wire" in sk)) throw new InputError(`放样的草图「${id}」有多个轮廓：每个截面只能是一个闭合轮廓`)
+          if (!("wire" in sk)) throw new InputError(ta(`放样的草图「${id}」有多个轮廓：每个截面只能是一个闭合轮廓`, `Loft sketch “${id}” has more than one profile: each section must be a single closed profile`))
           return sk
         })
         const [first, ...rest] = sketches
         const tool = (first as unknown as { loftWith: (o: unknown[], c: unknown) => Shape3D }).loftWith(rest, { ruled: f.ruled ?? false })
         const mode = f.mode ?? "add"
         const next = applyTool(body, tool, mode, warnings, this.componentOnly)
-        return { body: next, tools: [{ tool, mode }], summary: `${mode === "cut" ? "放样切除" : "放样"} · ${f.sketches.length} 个截面${f.ruled ? " · 直纹" : ""}` }
+        return { body: next, tools: [{ tool, mode }], summary: ta(`${mode === "cut" ? "放样切除" : "放样"} · ${f.sketches.length} 个截面${f.ruled ? " · 直纹" : ""}`, `${mode === "cut" ? "Loft cut" : "Loft"} · ${many(f.sketches.length, "", "section")}${f.ruled ? " · ruled" : ""}`) }
       }
       case "draft": {
-        if (!body) throw new InputError("还没有实体")
+        if (!body) throw new InputError(noSolid())
         const angle = n(f.angle)
-        if (!(Math.abs(angle) > 0 && Math.abs(angle) < 45)) throw new InputError("拔模角要在 0–45° 之间（常用 1–3°）")
+        if (!(Math.abs(angle) > 0 && Math.abs(angle) < 45)) throw new InputError(ta("拔模角要在 0–45° 之间（常用 1–3°）", "The draft angle must be between 0 and 45° (1–3° is common)"))
         const faces = faceInfos(body, prev!.origins)
         try {
           const sel = selectFaces(f.faces, faces, this.scope)
           const list = sel.map((x) => x.face)
           let neutral: Plane
           if (f.neutral.face) {
-            const nf = planeFace(body, prev!.origins, f.neutral.face, this.scope, "中性面")
+            const nf = planeFace(body, prev!.origins, f.neutral.face, this.scope, ta("中性面", "The neutral face"))
             const x: V3 = Math.abs(nf.normal[2]) < 0.9 ? unit(cross([0, 0, 1], nf.normal)) : [1, 0, 0]
             neutral = new Plane(nf.center, x, nf.normal)
           } else {
@@ -1835,44 +1944,48 @@ export class Kernel {
           }
           const next = body.draft(angle, (ff) => ff.inList(list), neutral)
           const geom: StepGeom = { op: "faces", at: sel[0].center, out: sel[0].normal ?? [0, 0, 1] }
-          return { body: next, selected: sel.length, geom, summary: `${fmt(angle)}° · ${sel.length} 个面 · 中性面 ${f.neutral.face ? "选中的面" : PLANES[f.neutral.plane].label}` }
+          return { body: next, selected: sel.length, geom, summary: ta(
+              `${fmt(angle)}° · ${sel.length} 个面 · 中性面 ${f.neutral.face ? "选中的面" : PLANES[f.neutral.plane].label}`,
+              `${fmt(angle)}° · ${many(sel.length, "", "face")} · neutral ${f.neutral.face ? "selected face" : PLANES[f.neutral.plane].en}`,
+            ),
+          }
         } finally {
           disposeInfos(faces)
         }
       }
       case "split":
-        throw new InputError("拆件不在这里处理")
+        throw new InputError(ta("拆件不在这里处理", "Split isn't handled here"))
       case "rib": {
-        if (!body) throw new InputError("还没有实体，筋要长在实体上")
+        if (!body) throw new InputError(ta("还没有实体，筋要长在实体上", "No solid yet: a rib grows on a solid"))
         const sk = this.sketchOf(f.sketch)
-        if (sk.drawing || sk.paths.length !== 1) throw new InputError("筋的草图只能有一条开放的线（path）")
+        if (sk.drawing || sk.paths.length !== 1) throw new InputError(ta("筋的草图只能有一条开放的线（path）", "A rib's sketch can have only one open line (path)"))
         const tool = ribTool(body, sk.paths[0], frameOf(sk.plane), n(f.t), 2 * this.bigLength(body), !!f.flip)
         const next = applyTool(body, tool, "add", warnings, this.componentOnly)
         const pts = sk.paths[0]
         const mid = pts[Math.floor(pts.length / 2)]
         const geom: StepGeom = { op: "faces", at: add(sk.plane.origin, add(mul(sk.plane.x, mid[0]), mul(sk.plane.y, mid[1]))), out: sk.plane.normal }
-        return { body: next, tools: [{ tool, mode: "add" }], geom, summary: `筋 厚 ${fmt(n(f.t))}` }
+        return { body: next, tools: [{ tool, mode: "add" }], geom, summary: ta(`筋 厚 ${fmt(n(f.t))}`, `Rib ${fmt(n(f.t))} thick`) }
       }
       case "mirror": {
-        if (!body) throw new InputError("还没有实体")
+        if (!body) throw new InputError(noSolid())
         const off = f.offset !== undefined ? n(f.offset) : 0
         const origin: V3 = [0, 0, 0]
         origin[PLANES[f.plane].axis] = off
-        const label = `关于${PLANES[f.plane].label}${off ? `偏移 ${fmt(off)}` : ""}`
+        const label = ta(`关于${PLANES[f.plane].label}${off ? `偏移 ${fmt(off)}` : ""}`, `about the ${PLANES[f.plane].en}${off ? ` offset ${fmt(off)}` : ""}`)
         if (!f.features?.length) {
           const mirrored = body.clone().mirror(f.plane, origin)
           const next = body.fuse(mirrored)
           mirrored.delete()
-          return { body: next, summary: `镜像整个实体 · ${label}` }
+          return { body: next, summary: ta(`镜像整个实体 · ${label}`, `Mirror the whole solid · ${label}`) }
         }
         const sources = f.features.flatMap((id) => this.toolsOf(id))
-        return this.copyTools(body, sources, [(s) => s.mirror(f.plane, origin)], `镜像 ${f.features.length} 个特征 · ${label}`, warnings)
+        return this.copyTools(body, sources, [(s) => s.mirror(f.plane, origin)], ta(`镜像 ${f.features.length} 个特征 · ${label}`, `Mirror ${many(f.features.length, "", "feature")} · ${label}`), warnings)
       }
       case "component":
         // Routed by `run` (it changes the parts, not one body).
-        throw new InputError("装配里的零件不在这里处理")
+        throw new InputError(ta("装配里的零件不在这里处理", "Parts in an assembly aren't handled here"))
       case "thread": {
-        if (!body || !prev) throw new InputError("还没有实体，没有圆柱面可以做螺纹")
+        if (!body || !prev) throw new InputError(ta("还没有实体，没有圆柱面可以做螺纹", "No solid yet: there is no cylinder face to thread"))
         return this.thread(f, body, prev.origins)
       }
     }
@@ -1882,38 +1995,53 @@ export class Kernel {
   private thread(f: Extract<Feature, { op: "thread" }>, body: Shape3D, origins: string[]): ApplyOut {
     const n = (v: number | string) => num(v, this.scope)
     const row = f.size ? METRIC[f.size] : null
-    if (!row && f.d === undefined) throw new InputError("螺纹要么写 size（如 M8），要么写 d（大径）和 pitch（螺距）")
+    if (!row && f.d === undefined) throw new InputError(ta("螺纹要么写 size（如 M8），要么写 d（大径）和 pitch（螺距）", "A thread needs either size (e.g. M8), or d (the major diameter) and pitch"))
     const major = row && f.d === undefined ? Number(f.size!.slice(1)) : n(f.d!)
     const pitch = f.pitch !== undefined ? n(f.pitch) : row ? row.pitch : NaN
-    if (!(pitch > 0)) throw new InputError("不用 size 时要写 pitch（螺距）")
-    if (!(major > 2 * DEPTH * pitch)) throw new InputError(`螺距 ${fmt(pitch)} 对 ⌀${fmt(major)} 太粗了`)
+    if (!(pitch > 0)) throw new InputError(ta("不用 size 时要写 pitch（螺距）", "Without size, write pitch"))
+    if (!(major > 2 * DEPTH * pitch)) throw new InputError(ta(`螺距 ${fmt(pitch)} 对 ⌀${fmt(major)} 太粗了`, `Pitch ${fmt(pitch)} is too coarse for ⌀${fmt(major)}`))
     const clearance = f.clearance !== undefined ? n(f.clearance) : 0
-    if (clearance < 0 || clearance > 0.25 * pitch) throw new InputError(`clearance 要在 0 到 ${fmt(0.25 * pitch)} 之间（螺距的四分之一）`)
+    if (clearance < 0 || clearance > 0.25 * pitch) throw new InputError(ta(`clearance 要在 0 到 ${fmt(0.25 * pitch)} 之间（螺距的四分之一）`, `clearance must be between 0 and ${fmt(0.25 * pitch)} (a quarter of the pitch)`))
     const faces = faceInfos(body, origins)
     try {
       const sel = selectFaces(f.faces, faces, this.scope)
       const jobs: ThreadJob[] = []
       let internal: boolean | null = null
       for (const face of sel) {
-        if (face.kind !== "cylinder" || face.radius === undefined) throw new InputError(`螺纹只能做在圆柱面上，选中的有${describeFace(face).split(" 来自")[0]}`)
+        if (face.kind !== "cylinder" || face.radius === undefined) throw new InputError(ta(`螺纹只能做在圆柱面上，选中的有${faceShape(face)}`, `Threads go only on cylinder faces; the selection includes ${faceShape(face)}`))
         const ax = cylinderAxis(face)
-        if (!ax) throw new InputError("读不出这个圆柱面的轴线")
+        if (!ax) throw new InputError(noAxis())
         const inside = !isConvexCylinder(face, ax)
-        if (internal !== null && internal !== inside) throw new InputError("一次只能都是外螺纹（轴）或都是内螺纹（孔）")
+        if (internal !== null && internal !== inside) throw new InputError(ta("一次只能都是外螺纹（轴）或都是内螺纹（孔）", "One feature makes either all external threads (shafts) or all internal threads (holes)"))
         internal = inside
         const r = face.radius
         const depth = DEPTH * pitch
-        if (!inside && r < major / 2 - depth) throw new InputError(`圆柱 ⌀${fmt(2 * r)} 比 ${fmt(major)} 螺纹的小径（⌀${fmt(major - 2 * depth)}）还细：先把轴做成 ⌀${fmt(major)}`)
-        if (!inside && r > major / 2 + 0.4 * pitch) throw new InputError(`圆柱 ⌀${fmt(2 * r)} 比螺纹大径 ⌀${fmt(major)} 粗太多：先把轴做成 ⌀${fmt(major)}`)
-        if (inside && r > major / 2) throw new InputError(`孔 ⌀${fmt(2 * r)} 比螺纹大径 ⌀${fmt(major)} 还大：内螺纹的孔先打成 ⌀${fmt(major - 2 * depth)} 左右（小径），或者用 hole 的 standard（fit: tap）打攻丝底孔`)
+        if (!inside && r < major / 2 - depth)
+          throw new InputError(
+            ta(
+              `圆柱 ⌀${fmt(2 * r)} 比 ${fmt(major)} 螺纹的小径（⌀${fmt(major - 2 * depth)}）还细：先把轴做成 ⌀${fmt(major)}`,
+              `Cylinder ⌀${fmt(2 * r)} is thinner than the minor diameter of the ⌀${fmt(major)} thread (⌀${fmt(major - 2 * depth)}): make the shaft ⌀${fmt(major)} first`,
+            ),
+          )
+        if (!inside && r > major / 2 + 0.4 * pitch)
+          throw new InputError(
+            ta(`圆柱 ⌀${fmt(2 * r)} 比螺纹大径 ⌀${fmt(major)} 粗太多：先把轴做成 ⌀${fmt(major)}`, `Cylinder ⌀${fmt(2 * r)} is much thicker than the thread's major diameter ⌀${fmt(major)}: make the shaft ⌀${fmt(major)} first`),
+          )
+        if (inside && r > major / 2)
+          throw new InputError(
+            ta(
+              `孔 ⌀${fmt(2 * r)} 比螺纹大径 ⌀${fmt(major)} 还大：内螺纹的孔先打成 ⌀${fmt(major - 2 * depth)} 左右（小径），或者用 hole 的 standard（fit: tap）打攻丝底孔`,
+              `Hole ⌀${fmt(2 * r)} is larger than the thread's major diameter ⌀${fmt(major)}: for an internal thread, first make the hole about ⌀${fmt(major - 2 * depth)} (the minor diameter), or drill a tap hole with hole's standard (fit: tap)`,
+            ),
+          )
         // Along the axis: the face's parameter range is where it starts and ends.
         const { vMin, vMax } = face.face.UVBounds
         let [t0, t1] = [vMin, vMax]
         if (f.length !== undefined) {
           const len = n(f.length)
-          if (!(len > 0) || len > t1 - t0 + 1e-6) throw new InputError(`螺纹长度要在 0 到 ${fmt(t1 - t0)}（圆柱面的长度）之间`)
+          if (!(len > 0) || len > t1 - t0 + 1e-6) throw new InputError(ta(`螺纹长度要在 0 到 ${fmt(t1 - t0)}（圆柱面的长度）之间`, `The thread length must be between 0 and ${fmt(t1 - t0)} (the length of the cylinder face)`))
           const towards = f.from ? dot(DIRS[f.from], ax.d) : 1
-          if (f.from && Math.abs(towards) < 1e-6) throw new InputError(`from 要沿圆柱的轴线方向，${f.from} 和轴线垂直`)
+          if (f.from && Math.abs(towards) < 1e-6) throw new InputError(ta(`from 要沿圆柱的轴线方向，${f.from} 和轴线垂直`, `from must point along the cylinder's axis; ${f.from} is perpendicular to the axis`))
           if (towards > 0) t0 = t1 - len
           else t1 = t0 + len
         }
@@ -1924,7 +2052,10 @@ export class Kernel {
       const len = jobs[0].t1 - jobs[0].t0
       return {
         body: next,
-        summary: `${name} ${internal ? "内" : "外"}螺纹${f.left ? "（左旋）" : ""} × ${jobs.length} · 长 ${fmt(len)} · 螺距 ${fmt(pitch)}${clearance ? ` · 间隙 ${fmt(clearance)}` : ""}`,
+        summary: ta(
+          `${name} ${internal ? "内" : "外"}螺纹${f.left ? "（左旋）" : ""} × ${jobs.length} · 长 ${fmt(len)} · 螺距 ${fmt(pitch)}${clearance ? ` · 间隙 ${fmt(clearance)}` : ""}`,
+          `${name} ${internal ? "internal" : "external"} thread${f.left ? " (left-hand)" : ""} × ${jobs.length} · length ${fmt(len)} · pitch ${fmt(pitch)}${clearance ? ` · clearance ${fmt(clearance)}` : ""}`,
+        ),
       }
     } finally {
       disposeInfos(faces)
@@ -1933,14 +2064,19 @@ export class Kernel {
 
   /** Cut the body (or one part of it) in two by a plane: two named parts. */
   private split(f: Extract<Feature, { op: "split" }>, prev: Step | null): ApplyOut {
-    if (!prev?.body) throw new InputError("还没有实体，没有可以拆的")
+    if (!prev?.body) throw new InputError(ta("还没有实体，没有可以拆的", "No solid yet: nothing to split"))
     const parts: Part[] = prev.parts ?? [{ name: "", body: prev.body, explode: [0, 0, 0], owned: false }]
     const i = parts.length > 1 ? parts.findIndex((p) => p.name === f.of) : 0
-    if (i < 0) throw new InputError(f.of ? `没有叫「${f.of}」的零件：现在有 ${parts.map((p) => p.name).join("、")}` : `已经有 ${parts.length} 个零件，要用 of 指定拆哪一个`)
+    if (i < 0)
+      throw new InputError(
+        f.of
+          ? ta(`没有叫「${f.of}」的零件：现在有 ${parts.map((p) => p.name).join("、")}`, `No part named “${f.of}”: there are ${parts.map((p) => p.name).join(", ")}`)
+          : ta(`已经有 ${parts.length} 个零件，要用 of 指定拆哪一个`, `There are already ${parts.length} parts: use of to say which one to split`),
+      )
     const [back, front] = f.parts
-    if (back === front) throw new InputError("两个零件要起不同的名字")
+    if (back === front) throw new InputError(ta("两个零件要起不同的名字", "Give the two parts different names"))
     const clash = parts.filter((_, k) => k !== i).find((p) => p.name === back || p.name === front)
-    if (clash) throw new InputError(`已经有叫「${clash.name}」的零件了`)
+    if (clash) throw new InputError(ta(`已经有叫「${clash.name}」的零件了`, `There is already a part named “${clash.name}”`))
     const plane = this.plane(f.by, prev)
     const target = parts[i].body
     const big = 2 * this.bigLength(target)
@@ -1960,7 +2096,12 @@ export class Kernel {
       const [lo, hi] = target.boundingBox.bounds as [V3, V3]
       const along = [lo, hi].flatMap((a) => [lo, hi].map((b) => dot([a[0], b[1], (a[2] + b[2]) / 2], plane.normal)))
       const at = dot(plane.origin, plane.normal)
-      throw new InputError(`切面没有碰到实体：沿切面法向的范围大约是 ${fmt(Math.min(...along))}–${fmt(Math.max(...along))}，现在切在 ${fmt(at)}`)
+      throw new InputError(
+        ta(
+          `切面没有碰到实体：沿切面法向的范围大约是 ${fmt(Math.min(...along))}–${fmt(Math.max(...along))}，现在切在 ${fmt(at)}`,
+          `The cutting plane doesn't touch the solid: along the plane's normal the solid spans about ${fmt(Math.min(...along))}–${fmt(Math.max(...along))}; the cut is at ${fmt(at)}`,
+        ),
+      )
     }
     // Explode: the normal side moves off along the normal by most of the part's size across the cut.
     const [lo, hi] = target.boundingBox.bounds as [V3, V3]
@@ -1974,7 +2115,7 @@ export class Kernel {
       ...parts.slice(i + 1).map((p) => ({ ...p, owned: false })),
     ]
     const body = compoundOf(next.map((p) => p.body))
-    return { body, parts: next, geom: { op: "sketch", plane: frameOf(plane) }, summary: `拆成 ${back}（V=${fmt(vl)}）、${front}（V=${fmt(vu)}）` }
+    return { body, parts: next, geom: { op: "sketch", plane: frameOf(plane) }, summary: ta(`拆成 ${back}（V=${fmt(vl)}）、${front}（V=${fmt(vu)}）`, `Split into ${back} (V=${fmt(vl)}), ${front} (V=${fmt(vu)})`) }
   }
 
   /**
@@ -1984,7 +2125,12 @@ export class Kernel {
    */
   private component(f: Extract<Feature, { op: "component" }>, prev: Step | null, warnings: string[]): ApplyOut {
     const n = (v: number | string) => num(v, this.scope)
-    if (!!f.file === !!f.standard) throw new InputError(f.file ? "file 和 standard 只写一个：放零件文件写 file，放标准件写 standard" : "component 要写 file（零件文件）或 standard（标准件）")
+    if (!!f.file === !!f.standard)
+      throw new InputError(
+        f.file
+          ? ta("file 和 standard 只写一个：放零件文件写 file，放标准件写 standard", "Write only one of file and standard: file to place a part file, standard to place a standard part")
+          : ta("component 要写 file（零件文件）或 standard（标准件）", "component needs file (a part file) or standard (a standard part)"),
+      )
     let built: Built
     let source: string
     let fastener: FastenerSpec | null = null
@@ -1998,23 +2144,29 @@ export class Kernel {
       }
       if (des.note) warnings.push(des.note)
       built = standardPart(fastener)
-      source = `标准件 ${des.name}`
+      source = ta(`标准件 ${des.name}`, `standard part ${des.name}`)
     } else {
       const got = this.components.get(f.file!)
-      if (!got) throw new InputError(this.componentsGiven ? `没有读到「${f.file}」` : "装配只能在桌面版 Turnery 里用：网页读不到你电脑上的文件")
+      if (!got)
+        throw new InputError(
+          this.componentsGiven
+            ? ta(`没有读到「${f.file}」`, `Couldn't read “${f.file}”`)
+            : ta("装配只能在桌面版 Turnery 里用：网页读不到你电脑上的文件", "Assemblies work only in the Turnery desktop app: a web page can't read files on your computer"),
+        )
       built = buildComponent(got.source)
       source = f.file!
     }
     const base = componentName(f)
     if (!built.parts.length) {
-      warnings.push(`零件「${base}」还是空的：在装配里编辑它（open_part 加 context）`)
-      return { summary: `零件「${base}」← ${source} · 还是空的` }
+      warnings.push(ta(`零件「${base}」还是空的：在装配里编辑它（open_part 加 context）`, `Part “${base}” is still empty: edit it in the assembly (open_part with context)`))
+      return { summary: ta(`零件「${base}」← ${source} · 还是空的`, `Part “${base}” ← ${source} · still empty`) }
     }
-    if (built.failed) warnings.push(`零件「${base}」有 ${built.failed} 个特征失败，用的是失败前的形状`)
+    if (built.failed)
+      warnings.push(ta(`零件「${base}」有 ${built.failed} 个特征失败，用的是失败前的形状`, `${many(built.failed, "", "feature")} of part “${base}” failed: it uses the shape from before the failure`))
     const before: Part[] = !prev?.body ? [] : prev.parts?.length ? prev.parts.map((p) => ({ ...p, owned: false })) : [{ name: prev.mainName ?? "主体", body: prev.body, explode: [0, 0, 0], owned: false, auto: true }]
     const start: Placement = { rotate: (f.rotate ?? []).map((r) => ({ axis: r.axis, angle: n(r.angle) })), at: (f.at ?? [0, 0, 0]).map(n) as V3 }
     const placements = f.mates?.length ? this.mate(f, built, start, before, warnings) : [start]
-    if (placements.length > MAX_COUNT) throw new InputError(`贴合一次最多放 ${MAX_COUNT} 个，选中了 ${placements.length} 个面`)
+    if (placements.length > MAX_COUNT) throw new InputError(ta(`贴合一次最多放 ${MAX_COUNT} 个，选中了 ${placements.length} 个面`, `One mate places at most ${MAX_COUNT} copies; ${placements.length} faces are selected`))
     const added: Part[] = placements.flatMap((pl, i) =>
       built.parts.map((p) => ({
         name: `${placements.length > 1 ? `${base}#${i + 1}` : base}${p.name && built.parts.length > 1 ? `/${p.name}` : ""}`,
@@ -2035,7 +2187,7 @@ export class Kernel {
     for (const a of added) {
       if (before.some((p) => p.name === a.name)) {
         added.forEach((x) => x.body.delete())
-        throw new InputError(`零件名「${a.name}」重复了：给 component 写不同的 name`)
+        throw new InputError(ta(`零件名「${a.name}」重复了：给 component 写不同的 name`, `Part name “${a.name}” is used twice: give the component a different name`))
       }
       if (bites || this.componentOnly) continue
       const box = boundsOf(a.body)
@@ -2055,13 +2207,13 @@ export class Kernel {
     const size = sizeOf(all ?? one[0].body)
     all?.delete()
     const copies = placements.length > 1 ? ` × ${placements.length}` : ""
-    const mates = f.mates?.length ? ` · 贴合 ${f.mates.length} 条` : ""
+    const mates = f.mates?.length ? ta(` · 贴合 ${f.mates.length} 条`, ` · ${many(f.mates.length, "", "mate")}`) : ""
     // Even a single component stays a named part (measure, checks and hiding go by its name).
     const body = compoundOf(parts.map((p) => p.body))
     PARTS_OF.set(body, parts.map((p) => p.body))
     const bounds = parts.map((p) => boundsOf(p.body))
     BOUNDS.set(body, [[0, 1, 2].map((k) => Math.min(...bounds.map((b) => b[0][k]))) as V3, [0, 1, 2].map((k) => Math.max(...bounds.map((b) => b[1][k]))) as V3])
-    return { body, parts, summary: `零件「${base}」← ${source} · ${size.map(fmt).join(" × ")}${copies}${mates}` }
+    return { body, parts, summary: `${ta(`零件「${base}」`, `Part “${base}”`)} ← ${source} · ${size.map(fmt).join(" × ")}${copies}${mates}` }
   }
 
   /**
@@ -2074,14 +2226,26 @@ export class Kernel {
     let fanned = false
     try {
       f.mates!.forEach((m, k) => {
-        const what = `第 ${k + 1} 条贴合`
+        const what = ta(`第 ${k + 1} 条贴合`, `Mate ${k + 1}`)
         // Coplanar faces (a lid's underside around its lip) are one plane, as on the other side.
-        const mine = distinctGeos(this.mateFaces(own, m.face, `${what}的 face（这个零件上）`))
-        if (mine.length !== 1) throw new InputError(`${what}的 face 要正好选中这个零件上的一个平面或一根轴，现在选中了 ${mine.length} 个（加 extreme、radius 或 near 缩小）`)
+        const mine = distinctGeos(this.mateFaces(own, m.face, ta(`${what}的 face（这个零件上）`, `${what}'s face (on this part)`)))
+        if (mine.length !== 1)
+          throw new InputError(
+            ta(
+              `${what}的 face 要正好选中这个零件上的一个平面或一根轴，现在选中了 ${mine.length} 个（加 extreme、radius 或 near 缩小）`,
+              `${what}'s face must select exactly one plane or one axis on this part; it selects ${mine.length} (narrow it with extreme, radius or near)`,
+            ),
+          )
         const target = before.find((p) => p.name === m.to.part)
-        if (!target) throw new InputError(`${what}：没有叫「${m.to.part}」的零件${before.length ? `（前面放好的有 ${before.map((p) => p.name).join("、")}）` : "（要贴合的零件写在这个 component 前面）"}`)
+        if (!target)
+          throw new InputError(
+            ta(
+              `${what}：没有叫「${m.to.part}」的零件${before.length ? `（前面放好的有 ${before.map((p) => p.name).join("、")}）` : "（要贴合的零件写在这个 component 前面）"}`,
+              `${what}: no part named “${m.to.part}”${before.length ? ` (placed before it: ${before.map((p) => p.name).join(", ")})` : " (write the part to mate to before this component)"}`,
+            ),
+          )
         // Faces in one plane (a rim and the posts flush with it) or holes on one axis are one target.
-        const theirs = distinctGeos(this.mateFaces(target.body, m.to.face, `${what}的 to.face（「${m.to.part}」上）`))
+        const theirs = distinctGeos(this.mateFaces(target.body, m.to.face, ta(`${what}的 to.face（「${m.to.part}」上）`, `${what}'s to.face (on “${m.to.part}”)`)))
         if (theirs.length > 1 && copies.length === 1 && !fanned) {
           // A mate onto several faces: one copy per face (a screw in each of four holes).
           copies = theirs.map(() => ({ ...copies[0] }))
@@ -2108,29 +2272,32 @@ export class Kernel {
   private applyOne(c: { T: Rigid; free: Freedom }, m: NonNullable<Extract<Feature, { op: "component" }>["mates"]>[number], mine: MateGeo, theirs: MateGeo, what: string, warnings: string[]) {
     try {
       const r = applyMate(c.T, c.free, { kind: m.type, mine, target: theirs, offset: m.offset !== undefined ? num(m.offset, this.scope) : 0, flip: m.flip })
-      if (r.miss && !warnings.some((w) => w.startsWith(what))) warnings.push(`${what}没有完全做到：${r.miss}。调整顺序（先同轴、再贴合），或者用 rotate 先转到大致方向`)
+      // Once per mate ("Mate 1" alone would also start "Mate 10 …").
+      const lead = ta(`${what}没有完全做到`, `${what} isn't fully met`)
+      if (r.miss && !warnings.some((w) => w.startsWith(lead)))
+        warnings.push(ta(`${lead}：${r.miss}。调整顺序（先同轴、再贴合），或者用 rotate 先转到大致方向`, `${lead}: ${r.miss}. Change the order (coaxial first, then contact), or first turn the part roughly into place with rotate`))
       return { T: r.T, free: r.free }
     } catch (e) {
-      throw new InputError(`${what}：${(e as Error).message}`)
+      throw new InputError(ta(`${what}：${(e as Error).message}`, `${what}: ${(e as Error).message}`))
     }
   }
 
   /** The faces a mate names on a shape, as planes or axes. */
   private mateFaces(shape: Shape3D, sel: FaceSelector, what: string): MateGeo[] {
-    if (sel.of) throw new InputError(`${what}不能写 of：装配里的零件不记特征名，用 normal、kind、extreme、near 选`)
+    if (sel.of) throw new InputError(ta(`${what}不能写 of：装配里的零件不记特征名，用 normal、kind、extreme、near 选`, `${what} can't use of: parts in an assembly don't keep feature names. Select with normal, kind, extreme, near`))
     const faces = faceInfos(shape, [])
     try {
       let got: FaceInfo[]
       try {
         got = selectFaces(sel, faces, this.scope)
       } catch (e) {
-        throw new InputError(`${what}：${(e as Error).message}`)
+        throw new InputError(ta(`${what}：${(e as Error).message}`, `${what}: ${(e as Error).message}`))
       }
       return got.map((x) => {
         if (x.kind === "plane" && x.normal) return { kind: "plane" as const, n: x.normal, p: x.center }
         const ax = x.kind === "cylinder" ? cylinderAxis(x) : x.kind === "cone" ? coneAxis(x) : null
         if (ax) return { kind: "axis" as const, a: ax.p, d: ax.d }
-        throw new InputError(`${what}选中的${describeFace(x).split(" 来自")[0]}既不是平面，也不是圆柱面或圆锥面`)
+        throw new InputError(ta(`${what}选中的${faceShape(x)}既不是平面，也不是圆柱面或圆锥面`, `${what} selects ${faceShape(x)}, which is neither a plane nor a cylinder or cone face`))
       })
     } finally {
       disposeInfos(faces)
@@ -2142,11 +2309,11 @@ export class Kernel {
    * sketch with it gives the same depth everywhere on the face (text on a cap, a groove round a shaft).
    */
   private band(body: Shape3D, origins: string[], sel: FaceSelector, depth: number, mode: "add" | "cut"): { shape: Shape3D; what: string; axis?: { p: V3; d: V3 } } {
-    if (!(depth > 0)) throw new InputError("深度（distance）必须大于 0")
+    if (!(depth > 0)) throw new InputError(ta("深度（distance）必须大于 0", "The depth (distance) must be greater than 0"))
     const faces = faceInfos(body, origins)
     try {
       const got = selectFaces(sel, faces, this.scope)
-      if (got.length !== 1) throw new InputError(`onto 要正好选中一个面，现在选中了 ${got.length} 个`)
+      if (got.length !== 1) throw new InputError(ta(`onto 要正好选中一个面，现在选中了 ${got.length} 个`, `onto must select exactly one face; it selects ${got.length}`))
       const f = got[0]
       const big = 2 * this.bigLength(body)
       if (f.kind === "plane" && f.normal) {
@@ -2157,19 +2324,19 @@ export class Kernel {
         const pl = new Plane(f.center, xd, dir)
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return { shape: (drawRectangle(2 * big, 2 * big).sketchOnPlane(pl) as any).extrude(depth) as Shape3D, what: "平面" }
+          return { shape: (drawRectangle(2 * big, 2 * big).sketchOnPlane(pl) as any).extrude(depth) as Shape3D, what: ta("平面", "plane") }
         } finally {
           pl.delete()
         }
       }
       if (f.kind === "cylinder" && f.radius !== undefined) {
         const ax = cylinderAxis(f)
-        if (!ax) throw new InputError("读不出这个圆柱面的轴线")
+        if (!ax) throw new InputError(noAxis())
         // Convex (a shaft, a cap) or concave (a bore): which way is into the material.
         const convex = isConvexCylinder(f, ax)
         const r = f.radius
         const [inner, outer] = (mode === "cut") === convex ? [r - depth, r] : [r, r + depth]
-        if (inner <= 1e-6) throw new InputError(`深度 ${fmt(depth)} 超过了圆柱面的半径 R${fmt(r)}`)
+        if (inner <= 1e-6) throw new InputError(ta(`深度 ${fmt(depth)} 超过了圆柱面的半径 R${fmt(r)}`, `Depth ${fmt(depth)} is more than the cylinder face's radius R${fmt(r)}`))
         const base = add(ax.p, mul(ax.d, -big))
         const cyl = (rad: number) => makeCylinder(rad, 2 * big, base, ax.d) as unknown as Shape3D
         const o = cyl(outer)
@@ -2177,9 +2344,9 @@ export class Kernel {
         const shape = o.cut(i)
         o.delete()
         i.delete()
-        return { shape, what: `圆柱面（R${fmt(r)}）`, axis: { p: ax.p, d: ax.d } }
+        return { shape, what: ta(`圆柱面（R${fmt(r)}）`, `cylinder face (R${fmt(r)})`), axis: { p: ax.p, d: ax.d } }
       }
-      throw new InputError("onto 只支持平面和圆柱面")
+      throw new InputError(ta("onto 只支持平面和圆柱面", "onto supports only planes and cylinder faces"))
     } finally {
       disposeInfos(faces)
     }
@@ -2191,12 +2358,18 @@ export class Kernel {
    */
   private newPart(f: Feature, prev: Step, warnings: string[]): ApplyOut {
     const name = f.part!
-    if ("until" in f && f.until) throw new InputError(`新建零件「${name}」时不能用 until：新零件不和别的料合并，没有「碰到为止」。写 distance`)
+    if ("until" in f && f.until)
+      throw new InputError(
+        ta(
+          `新建零件「${name}」时不能用 until：新零件不和别的料合并，没有「碰到为止」。写 distance`,
+          `A new part (“${name}”) can't use until: a new part doesn't merge with other material, so there is no “until it touches”. Write distance`,
+        ),
+      )
     const alone: Step = { ...prev, body: null, origins: [], parts: undefined, partOrigins: undefined }
     const w: string[] = []
     const out = this.apply(f, alone, w)
-    warnings.push(...w.filter((x) => !/不相连的实体/.test(x)))
-    if (!out.body) throw new InputError("这一步没有生成实体")
+    warnings.push(...w.filter((x) => !APART.test(x)))
+    if (!out.body) throw new InputError(ta("这一步没有生成实体", "This step made no solid"))
     const before: Part[] =
       prev.parts && prev.parts.length > 1
         ? prev.parts.map((p) => ({ ...p, owned: false }))
@@ -2204,15 +2377,15 @@ export class Kernel {
     for (const p of before) {
       try {
         const r = relation(out.body, p.body, true)
-        if (r.overlap > 1e-6) warnings.push(`新零件「${name}」和「${p.name}」重叠 ${fmt(r.overlap)} mm³`)
+        if (r.overlap > 1e-6) warnings.push(ta(`新零件「${name}」和「${p.name}」重叠 ${fmt(r.overlap)} mm³`, `New part “${name}” overlaps “${p.name}” by ${fmt(r.overlap)} mm³`))
       } catch (e) {
         if (!(e instanceof TooComplex)) throw e
-        warnings.push(`新零件「${name}」和「${p.name}」太复杂，没有查重叠：${e.message}`)
+        warnings.push(ta(`新零件「${name}」和「${p.name}」太复杂，没有查重叠：${e.message}`, `New part “${name}” and “${p.name}” are too complex; overlap not checked: ${e.message}`))
       }
     }
     const parts: Part[] = [...before, { name, body: out.body, explode: [0, 0, 0], owned: true, auto: true }]
-    const named = prev.parts && prev.parts.length > 1 ? "" : prev.mainName ? "" : "；原来的实体叫作「主体」"
-    return { ...out, body: compoundOf(parts.map((p) => p.body)), parts, summary: `${out.summary} · 新零件「${name}」${named}` }
+    const named = prev.parts && prev.parts.length > 1 ? "" : prev.mainName ? "" : ta("；原来的实体叫作「主体」", "; the original solid is named “主体”")
+    return { ...out, body: compoundOf(parts.map((p) => p.body)), parts, summary: `${out.summary} · ${ta(`新零件「${name}」`, `new part “${name}”`)}${named}` }
   }
 
   /**
@@ -2221,11 +2394,11 @@ export class Kernel {
    * and shell / draft / whole-body mirror must say which part.
    */
   private onParts(f: Feature, prev: Step, parts: Part[], warnings: string[]): ApplyOut {
-    const names = parts.map((p) => p.name).join("、")
+    const names = listed(parts.map((p) => p.name))
     const named = f.part ? parts.filter((p) => p.name === f.part) : parts
-    if (f.part && !named.length) throw new InputError(`没有叫「${f.part}」的零件：现在有 ${names}`)
+    if (f.part && !named.length) throw new InputError(ta(`没有叫「${f.part}」的零件：现在有 ${names}`, `No part named “${f.part}”: there are ${names}`))
     if (!f.part && (f.op === "shell" || f.op === "draft" || (f.op === "mirror" && !f.features?.length)))
-      throw new InputError(`拆件之后${OP_NAMES[f.op]}要写 part，指定作用在哪个零件上（${names}）`)
+      throw new InputError(ta(`拆件之后${OP_NAMES[f.op]}要写 part，指定作用在哪个零件上（${names}）`, `After a split, ${f.op} needs part to say which part it acts on (${names})`))
     const runs: { p: Part; out: ApplyOut; w: string[] }[] = []
     let firstError: unknown = null
     for (const p of named) {
@@ -2247,11 +2420,15 @@ export class Kernel {
       used = changed.filter((r) => countOf(r.out.body!, "solid") === countOf(r.p.body, "solid"))
       if (used.length !== 1) {
         for (const r of runs) if (r.out.body && r.out.body !== r.p.body) r.out.body.delete()
-        throw new InputError(used.length ? `加的料碰到了 ${used.map((r) => r.p.name).join("、")}：写 part 指定加在哪个零件上` : `加的料没有接上任何零件：写 part 指定加在哪个零件上（${names}）`)
+        throw new InputError(
+          used.length
+            ? ta(`加的料碰到了 ${used.map((r) => r.p.name).join("、")}：写 part 指定加在哪个零件上`, `The added material touches ${used.map((r) => r.p.name).join(", ")}: write part to say which part it goes on`)
+            : ta(`加的料没有接上任何零件：写 part 指定加在哪个零件上（${names}）`, `The added material doesn't join any part: write part to say which part it goes on (${names})`),
+        )
       }
     }
-    if (!used.length) warnings.push("这一步没有改到任何零件")
-    for (const r of used) warnings.push(...r.w.filter((w) => !/没有碰到实体|不相连的实体/.test(w)))
+    if (!used.length) warnings.push(ta("这一步没有改到任何零件", "This step didn't change any part"))
+    for (const r of used) warnings.push(...r.w.filter((w) => !MISSED.test(w) && !APART.test(w)))
     // Outputs not used, and the tools of all but the first run, are freed.
     for (const r of runs) if (!used.includes(r) && r.out.body && r.out.body !== r.p.body) r.out.body.delete()
     runs.slice(1).forEach((r) => r.out.tools?.forEach((t) => t.tool.delete()))
@@ -2261,14 +2438,14 @@ export class Kernel {
     })
     const body = compoundOf(next.map((p) => p.body))
     const first = (used[0] ?? runs[0]).out
-    return { ...first, body, parts: next, summary: `${first.summary} · ${used.length ? used.map((r) => r.p.name).join("、") : "没有改到零件"}` }
+    return { ...first, body, parts: next, summary: `${first.summary} · ${used.length ? listed(used.map((r) => r.p.name)) : ta("没有改到零件", "no part changed")}` }
   }
 
   private copyTools(body: Shape3D, sources: Tool[], moves: ((s: Shape3D) => Shape3D)[], summary: string, warnings: string[]) {
     // A pattern of a pattern (or of a many-hole feature) multiplies: count the bodies this step makes.
     const made = sources.reduce((n, s) => n + countOf(s.tool, "solid"), 0) * moves.length
-    if (made > MAX_COUNT) throw new InputError(`这一步要复制出 ${made} 个实体，最多 ${MAX_COUNT} 个`)
-    if (sources.some((s) => s.mode === "intersect")) throw new InputError("求交的特征不能阵列或镜像")
+    if (made > MAX_COUNT) throw new InputError(ta(`这一步要复制出 ${made} 个实体，最多 ${MAX_COUNT} 个`, `This step would copy out ${made} solids; at most ${MAX_COUNT}`))
+    if (sources.some((s) => s.mode === "intersect")) throw new InputError(ta("求交的特征不能阵列或镜像", "An intersect feature can't be patterned or mirrored"))
     let cur = body
     const tools: Tool[] = []
     for (const { tool, mode } of sources) {
@@ -2388,7 +2565,7 @@ function buildComponent(src: ComponentSource): Built {
       throw e
     }
   } else if (src.bytes !== undefined) {
-    if (!src.bytes) throw new InputError(`读不到「${src.file}」`)
+    if (!src.bytes) throw new InputError(ta(`读不到「${src.file}」`, `Can't read “${src.file}”`))
     const shape = readStep(src.bytes) as Shape3D
     // Its own colours, when it has any (a vendor's board model): shown until a colour is set on it.
     let faceColors: FaceColors | undefined
@@ -2409,7 +2586,7 @@ function buildComponent(src: ComponentSource): Built {
       if (!last?.body && !(src.tree?.features.length ?? 0)) return { parts: [], failed: 0 }
       if (!last?.body) {
         const err = rep.paramError ?? rep.features.find((x) => x.state === "error")?.message
-        throw new InputError(`「${src.file}」一步都没有建成${err ? `：${err}` : ""}`)
+        throw new InputError(ta(`「${src.file}」一步都没有建成${err ? `：${err}` : ""}`, `Not a single step of “${src.file}” built${err ? `: ${err}` : ""}`))
       }
       const failed = rep.features.filter((x) => x.state === "error").length
       const parts = last.parts && last.parts.length > 1 ? last.parts.map((p) => ({ name: p.name, shape: p.body.clone(), trail: p.trail, faceColors: p.faceColors })) : [{ name: null, shape: last.body.clone(), trail: last.parts?.[0]?.trail, faceColors: last.parts?.[0]?.faceColors }]
@@ -2590,7 +2767,7 @@ function partOf(f: Feature, tree: Tree): string | undefined {
 
 /** A sketch's closed regions, for features that need an area. */
 function regionOf(sk: NonNullable<Step["sketch"]>, id: string): Drawing {
-  if (!sk.drawing) throw new InputError(`草图「${id}」只有开放的线：开放的线只能做薄壁拉伸（thin）或筋（rib）`)
+  if (!sk.drawing) throw new InputError(ta(`草图「${id}」只有开放的线：开放的线只能做薄壁拉伸（thin）或筋（rib）`, `Sketch “${id}” has only open lines: open lines work only for a thin extrude (thin) or a rib (rib)`))
   return sk.drawing
 }
 
@@ -2656,21 +2833,21 @@ function centerOf(tools: Tool[]): V3 | null {
 
 function applyTool(body: Shape3D | null, tool: Shape3D, mode: "add" | "cut" | "intersect", warnings: string[], quiet = false): Shape3D {
   if (mode === "intersect") {
-    if (!body) throw new InputError("还没有实体，不能求交")
+    if (!body) throw new InputError(ta("还没有实体，不能求交", "No solid yet: can't intersect"))
     const next = body.intersect(tool)
     const v = measureShapeVolumeProperties(next).volume
     if (v < 1e-9) {
       next.delete()
-      throw new InputError("求交后什么都没剩下：工具体和实体不重叠")
+      throw new InputError(ta("求交后什么都没剩下：工具体和实体不重叠", "Nothing is left after the intersect: the tool body and the solid don't overlap"))
     }
     return next
   }
   if (mode === "cut") {
-    if (!body) throw new InputError("还没有实体，不能切除")
+    if (!body) throw new InputError(ta("还没有实体，不能切除", "No solid yet: can't cut"))
     const before = quiet ? 0 : volumeOf(body)
     const next = body.cut(tool)
     const after = quiet ? 0 : volumeOf(next)
-    if (!quiet && Math.abs(before - after) < 1e-6 * Math.max(1, before)) warnings.push("切除没有碰到实体，模型没有变化")
+    if (!quiet && Math.abs(before - after) < 1e-6 * Math.max(1, before)) warnings.push(ta("切除没有碰到实体，模型没有变化", "The cut doesn't touch the solid: the model didn't change"))
     return next
   }
   // Booleans already unify same-domain faces; the first solid needs it too,
@@ -2680,7 +2857,7 @@ function applyTool(body: Shape3D | null, tool: Shape3D, mode: "add" | "cut" | "i
   if (body && !quiet) {
     const before = volumeOf(body)
     const after = volumeOf(next)
-    if (Math.abs(after - before) < 1e-6 * Math.max(1, before)) warnings.push("加的料完全在原实体里面，模型没有变化")
+    if (Math.abs(after - before) < 1e-6 * Math.max(1, before)) warnings.push(ta("加的料完全在原实体里面，模型没有变化", "The added material is entirely inside the solid: the model didn't change"))
   }
   const solids = countOf(next, "solid")
   if (body && !quiet && solids > solidsBefore) {
@@ -2688,18 +2865,21 @@ function applyTool(body: Shape3D | null, tool: Shape3D, mode: "add" | "cut" | "i
     const c = closest(tool, body)
     warnings.push(
       c && c.d > TOUCH
-        ? `新加的料离已有实体 ${fmt(c.d)} mm，没接上：现在是 ${solids} 个不相连的实体`
-        : `新加的料只碰到已有实体的边或点，没有共用的面：合并后还是 ${solids} 个不相连的实体`,
+        ? ta(`新加的料离已有实体 ${fmt(c.d)} mm，没接上：现在是 ${solids} 个不相连的实体`, `The new material is ${fmt(c.d)} mm from the existing solid and doesn't join it: there are now ${solids} separate solids`)
+        : ta(
+            `新加的料只碰到已有实体的边或点，没有共用的面：合并后还是 ${solids} 个不相连的实体`,
+            `The new material touches the existing solid only along an edge or at a point, with no shared face: after merging there are still ${solids} separate solids`,
+          ),
     )
-  } else if (solids > 1) warnings.push(`现在是 ${solids} 个不相连的实体`)
+  } else if (solids > 1) warnings.push(ta(`现在是 ${solids} 个不相连的实体`, `There are now ${solids} separate solids`))
   return next
 }
 
 /** Counts may be expressions; they must land on a whole number, and not one that would freeze the tab. */
 function count(v: number, min: number, what: string): number {
   const r = Math.round(v)
-  if (Math.abs(v - r) > 1e-6 || r < min) throw new InputError(`${what}要是不小于 ${min} 的整数，现在是 ${fmt(v)}`)
-  if (r > MAX_COUNT) throw new InputError(`${what}最多 ${MAX_COUNT}，现在是 ${r}`)
+  if (Math.abs(v - r) > 1e-6 || r < min) throw new InputError(ta(`${what}要是不小于 ${min} 的整数，现在是 ${fmt(v)}`, `The ${what} must be a whole number no less than ${min}; it is ${fmt(v)}`))
+  if (r > MAX_COUNT) throw new InputError(ta(`${what}最多 ${MAX_COUNT}，现在是 ${r}`, `The ${what} can be at most ${MAX_COUNT}; it is ${r}`))
   return r
 }
 
@@ -2722,7 +2902,7 @@ function threeMF(parts: { name: string; body: Shape3D; look?: Appearance }[]): B
     try {
       m = meshShape(p.body, 0.01, 0.1)
     } catch (e) {
-      throw new Error(`「${p.name}」没能三角化成 3MF（${describeError(e).message}）；可以先导出 STEP`)
+      throw new Error(ta(`「${p.name}」没能三角化成 3MF（${describeError(e).message}）；可以先导出 STEP`, `Couldn't triangulate “${p.name}” for 3MF (${describeError(e).message}); you can export STEP for now`))
     }
     const v: string[] = []
     for (let k = 0; k < m.vertices.length; k += 3) v.push(`<vertex x="${num(m.vertices[k])}" y="${num(m.vertices[k + 1])}" z="${num(m.vertices[k + 2])}"/>`)
@@ -2784,7 +2964,7 @@ function stepWithLooks(parts: { name: string; body: Shape3D; look?: Appearance }
     oc.Interface_Static.SetIVal("write.precision.mode", 0)
     oc.Interface_Static.SetIVal("write.step.assembly", 2)
     oc.Interface_Static.SetIVal("write.step.schema", 5)
-    if (!writer.Perform(doc, file, keep(new oc.Message_ProgressRange()))) throw new Error("STEP 文件没能写出来")
+    if (!writer.Perform(doc, file, keep(new oc.Message_ProgressRange()))) throw new Error(ta("STEP 文件没能写出来", "Couldn't write the STEP file"))
     return oc.FS.readFile(file) as Uint8Array
   } finally {
     try {
@@ -2806,7 +2986,7 @@ function stlOf(body: Shape3D, name: string): Blob {
   try {
     return body.blobSTL({ binary: true, tolerance: 0.01, angularTolerance: 0.1 }) as Blob
   } catch (e) {
-    throw new Error(`「${name}」没能三角化成 STL（${describeError(e).message}）；可以先导出 STEP`)
+    throw new Error(ta(`「${name}」没能三角化成 STL（${describeError(e).message}）；可以先导出 STEP`, `Couldn't triangulate “${name}” for STL (${describeError(e).message}); you can export STEP for now`))
   }
 }
 
@@ -2908,6 +3088,7 @@ function stats(body: Shape3D): BodyStats {
 }
 
 function shapeName(s: SketchShape) {
+  if (agentLang() === "en") return shapeNameEn(s)
   const tag = "cut" in s && s.cut ? "（挖）" : ""
   switch (s.type) {
     case "rect":
@@ -2924,6 +3105,26 @@ function shapeName(s: SketchShape) {
       return `开放的线 ${s.points.length} 点`
     case "text":
       return `文字「${s.text.replace(/\n/g, " ")}」${tag}`
+  }
+}
+
+function shapeNameEn(s: SketchShape) {
+  const tag = "cut" in s && s.cut ? " (cut)" : ""
+  switch (s.type) {
+    case "rect":
+      return `Rectangle ${s.w}×${s.h}${tag}`
+    case "circle":
+      return `Circle ⌀${s.d}${tag}`
+    case "polygon":
+      return `${s.sides}-sided polygon${tag}`
+    case "slot":
+      return `Slot ${s.length}×${s.width}${tag}`
+    case "polyline":
+      return `Outline of ${s.points.length} points${tag}`
+    case "path":
+      return `Open line of ${s.points.length} points`
+    case "text":
+      return `Text “${s.text.replace(/\n/g, " ")}”${tag}`
   }
 }
 
@@ -2953,7 +3154,7 @@ function penTo(pen: ReturnType<typeof draw>, p: PathPoint): ReturnType<typeof dr
   else if (p.spline) for (const q of p.spline) pen = pen.smoothSplineTo(q)
   else pen = pen.lineTo(p.to)
   if (p.r === undefined) return pen
-  if (!(p.r > 0)) throw new InputError("拐角圆角半径必须大于 0")
+  if (!(p.r > 0)) throw new InputError(ta("拐角圆角半径必须大于 0", "The corner radius must be greater than 0"))
   return pen.customCorner(p.r)
 }
 
@@ -2974,21 +3175,21 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
         const w = n(s.w)
         const h = n(s.h)
         const r = s.r !== undefined ? n(s.r) : 0
-        if (!(w > 0 && h > 0)) throw new InputError("矩形的宽和高必须大于 0")
-        if (r < 0 || r >= Math.min(w, h) / 2) throw new InputError("矩形圆角半径要小于短边的一半")
+        if (!(w > 0 && h > 0)) throw new InputError(ta("矩形的宽和高必须大于 0", "The rectangle's width and height must be greater than 0"))
+        if (r < 0 || r >= Math.min(w, h) / 2) throw new InputError(ta("矩形圆角半径要小于短边的一半", "The rectangle's corner radius must be less than half its shorter side"))
         d = drawRoundedRectangle(w, h, r).translate(c[0], c[1])
         break
       }
       case "circle": {
         const dd = n(s.d)
-        if (!(dd > 0)) throw new InputError("圆的直径必须大于 0")
+        if (!(dd > 0)) throw new InputError(ta("圆的直径必须大于 0", "The circle's diameter must be greater than 0"))
         d = drawCircle(dd / 2).translate(c[0], c[1])
         break
       }
       case "polygon": {
         const dd = n(s.d)
-        if (!(dd > 0)) throw new InputError("多边形的外接圆直径必须大于 0")
-        d = drawPolysides(dd / 2, count(n(s.sides), 3, "边数"))
+        if (!(dd > 0)) throw new InputError(ta("多边形的外接圆直径必须大于 0", "The polygon's circumscribed diameter must be greater than 0"))
+        d = drawPolysides(dd / 2, count(n(s.sides), 3, ta("边数", "number of sides")))
         if (s.rotate !== undefined) d = d.rotate(n(s.rotate), [0, 0])
         d = d.translate(c[0], c[1])
         break
@@ -2996,7 +3197,7 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
       case "slot": {
         const L = n(s.length)
         const W = n(s.width)
-        if (!(W > 0 && L > W)) throw new InputError("长圆孔的总长必须大于宽")
+        if (!(W > 0 && L > W)) throw new InputError(ta("长圆孔的总长必须大于宽", "The slot's overall length must be greater than its width"))
         const a = (L - W) / 2
         d = draw([-a, -W / 2])
           .lineTo([a, -W / 2])
@@ -3010,7 +3211,7 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
       }
       case "text": {
         const size = n(s.size)
-        if (!(size > 0)) throw new InputError("字号必须大于 0")
+        if (!(size > 0)) throw new InputError(ta("字号必须大于 0", "The text size must be greater than 0"))
         d = textDrawing(normalizeText(s.text), size)
         if (s.angle !== undefined) d = d.rotate(n(s.angle), [0, 0])
         if (mirrorText) d = d.mirror([0, 1], [0, 0], "plane")
@@ -3022,13 +3223,13 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
         const first = pts[0].to
         const last = pts[pts.length - 1]
         if (!last.via && !last.spline && Math.hypot(last.to[0] - first[0], last.to[1] - first[1]) < 1e-9) pts.pop()
-        if (pts.length < 3 && !pts.some((p) => p.via || p.spline)) throw new InputError("轮廓至少要 3 个点才能围成面")
+        if (pts.length < 3 && !pts.some((p) => p.via || p.spline)) throw new InputError(ta("轮廓至少要 3 个点才能围成面", "An outline needs at least 3 points to enclose a region"))
         let pen = draw(first)
         for (const p of pts.slice(1)) pen = penTo(pen, p)
         try {
           d = pen.close()
         } catch {
-          throw new InputError("轮廓画不出来：拐角圆角太大（大于相邻的边），或者样条自己交叉了")
+          throw new InputError(ta("轮廓画不出来：拐角圆角太大（大于相邻的边），或者样条自己交叉了", "Can't draw the outline: a corner radius is too big (bigger than the neighboring edges), or a spline crosses itself"))
         }
         break
       }
@@ -3037,7 +3238,7 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
     // text) stay separate regions. replicad's 2D boolean can fail on glyph outlines.
     const hit = parts.filter((p) => overlaps(p.boundingBox.bounds, d.boundingBox.bounds))
     if (s.cut) {
-      if (!parts.length) throw new InputError("「挖掉」的图形前面要先有图形")
+      if (!parts.length) throw new InputError(ta("「挖掉」的图形前面要先有图形", "A shape that cuts (cut) needs a shape before it"))
       for (const p of hit) parts[parts.indexOf(p)] = p.cut(d)
     } else {
       const merged = hit.reduce((acc, p) => acc.fuse(p), d)
@@ -3082,7 +3283,7 @@ export function mergeOverlaps(shape: Shape3D): Shape3D {
     fuse.SetArguments(args)
     fuse.SetTools(tools)
     fuse.Build(progress)
-    if (!fuse.IsDone()) throw new Error("重叠的笔画没能合并")
+    if (!fuse.IsDone()) throw new Error(ta("重叠的笔画没能合并", "Couldn't merge the overlapping strokes"))
     return cast(fuse.Shape() as never) as Shape3D
   } finally {
     for (const x of [fuse, progress, args, tools, ...solids, shape]) x.delete()
@@ -3108,15 +3309,15 @@ type OCFuse = {
 
 /** A hole as a revolved half-section pointing down -Z from the origin. */
 function holeTool(r: number, depth: number, cbore?: { r: number; depth: number }, csink?: { r: number; angle: number }): Shape3D {
-  if (!(depth > 0)) throw new InputError("孔深必须大于 0")
+  if (!(depth > 0)) throw new InputError(ta("孔深必须大于 0", "The hole depth must be greater than 0"))
   const pts: [number, number][] = [[0, 0]]
   if (cbore) {
-    if (!(cbore.r > r && cbore.depth > 0 && cbore.depth < depth)) throw new InputError("沉孔直径要大于孔径，沉孔深度要小于孔深")
+    if (!(cbore.r > r && cbore.depth > 0 && cbore.depth < depth)) throw new InputError(ta("沉孔直径要大于孔径，沉孔深度要小于孔深", "The counterbore diameter must be larger than the hole diameter, and the counterbore depth less than the hole depth"))
     pts.push([cbore.r, 0], [cbore.r, -cbore.depth], [r, -cbore.depth])
   } else if (csink) {
-    if (!(csink.r > r)) throw new InputError("埋头孔直径要大于孔径")
+    if (!(csink.r > r)) throw new InputError(ta("埋头孔直径要大于孔径", "The countersink diameter must be larger than the hole diameter"))
     const h = (csink.r - r) / Math.tan(((csink.angle / 2) * Math.PI) / 180)
-    if (!(h < depth)) throw new InputError("埋头锥比孔还深")
+    if (!(h < depth)) throw new InputError(ta("埋头锥比孔还深", "The countersink cone is deeper than the hole"))
     pts.push([csink.r, 0], [r, -h])
   } else pts.push([r, 0])
   pts.push([r, -depth], [0, -depth])
@@ -3160,12 +3361,12 @@ function readStep(bytes: Uint8Array): AnyShape {
   oc.FS.writeFile(name, bytes)
   const reader = new oc.STEPControl_Reader()
   try {
-    if (!reader.ReadFile(name)) throw new InputError("不是能读的 STEP 文件")
+    if (!reader.ReadFile(name)) throw new InputError(ta("不是能读的 STEP 文件", "Not a readable STEP file"))
     reader.TransferRoots()
     const raw = reader.OneShape()
     if (raw.IsNull()) {
       raw.delete()
-      throw new InputError("STEP 文件里没有形体")
+      throw new InputError(ta("STEP 文件里没有形体", "The STEP file has no shapes"))
     }
     return cast(raw)
   } finally {

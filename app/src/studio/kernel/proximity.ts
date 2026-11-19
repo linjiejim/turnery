@@ -2,6 +2,7 @@
 // two shapes (and where), and narrow spots inside one solid. Distances and
 // overlaps between whole parts, solid by solid, are in pieces.ts.
 import { getOC, type AnyShape } from "replicad"
+import { ta } from "../../lib/agent-lang"
 
 type V3 = [number, number, number]
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,8 +36,8 @@ export function closest(a: AnyShape, b: AnyShape): { d: number; segment: [V3, V3
 
 /** 「接触」「相交 12.4 mm³」「0.52 mm」 */
 export function relationText(r: { d: number; overlap: number }) {
-  if (r.overlap > 1e-6) return `相交 ${fmt(r.overlap)} mm³`
-  if (r.d <= TOUCH) return "接触（距离 0）"
+  if (r.overlap > 1e-6) return ta(`相交 ${fmt(r.overlap)} mm³`, `intersecting ${fmt(r.overlap)} mm³`)
+  if (r.d <= TOUCH) return ta("接触（距离 0）", "touching (distance 0)")
   return `${fmt(r.d)} mm`
 }
 

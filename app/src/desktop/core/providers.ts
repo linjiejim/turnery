@@ -5,6 +5,7 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import { createDeepSeek } from "@ai-sdk/deepseek"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import type { LanguageModel } from "ai"
+import { ta } from "../../lib/agent-lang"
 
 export type Preset = {
   id: string
@@ -26,12 +27,13 @@ export const PRESETS: Preset[] = [
   { id: "anthropic", name: "Anthropic", kind: "anthropic", model: "claude-sonnet-5-5", vision: true },
   { id: "openai", name: "OpenAI", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", model: "", vision: true },
   { id: "gemini", name: "Google Gemini", kind: "openai-compatible", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", model: "", vision: true },
-  { id: "moonshot", name: "Moonshot（Kimi）", kind: "openai-compatible", baseURL: "https://api.moonshot.cn/v1", model: "", vision: false },
-  { id: "zhipu", name: "智谱", kind: "openai-compatible", baseURL: "https://open.bigmodel.cn/api/paas/v4", model: "", vision: false },
-  { id: "dashscope", name: "通义（DashScope）", kind: "openai-compatible", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "", vision: false },
+  // Names with words in them are read when shown (the language can change while the app runs).
+  { id: "moonshot", get name() { return ta("Moonshot（Kimi）", "Moonshot (Kimi)") }, kind: "openai-compatible", baseURL: "https://api.moonshot.cn/v1", model: "", vision: false },
+  { id: "zhipu", get name() { return ta("智谱", "Zhipu") }, kind: "openai-compatible", baseURL: "https://open.bigmodel.cn/api/paas/v4", model: "", vision: false },
+  { id: "dashscope", get name() { return ta("通义（DashScope）", "Qwen (DashScope)") }, kind: "openai-compatible", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "", vision: false },
   { id: "siliconflow", name: "SiliconFlow", kind: "openai-compatible", baseURL: "https://api.siliconflow.cn/v1", model: "", vision: false },
-  { id: "ollama", name: "Ollama（本机）", kind: "openai-compatible", baseURL: "http://localhost:11434/v1", model: "", vision: false, keyless: true },
-  { id: "custom", name: "自定义（OpenAI 兼容）", kind: "openai-compatible", model: "", vision: false },
+  { id: "ollama", get name() { return ta("Ollama（本机）", "Ollama (this computer)") }, kind: "openai-compatible", baseURL: "http://localhost:11434/v1", model: "", vision: false, keyless: true },
+  { id: "custom", get name() { return ta("自定义（OpenAI 兼容）", "Custom (OpenAI-compatible)") }, kind: "openai-compatible", model: "", vision: false },
 ]
 
 export const presetOf = (id: string) => PRESETS.find((p) => p.id === id) ?? null
@@ -47,11 +49,11 @@ export type ResolvedModel = { model: LanguageModel; vision: boolean; label: stri
 /** The model to call, or a sentence saying what is missing. `fetch` lets the app go through the system proxy. */
 export function languageModel(config: ModelConfig, apiKey: string | null, fetch?: typeof globalThis.fetch): ResolvedModel | { error: string } {
   const preset = presetOf(config.preset)
-  if (!preset) return { error: `没有这个预设：${config.preset}（可选：${PRESETS.map((p) => p.id).join("、")}）` }
+  if (!preset) return { error: ta(`没有这个预设：${config.preset}（可选：${PRESETS.map((p) => p.id).join("、")}）`, `No such preset: ${config.preset} (choose from: ${PRESETS.map((p) => p.id).join(", ")})`) }
   const name = (config.model || preset.model).trim()
-  if (!name) return { error: `${preset.name} 还没有填模型名` }
+  if (!name) return { error: ta(`${preset.name} 还没有填模型名`, `${preset.name} has no model name yet`) }
   const baseURL = (config.baseURL || preset.baseURL || "").trim() || undefined
-  if (!preset.keyless && !apiKey) return { error: `${preset.name} 还没有 key：设环境变量 ${keyEnvOf(preset.id)}，或者在模型设置里填` }
+  if (!preset.keyless && !apiKey) return { error: ta(`${preset.name} 还没有 key：设环境变量 ${keyEnvOf(preset.id)}，或者在模型设置里填`, `${preset.name} has no key yet: set the environment variable ${keyEnvOf(preset.id)}, or enter it in the model settings`) }
   const vision = config.vision ?? (name === preset.model ? preset.vision : false)
   const label = `${preset.name} · ${name}`
   if (preset.kind === "anthropic") return { model: createAnthropic({ apiKey: apiKey!, baseURL, fetch })(name), vision, label }
@@ -60,6 +62,6 @@ export function languageModel(config: ModelConfig, apiKey: string | null, fetch?
     const providerOptions = { deepseek: { thinking: { type: "enabled" }, reasoningEffort: "low" } as never }
     return { model: createDeepSeek({ apiKey: apiKey!, baseURL, fetch })(name), vision, label, providerOptions }
   }
-  if (!baseURL) return { error: `${preset.name} 还没有填地址（OpenAI 兼容的 /v1 地址）` }
+  if (!baseURL) return { error: ta(`${preset.name} 还没有填地址（OpenAI 兼容的 /v1 地址）`, `${preset.name} has no address yet (an OpenAI-compatible /v1 address)`) }
   return { model: createOpenAICompatible({ name: preset.id, baseURL, apiKey: apiKey ?? undefined, fetch })(name), vision, label }
 }

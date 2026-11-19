@@ -2,7 +2,7 @@ import * as THREE from "three"
 import { acquireSnapshotter, releaseSnapshotter } from "@/three/snapshot"
 import { VIEW_DIRS, disposeObject, type ViewName } from "@/three/viewer"
 import type { DisplayData } from "./kernel/build"
-import { LOOK_PADDING, LOOK_SIZE, VIEW_LABEL, type LookSection, type LookShot } from "./look-plan"
+import { LOOK_PADDING, LOOK_SIZE, viewLabel, type LookSection, type LookShot } from "./look-plan"
 import { modelObject } from "./scene"
 import { sectionPlane } from "./section"
 
@@ -20,7 +20,7 @@ export type ShotOptions = { highlight?: string; pins?: Pin[]; section?: LookSect
 export function renderViews(d: DisplayData, views: string[], highlight?: string, extra: { pins?: Pin[]; dir?: THREE.Vector3 } = {}): string[] {
   const shots: LookShot[] = views.map((v) => {
     const dir = v === "current" && extra.dir ? extra.dir : VIEW_DIRS[(v as ViewName) in VIEW_DIRS ? (v as ViewName) : "iso"]
-    return { label: VIEW_LABEL[v] ?? v, dir: [dir.x, dir.y, dir.z] }
+    return { label: viewLabel(v) ?? v, dir: [dir.x, dir.y, dir.z] }
   })
   return renderShots(d, shots, { highlight, pins: extra.pins })
 }

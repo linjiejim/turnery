@@ -40,8 +40,8 @@ const plate = (L: number, W: number, T: number): Tree => ({
   ],
 })
 
-/** Centres of the faces an `inspect faces` listing shows. */
-const centres = (listing: string) => [...listing.matchAll(/中心\(([^)]+)\)/g)].map((m) => m[1].split(",").map(Number))
+/** Centres of the faces an `inspect faces` listing shows (kernel/select.ts, either language). */
+const centres = (listing: string) => [...listing.matchAll(/(?:中心|center)\(([^)]+)\)/g)].map((m) => m[1].split(",").map(Number))
 
 const PI = Math.PI
 
@@ -59,7 +59,7 @@ export const EVALS: EvalCase[] = [
     id: "anno-hole",
     prompt: "按标注修改。",
     start: plate(100, 60, 10),
-    notes: [{ kind: "face", match: (p) => p.what.includes("朝上"), point: [25, 10, 10], note: "在这里开一个 ⌀8 的通孔" }],
+    notes: [{ kind: "face", match: (p) => /朝上|facing up/.test(p.what), point: [25, 10, 10], note: "在这里开一个 ⌀8 的通孔" }],
     size: [100, 60, 10],
     upright: true,
     volume: 100 * 60 * 10 - PI * 16 * 10,
@@ -97,7 +97,7 @@ export const EVALS: EvalCase[] = [
     id: "anno-edge",
     prompt: "按标注修改。",
     start: plate(60, 40, 20),
-    notes: [{ kind: "edge", match: (p) => p.what.includes("沿 Z") && Math.abs(p.point[0] - 30) < 1 && Math.abs(p.point[1] - 20) < 1, note: "这条棱倒 R5 圆角，其他棱不动" }],
+    notes: [{ kind: "edge", match: (p) => /沿 Z|along Z/.test(p.what) && Math.abs(p.point[0] - 30) < 1 && Math.abs(p.point[1] - 20) < 1, note: "这条棱倒 R5 圆角，其他棱不动" }],
     size: [60, 40, 20],
     upright: true,
     volume: 60 * 40 * 20 - (25 - (PI * 25) / 4) * 20,
@@ -118,7 +118,7 @@ export const EVALS: EvalCase[] = [
         { id: "boss", op: "extrude", sketch: "bsk", distance: "h" },
       ],
     },
-    notes: [{ kind: "face", match: (p) => p.what.includes("朝上") && p.origins.includes("boss"), note: "把这个凸台加高 10 mm" }],
+    notes: [{ kind: "face", match: (p) => /朝上|facing up/.test(p.what) && p.origins.includes("boss"), note: "把这个凸台加高 10 mm" }],
     size: [100, 100, 40],
     upright: true,
     volume: 100 * 100 * 10 + PI * 225 * 30,
@@ -202,8 +202,8 @@ export const EVALS: EvalCase[] = [
     uses: "split",
     extra: (q) => {
       const body = q.inspect("body", undefined)
-      const parts = body.match(/零件：(.*)/)?.[1] ?? ""
-      const ok = /底壳（80 × 50 × 20 mm/.test(parts) && /上盖（80 × 50 × 10 mm/.test(parts)
+      const parts = body.match(/(?:零件：|Parts: )(.*)/)?.[1] ?? ""
+      const ok = /底壳 ?[（(]80 × 50 × 20 mm/.test(parts) && /上盖 ?[（(]80 × 50 × 10 mm/.test(parts)
       const hole = centres(q.inspect("faces", { kind: "cylinder", radius: 5 }))
       return [
         { name: "两个零件：底壳高 20、上盖高 10", pass: ok, detail: parts || "没有零件" },
@@ -219,8 +219,8 @@ export const EVALS: EvalCase[] = [
     volume: 300 * 20 * 20,
     uses: "split",
     extra: (q) => {
-      const parts = q.inspect("body", undefined).match(/零件：(.*)/)?.[1] ?? ""
-      const sizes = [...parts.matchAll(/（(\d+(?:\.\d+)?) × 20 × 20 mm/g)].map((m) => Number(m[1]))
+      const parts = q.inspect("body", undefined).match(/(?:零件：|Parts: )(.*)/)?.[1] ?? ""
+      const sizes = [...parts.matchAll(/[（(](\d+(?:\.\d+)?) × 20 × 20 mm/g)].map((m) => Number(m[1]))
       return [{ name: "两段，各长 150", pass: sizes.length === 2 && sizes.every((x) => Math.abs(x - 150) < 0.5), detail: parts || "没有零件" }]
     },
   },

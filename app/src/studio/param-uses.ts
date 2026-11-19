@@ -1,6 +1,7 @@
 // Where each parameter is used: 「草图1 · 矩形宽」「拉伸1 · 距离」, so the
 // parameters panel can say what a name means and light up what it drives.
 import { isEn } from "../lib/i18n"
+import { agentLang } from "../lib/agent-lang"
 import { displayName, type Feature, type Tree } from "./dsl"
 import { namesIn } from "./expr"
 
@@ -69,11 +70,11 @@ const SELECTORS = new Set(["edges", "faces", "open", "face", "not"])
 export type ParamUse = { feature: Feature; what: string }
 
 /**
- * What a field path means, in words: ["shapes", 0, "w"] on a rect → 「矩形宽」. Chinese (the kernel labels
- * dimensions with it) unless `shown`: then in the page's language, for the parameters panel.
+ * What a field path means, in words: ["shapes", 0, "w"] on a rect → 「矩形宽」. In the agent's language (the
+ * kernel labels dimensions with it) unless `shown`: then in the page's language, for the parameters panel.
  */
 export function fieldLabel(f: Feature, path: (string | number)[], shown = false): string {
-  if (shown && isEn) return fieldLabelEn(f, path)
+  if (shown ? isEn : agentLang() === "en") return fieldLabelEn(f, path)
   if (path.some((k) => typeof k === "string" && SELECTORS.has(k))) return "选择条件"
   const keys = path.filter((k): k is string => typeof k === "string")
   const last = keys[keys.length - 1] ?? ""

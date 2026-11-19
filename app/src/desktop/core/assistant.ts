@@ -9,6 +9,7 @@ import { trimMessages } from "../../studio/trim"
 import { AGENT_GUIDE, agentCommands, inputJsonSchema } from "./catalog"
 import { normalizePartPath, type Engine } from "./engine"
 import type { CallContext, CommandResult } from "./protocol"
+import { ta } from "../../lib/agent-lang"
 
 /** Tool calls one message from the person may lead to before the loop stops and says so. */
 export const MAX_STEPS = 30
@@ -16,10 +17,17 @@ export const MAX_STEPS = 30
 /** Commands that make no sense for the built-in assistant: the guide is its system prompt already. */
 const LEFT_OUT = new Set(["guide"])
 
-const NO_VISION = `
+const noVision = () =>
+  ta(
+    `
 
 ## 这个模型看不了图
-look 的结果里没有图片，只有文字。形状、位置和方向用 inspect 和 measure 确认；不要说「看起来没问题」。`
+look 的结果里没有图片，只有文字。形状、位置和方向用 inspect 和 measure 确认；不要说「看起来没问题」。`,
+    `
+
+## This model can’t see images
+The results of look have no pictures, only text. Confirm shapes, positions and directions with inspect and measure. Don’t say “it looks fine”.`,
+  )
 
 export type AssistantRun = {
   /** The engine, or anything that runs its commands (the CLI's link to the running app). */
@@ -59,7 +67,7 @@ export function assistantTools({ engine, ctx, vision = true, onCall, abortSignal
         execute: (input: unknown, options?: { abortSignal?: AbortSignal }) => {
           const job = queue.then(async () => {
             // Stopped while an earlier command of the same step was running: nothing further is touched.
-            if (abortSignal?.aborted || options?.abortSignal?.aborted) throw new Error("已停止")
+            if (abortSignal?.aborted || options?.abortSignal?.aborted) throw new Error(ta("已停止", "Stopped"))
             const result = await engine.run(spec.name, input, { ...ctx, part })
             const path = (input as { path?: unknown } | null)?.path
             if (spec.name === "open_part" && result.ok && typeof path === "string") part = normalizePartPath(path, ctx.cwd)
@@ -93,7 +101,10 @@ export function assistantTools({ engine, ctx, vision = true, onCall, abortSignal
  */
 export async function assistantState(engine: Pick<Engine, "run">, ctx: CallContext): Promise<string> {
   const state = await engine.run("get_state", {}, ctx)
-  return `## 发这条消息时的状态\n（Turnery 自动附上，不是用户写的。之后你用工具做的改动以工具结果为准。）\n${state.text.replace(/^✗ /, "")}`
+  return ta(
+    `## 发这条消息时的状态\n（Turnery 自动附上，不是用户写的。之后你用工具做的改动以工具结果为准。）\n${state.text.replace(/^✗ /, "")}`,
+    `## The state when this message was sent\n(Added by Turnery, not written by the user. For changes you make with tools after this, go by the tool results.)\n${state.text.replace(/^✗ /, "")}`,
+  )
 }
 
 /** One turn: the model answers the last message, calling the engine's commands until it is done. */
@@ -102,7 +113,7 @@ export async function runAssistant(run: AssistantRun) {
   const state = await assistantState(engine, ctx)
   return streamText({
     model,
-    system: (vision ? AGENT_GUIDE : AGENT_GUIDE + NO_VISION) + languageRule(run.lang),
+    system: (vision ? AGENT_GUIDE : AGENT_GUIDE + noVision()) + languageRule(run.lang),
     messages: withState(run.messages, state),
     tools: assistantTools({ engine, ctx, vision, onCall: run.onCall, abortSignal: run.abortSignal }),
     stopWhen: isStepCount(run.maxSteps ?? MAX_STEPS),

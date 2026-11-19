@@ -5,6 +5,7 @@
 import { Blueprint, Blueprints, BlueprintSketcher, CompoundBlueprint, cut2D, Drawing, loadFont, type Point2D } from "replicad"
 import type { Tree } from "../dsl"
 import { InputError } from "./errors"
+import { ta } from "../../lib/agent-lang"
 
 export type TextFont = "latin" | "sc"
 type Font = Awaited<ReturnType<typeof loadFont>>
@@ -61,10 +62,15 @@ export function loadTextFont(name: TextFont, read: (url: URL) => Promise<ArrayBu
 export function textDrawing(text: string, size: number): Drawing {
   const name = fontFor(text)
   const font = loaded[name]
-  if (!font) throw new InputError("文字的字体没能下载，检查网络后刷新重试")
+  if (!font) throw new InputError(ta("文字的字体没能下载，检查网络后刷新重试", "The font for the text couldn't be downloaded: check the network, then reload and try again"))
   const missing = [...new Set(text.replace(/\s/g, ""))].filter((ch) => font.charToGlyphIndex(ch) === 0)
   if (missing.length)
-    throw new InputError(`字体里没有这些字：${missing.slice(0, 8).join(" ")}。文字支持常用汉字（GB2312 的 6763 个）、英文、数字和常用符号`)
+    throw new InputError(
+      ta(
+        `字体里没有这些字：${missing.slice(0, 8).join(" ")}。文字支持常用汉字（GB2312 的 6763 个）、英文、数字和常用符号`,
+        `The font doesn't have these characters: ${missing.slice(0, 8).join(" ")}. Text supports common Chinese characters (the 6763 of GB2312), English letters, digits and common symbols`,
+      ),
+    )
   const parts: Piece[] = []
   text.split("\n").forEach((line, i) => {
     if (!line.trim()) return
@@ -73,7 +79,7 @@ export function textDrawing(text: string, size: number): Drawing {
     const x = new Blueprints(shapes).boundingBox.center[0]
     parts.push(...shapes.map((p) => p.translate(-x, -i * LINE * size)))
   })
-  if (!parts.length) throw new InputError("文字不能是空的")
+  if (!parts.length) throw new InputError(ta("文字不能是空的", "The text can't be empty"))
   const all = new Blueprints(parts)
   const c = all.boundingBox.center
   return new Drawing(all.translate(-c[0], -c[1]))

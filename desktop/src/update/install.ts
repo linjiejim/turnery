@@ -12,6 +12,13 @@ import { pipeline } from "node:stream/promises"
 import { promisify } from "node:util"
 import type { UpdateAsset } from "./manifest"
 
+/**
+ * The language Turnery speaks (app/src/lib/agent-lang.ts), read when the text is made. Through
+ * TURNERY_LANG, which the main process keeps current: this file also runs under plain Node (npm test,
+ * scripts/release.mjs), so it imports nothing from app/.
+ */
+const ta = (zh: string, en: string) => (process.env.TURNERY_LANG === "en" ? en : zh)
+
 const run = promisify(execFile)
 
 export const BUNDLE_ID = "com.linjiejim.turnery"
@@ -24,15 +31,18 @@ export function bundleOf(exe: string) {
 
 /** Why this copy can't update itself, or null when it can. */
 export function cannotReplace(bundle: string | null) {
-  if (!bundle) return "只有打包好的 Turnery.app 能自动更新"
+  if (!bundle) return ta("只有打包好的 Turnery.app 能自动更新", "Only a packaged Turnery.app can update itself")
   if (bundle.includes("/AppTranslocation/") || bundle.startsWith("/Volumes/"))
-    return "Turnery 正从下载的磁盘映像或隔离位置运行：先把它拖进「应用程序」文件夹再打开，才能自动更新"
+    return ta(
+      "Turnery 正从下载的磁盘映像或隔离位置运行：先把它拖进「应用程序」文件夹再打开，才能自动更新",
+      "Turnery is running from the downloaded disk image or a quarantined location: drag it into the Applications folder and open it from there to get automatic updates",
+    )
   try {
     // Moving a folder to another parent needs write access to it as well as to both parents.
     accessSync(path.dirname(bundle), constants.W_OK)
     accessSync(bundle, constants.W_OK)
   } catch {
-    return `没有权限改动 ${bundle}：换一个当前用户能写的位置，或手动下载新版本`
+    return ta(`没有权限改动 ${bundle}：换一个当前用户能写的位置，或手动下载新版本`, `No permission to change ${bundle}: move it somewhere the current user can write to, or download the new version by hand`)
   }
   return null
 }
@@ -58,13 +68,13 @@ export async function download(fetchFn: Fetch, asset: UpdateAsset, file: string,
   }
   try {
     const res = await fetchFn(asset.url, { signal: abort.signal })
-    if (!res.ok || !res.body) throw new Error(`下载更新包失败：HTTP ${res.status}`)
+    if (!res.ok || !res.body) throw new Error(ta(`下载更新包失败：HTTP ${res.status}`, `Downloading the update failed: HTTP ${res.status}`))
     const hash = createHash("sha256")
     let bytes = 0
     const count = new Transform({
       transform(chunk: Buffer, _enc, done) {
         bytes += chunk.length
-        if (bytes > asset.size) return done(new Error("更新包比清单里说的大"))
+        if (bytes > asset.size) return done(new Error(ta("更新包比清单里说的大", "The update is larger than the manifest says")))
         hash.update(chunk)
         poke()
         onProgress?.(bytes)
@@ -73,10 +83,10 @@ export async function download(fetchFn: Fetch, asset: UpdateAsset, file: string,
     })
     await mkdir(path.dirname(file), { recursive: true })
     await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), count, createWriteStream(file))
-    if (bytes !== asset.size) throw new Error(`更新包大小不对：${bytes}，应为 ${asset.size}`)
-    if (hash.digest("hex") !== asset.sha256) throw new Error("更新包的 SHA-256 和清单不符")
+    if (bytes !== asset.size) throw new Error(ta(`更新包大小不对：${bytes}，应为 ${asset.size}`, `The update has the wrong size: ${bytes}, should be ${asset.size}`))
+    if (hash.digest("hex") !== asset.sha256) throw new Error(ta("更新包的 SHA-256 和清单不符", "The update’s SHA-256 doesn’t match the manifest"))
   } catch (e) {
-    if (abort.signal.aborted) throw new Error(`下载更新包 ${stallMs / 1000} 秒没有进展，已停止`)
+    if (abort.signal.aborted) throw new Error(ta(`下载更新包 ${stallMs / 1000} 秒没有进展，已停止`, `The update download made no progress for ${stallMs / 1000} seconds and was stopped`))
     throw e
   } finally {
     clearTimeout(timer)
@@ -91,11 +101,11 @@ export async function unpack(zip: string, dir: string, version: string) {
   await run("/usr/bin/ditto", ["-x", "-k", zip, dir])
   const app = path.join(dir, "Turnery.app")
   const plist = path.join(app, "Contents/Info.plist")
-  if (!existsSync(plist)) throw new Error("更新包里没有 Turnery.app")
+  if (!existsSync(plist)) throw new Error(ta("更新包里没有 Turnery.app", "The update has no Turnery.app in it"))
   const read = async (key: string) => (await run("/usr/bin/plutil", ["-extract", key, "raw", "-o", "-", plist])).stdout.trim()
   const [id, v] = await Promise.all([read("CFBundleIdentifier"), read("CFBundleShortVersionString")])
-  if (id !== BUNDLE_ID) throw new Error(`更新包里的 App 不是 Turnery（${id}）`)
-  if (v !== version) throw new Error(`更新包里的 Turnery 是 ${v}，不是 ${version}`)
+  if (id !== BUNDLE_ID) throw new Error(ta(`更新包里的 App 不是 Turnery（${id}）`, `The app in the update isn’t Turnery (${id})`))
+  if (v !== version) throw new Error(ta(`更新包里的 Turnery 是 ${v}，不是 ${version}`, `The Turnery in the update is ${v}, not ${version}`))
   return app
 }
 

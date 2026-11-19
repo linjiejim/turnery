@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai"
+import { agentLang, type AgentLang } from "../lib/agent-lang"
 
 /**
  * Keep what the model needs, not the whole history: the current model state
@@ -8,7 +9,9 @@ import type { UIMessage } from "ai"
  *  - reasoning only within the current turn (DeepSeek needs it there for tool calls);
  *  - reference images only from the last two user turns.
  */
-export function trimMessages(messages: UIMessage[], keepTurns = 8): UIMessage[] {
+export function trimMessages(messages: UIMessage[], keepTurns = 8, lang: AgentLang = agentLang()): UIMessage[] {
+  // What stands in for what was dropped, in the model's language (the web server passes the request's).
+  const say = (zh: string, en: string) => (lang === "en" ? en : zh)
   const userIdx = messages.map((m, i) => (m.role === "user" ? i : -1)).filter((i) => i >= 0)
   const start = userIdx.length > keepTurns ? userIdx[userIdx.length - keepTurns] : 0
   const lastUser = userIdx.length ? userIdx[userIdx.length - 1] : 0
@@ -25,7 +28,7 @@ export function trimMessages(messages: UIMessage[], keepTurns = 8): UIMessage[] 
   return kept.map((m, mi) => {
     const before = start + mi < lastUser
     if (m.role === "user" && start + mi < recentUser && m.parts.some((p) => p.type === "file")) {
-      return { ...m, parts: [...m.parts.filter((p) => p.type !== "file"), { type: "text", text: "（之前附的参考图已省略）" }] } as UIMessage
+      return { ...m, parts: [...m.parts.filter((p) => p.type !== "file"), { type: "text", text: say("（之前附的参考图已省略）", "(the reference image attached earlier is left out)") }] } as UIMessage
     }
     const parts = m.parts
       .filter((p) => !(before && p.type === "reasoning"))
@@ -35,7 +38,7 @@ export function trimMessages(messages: UIMessage[], keepTurns = 8): UIMessage[] 
         if (isLast) return p
         const out = p.output as { images?: string[]; text?: string }
         if (!out.images) return p
-        return { ...p, output: { ...out, images: undefined, text: `${out.text ?? ""}（旧视图已省略）` } }
+        return { ...p, output: { ...out, images: undefined, text: `${out.text ?? ""}${say("（旧视图已省略）", " (old views left out)")}` } }
       })
     return { ...m, parts } as UIMessage
   })

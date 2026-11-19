@@ -4,6 +4,8 @@
  * is ever passed to eval().
  */
 
+import { ta } from "../lib/agent-lang"
+
 export type Scope = Record<string, number>
 
 const FUNCS: Record<string, (...a: number[]) => number> = {
@@ -24,6 +26,10 @@ const CONSTS: Record<string, number> = { pi: Math.PI }
 
 export class ExprError extends Error {}
 
+// "reason：expression" / "reason: expression": codegen.ts reads the reason off the front.
+const incomplete = (src: string) => ta(`表达式不完整：${src}`, `Incomplete expression: ${src}`)
+const noParam = (name: string) => ta(`没有名为「${name}」的参数`, `No parameter named “${name}”`)
+
 type Tok = { t: "num"; v: number } | { t: "id"; v: string } | { t: "op"; v: string }
 
 function lex(src: string): Tok[] {
@@ -35,7 +41,7 @@ function lex(src: string): Tok[] {
       i++
     } else if (/[0-9.]/.test(c)) {
       const m = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(src.slice(i))
-      if (!m) throw new ExprError(`看不懂的数字：${src.slice(i, i + 8)}`)
+      if (!m) throw new ExprError(ta(`看不懂的数字：${src.slice(i, i + 8)}`, `Can't read the number: ${src.slice(i, i + 8)}`))
       out.push({ t: "num", v: Number(m[0]) })
       i += m[0].length
     } else if (/[A-Za-z_一-龥]/.test(c)) {
@@ -46,7 +52,7 @@ function lex(src: string): Tok[] {
       out.push({ t: "op", v: c })
       i++
     } else {
-      throw new ExprError(`表达式里有不支持的字符「${c}」`)
+      throw new ExprError(ta(`表达式里有不支持的字符「${c}」`, `Unsupported character “${c}” in the expression`))
     }
   }
   return out
@@ -87,7 +93,7 @@ export function parse(raw: string): ExprNode {
   const isOp = (...ops: string[]) => peek()?.t === "op" && ops.includes(String(peek().v))
   const eat = (v?: string) => {
     const t = toks[p]
-    if (!t || (v !== undefined && !(t.t === "op" && t.v === v))) throw new ExprError(`表达式不完整：${src}`)
+    if (!t || (v !== undefined && !(t.t === "op" && t.v === v))) throw new ExprError(incomplete(src))
     p++
     return t
   }
@@ -143,10 +149,10 @@ export function parse(raw: string): ExprNode {
       eat(")")
       return { k: "call", f: t.v, args }
     }
-    throw new ExprError(`表达式不完整：${src}`)
+    throw new ExprError(incomplete(src))
   }
   const node = expr()
-  if (p !== toks.length) throw new ExprError(`表达式多了内容：${src}`)
+  if (p !== toks.length) throw new ExprError(ta(`表达式多了内容：${src}`, `Extra content in the expression: ${src}`))
   return node
 }
 
@@ -157,7 +163,7 @@ function run(n: ExprNode, scope: Scope): number {
     case "name":
       if (isConst(n.v)) return CONSTS[n.v]
       if (Object.hasOwn(scope, n.v)) return scope[n.v]
-      throw new ExprError(`没有名为「${n.v}」的参数`)
+      throw new ExprError(noParam(n.v))
     case "neg":
       return -run(n.a, scope)
     case "call":
@@ -172,7 +178,7 @@ function run(n: ExprNode, scope: Scope): number {
 
 export function evaluate(raw: string, scope: Scope): number {
   const v = run(parse(raw), scope)
-  if (!Number.isFinite(v)) throw new ExprError(`表达式的结果不是有限数：${unquote(raw)}`)
+  if (!Number.isFinite(v)) throw new ExprError(ta(`表达式的结果不是有限数：${unquote(raw)}`, `The expression's result isn't a finite number: ${unquote(raw)}`))
   return v
 }
 
@@ -181,7 +187,7 @@ export type NumLike = number | string
 
 export function num(v: NumLike, scope: Scope): number {
   if (typeof v === "number") {
-    if (!Number.isFinite(v)) throw new ExprError("数值不是有限数")
+    if (!Number.isFinite(v)) throw new ExprError(ta("数值不是有限数", "The value isn't a finite number"))
     return v
   }
   return evaluate(v, scope)
@@ -196,9 +202,9 @@ export function resolveParams(params: Record<string, NumLike>): Scope {
   const visiting = new Set<string>()
   const visit = (name: string) => {
     if (name in scope) return
-    if (visiting.has(name)) throw new ExprError(`参数「${name}」循环引用了自己`)
+    if (visiting.has(name)) throw new ExprError(ta(`参数「${name}」循环引用了自己`, `Parameter “${name}” refers back to itself (a circular reference)`))
     const v = params[name]
-    if (v === undefined) throw new ExprError(`没有名为「${name}」的参数`)
+    if (v === undefined) throw new ExprError(noParam(name))
     visiting.add(name)
     if (typeof v === "string") for (const dep of namesIn(v)) visit(dep)
     scope[name] = num(v, scope)

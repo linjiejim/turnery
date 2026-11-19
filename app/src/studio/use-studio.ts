@@ -9,6 +9,7 @@ import type { Dim } from "./kernel/dims"
 import type { MeasureTarget } from "./kernel/measure"
 import { renderViews, type Pin } from "./look"
 import { STARTERS } from "./starters"
+import { ta } from "../lib/agent-lang"
 
 const STORE = "ft-studio-v1"
 
@@ -173,7 +174,7 @@ export function useStudio(shared?: Tree) {
     (name: string, input: Record<string, unknown>): Promise<ToolRun> => {
       const job = queue.current.then(async () => {
         const c = client.current
-        if (!c) throw new Error("建模内核还没准备好")
+        if (!c) throw new Error(ta("建模内核还没准备好", "The modeling kernel isn't ready yet"))
         await c.ready
         const look = async (views: string[], highlight?: string) => {
           const d = await c.display()
@@ -185,8 +186,12 @@ export function useStudio(shared?: Tree) {
         const pinned = withPinned(run.tree, pinnedRef.current)
         if (pinned !== run.tree) {
           const report = await commit(pinned)
-          const ids = (pinnedRef.current ?? []).map((x) => x.id).join("、")
-          const note = `练习的要求（${ids}）是固定的，不能改或删，已经恢复原样。核对结果以恢复后的为准：${(report?.checks ?? []).filter((r) => (pinnedRef.current ?? []).some((p) => p.id === r.id)).map((r) => `${r.said} ${r.pass ? "✓" : `✗（要求 ${r.expected}，实际 ${r.actual}）`}`).join("；")}`
+          const ids = (pinnedRef.current ?? []).map((x) => x.id).join(ta("、", ", "))
+          const rows = (report?.checks ?? []).filter((r) => (pinnedRef.current ?? []).some((p) => p.id === r.id))
+          const note = ta(
+            `练习的要求（${ids}）是固定的，不能改或删，已经恢复原样。核对结果以恢复后的为准：${rows.map((r) => `${r.said} ${r.pass ? "✓" : `✗（要求 ${r.expected}，实际 ${r.actual}）`}`).join("；")}`,
+            `The practice's requirements (${ids}) are fixed: they can't be changed or deleted, and have been put back as they were. The check results that count are those after the restore: ${rows.map((r) => `${r.said} ${r.pass ? "✓" : `✗ (required ${r.expected}, actual ${r.actual})`}`).join("; ")}`,
+          )
           run = { ...run, tree: pinned, report: report ?? undefined, output: { ...run.output, text: `${run.output.text}\n${note}` } }
         } else if (run.tree !== treeRef.current || run.report) await commit(run.tree, run.report)
         if (run.report) setCheckBaseline(Object.fromEntries((run.report.checks ?? []).map((r) => [r.id, r.pass])))
