@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react"
 import { lessonForCode } from "@/content/lessons"
 import { CARDS } from "@/content/cards"
 import { ALL_LESSONS } from "@/content/curriculum"
+import { t } from "@/lib/i18n"
 
 /**
  * Learning progress, kept locally (no account in the prototype).
@@ -99,8 +100,8 @@ export function useContinue(): { to: string; label: string } {
   const p = useProgress()
   const started = p.done.length > 0
   const next = PATH.find((step) => !step.codes.every((c) => p.done.includes(c)))
-  if (!next) return { to: "/learn", label: "复习" }
-  return { to: next.to, label: started ? "继续学习" : "开始第一课" }
+  if (!next) return { to: "/learn", label: t("复习", "Review") }
+  return { to: next.to, label: started ? t("继续学习", "Continue") : t("开始第一课", "Start the first lesson") }
 }
 
 const DAY = 24 * 3600 * 1000
@@ -118,7 +119,7 @@ export function reviewDue(p: Progress, now = Date.now()): ReviewItem[] {
     if (perfectRuns >= INTERVALS.length && last.score === last.total) continue
     const days = last.score < last.total ? 1 : INTERVALS[Math.min(perfectRuns - 1, INTERVALS.length - 1)]
     const dueAt = last.at + days * DAY
-    if (dueAt <= now) out.push({ lessonId, dueAt, reason: last.score < last.total ? "上次有题答错" : `距上次 ${days} 天` })
+    if (dueAt <= now) out.push({ lessonId, dueAt, reason: last.score < last.total ? t("上次有题答错", "Missed a question last time") : t(`距上次 ${days} 天`, days === 1 ? "1 day since last time" : `${days} days since last time`) })
   }
   return out.sort((a, b) => a.dueAt - b.dueAt)
 }

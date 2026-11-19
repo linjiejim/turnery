@@ -2,6 +2,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
+import { t } from "@/lib/i18n"
 import { applyDimEdit } from "../dim-edit"
 import { fmtDim } from "../dim-source"
 import type { Dim } from "../kernel/dims"
@@ -35,16 +36,16 @@ export function DimEditor({ dim, anchor, studio, onClose }: { dim: Dim; anchor: 
   return (
     <Popover open onOpenChange={(open) => !open && onClose()}>
       <PopoverAnchor virtualRef={ref} />
-      <PopoverContent side="top" align="center" sideOffset={8} className="w-72" aria-label={`修改 ${dim.label}`}>
+      <PopoverContent side="top" align="center" sideOffset={8} className="w-72" aria-label={t(`修改 ${dim.label}`, `Edit ${dim.label}`)}>
         <div className="text-body font-medium">{dim.label}</div>
         <div className="mt-0.5 text-small text-muted-foreground">
           {param ? (
             <>
-              参数 <span className="font-mono">{param}</span>
-              {src.type === "factor" && `（这里显示的是 ${src.expr}）`}
+              {t("参数", "Parameter")} <span className="font-mono">{param}</span>
+              {src.type === "factor" && t(`（这里显示的是 ${src.expr}）`, ` (shown here as ${src.expr})`)}
             </>
           ) : (
-            "这一步里的数，没有定成参数"
+            t("这一步里的数，没有定成参数", "A number in this step, not a parameter")
           )}
         </div>
         <form
@@ -66,23 +67,23 @@ export function DimEditor({ dim, anchor, studio, onClose }: { dim: Dim; anchor: 
           />
           {promote && (
             <label className="mt-2 block text-small text-muted-foreground">
-              参数名
-              <Input className="mt-1 font-mono" value={name} onChange={(e) => setName(e.target.value)} aria-label="参数名" />
+              {t("参数名", "Parameter name")}
+              <Input className="mt-1 font-mono" value={name} onChange={(e) => setName(e.target.value)} aria-label={t("参数名", "Parameter name")} />
             </label>
           )}
           {error && <p className="mt-2 text-small text-destructive">{error}</p>}
-          {param && uses.length > 1 && <p className="mt-2 text-caption text-faint-foreground">{param} 还用在 {uses.length - 1} 处：{uses.slice(0, 3).map((u) => describeUse(studio.tree, u)).join("、")}</p>}
+          {param && uses.length > 1 && <p className="mt-2 text-caption text-faint-foreground">{t(`${param} 还用在 ${uses.length - 1} 处：`, `${param} is also used in ${uses.length - 1} ${uses.length - 1 === 1 ? "place" : "places"}: `)}{uses.slice(0, 3).map((u) => describeUse(studio.tree, u)).join(t("、", ", "))}</p>}
           <div className="mt-3 flex items-center justify-end gap-2">
             {!param && !promote && (
               <Button type="button" size="sm" variant="ghost" className="mr-auto" onClick={() => setPromote(true)}>
-                设为参数
+                {t("设为参数", "Make a parameter")}
               </Button>
             )}
             <Button type="button" size="sm" variant="ghost" onClick={onClose}>
-              取消
+              {t("取消", "Cancel")}
             </Button>
             <Button type="submit" size="sm" variant="primary">
-              {promote ? "设为参数" : "应用"}
+              {promote ? t("设为参数", "Make a parameter") : t("应用", "Apply")}
             </Button>
           </div>
         </form>

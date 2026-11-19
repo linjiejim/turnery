@@ -3,6 +3,7 @@ import { createBrowserRouter, Outlet, redirect, RouterProvider, ScrollRestoratio
 import { SiteHeader } from "@/components/site-header"
 import { HomePage } from "@/routes/home"
 import { syncDocumentTitle } from "@/lib/document-title"
+import { routerBase } from "@/lib/i18n"
 
 /** Pages other than home load on demand: each brings only its own code. */
 const lazy =
@@ -19,7 +20,7 @@ function SiteLayout() {
   )
 }
 
-const router = createBrowserRouter([
+const routes = [
   {
     element: <SiteLayout />,
     children: [
@@ -54,12 +55,23 @@ const router = createBrowserRouter([
       return import("@/routes/studio-share")
     }, "StudioSharePage"),
   },
-])
+] satisfies Parameters<typeof createBrowserRouter>[0]
 
-// Per-route <title>, matching the prerendered HTML (lib/page-meta.ts).
-syncDocumentTitle(router.state.location.pathname)
-router.subscribe((s) => syncDocumentTitle(s.location.pathname))
+/**
+ * Made on the first render, not when this module loads: a page that is about to move to its /en twin
+ * (main.tsx, lib/i18n.ts) never starts a route (the workbench's starts the kernel download).
+ */
+let router: ReturnType<typeof createBrowserRouter> | null = null
+function appRouter() {
+  if (router) return router
+  // English pages are the same routes under /en (lib/i18n.ts).
+  router = createBrowserRouter(routes, { basename: routerBase })
+  // Per-route <title>, matching the prerendered HTML (lib/page-meta.ts).
+  syncDocumentTitle(router.state.location.pathname)
+  router.subscribe((s) => syncDocumentTitle(s.location.pathname))
+  return router
+}
 
 export function App() {
-  return <RouterProvider router={router} />
+  return <RouterProvider router={appRouter()} />
 }

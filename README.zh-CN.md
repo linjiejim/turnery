@@ -127,7 +127,7 @@ agent 交给你的是一棵**特征树**：有名字的参数，一步步的特�
 
 ### 或者用内置助手
 
-窗口右侧的「对话」页签用你选的模型跑同一套工具：DeepSeek、OpenRouter、Anthropic、OpenAI、Gemini、Moonshot（Kimi）、智谱、通义、SiliconFlow、本机的 Ollama，或任何 OpenAI 兼容的地址。它只能调 Turnery 的建模命令，碰不到别的文件，也不能运行程序。key 留在你的电脑上，不进项目文件夹。
+窗口标题栏的「对话」按钮打开内置助手，用你选的模型跑同一套工具：DeepSeek、OpenRouter、Anthropic、OpenAI、Gemini、Moonshot（Kimi）、智谱、通义、SiliconFlow、本机的 Ollama，或任何 OpenAI 兼容的地址。它只能调 Turnery 的建模命令，碰不到别的文件，也不能运行程序。key 留在你的电脑上，不进项目文件夹。
 
 ![内置助手把开口加宽后重新核对](docs/media/window-assistant.png)
 
@@ -168,16 +168,16 @@ Claude Code / Codex ──MCP (stdio)──► turnery mcp ──HTTP 127.0.0.1�
 | 核对与交付 | `check` · `export`（STEP、STL、build123d 代码、JSON、零件清单） |
 | 和人协作 | `get_notes` `resolve_note` `request_pick` `show` |
 
-每个工具的说明、命令行和内部结构见 [`desktop/README.md`](desktop/README.md)。
+每个工具的说明、命令行和内部结构见 [`desktop/README.zh-CN.md`](desktop/README.zh-CN.md)（[English](desktop/README.md)）。
 
 ## 现在做到哪了
 
-Turnery 目前是 0.5，更新很快。已经能用的：单个零件、共用参数的多零件装配、标准紧固件、真实螺纹、导入 STEP 围着开发板做外壳、工程图，以及上面说的需求核对表。
+Turnery 目前是 0.11，更新很快。已经能用的：单个零件、共用参数的多零件装配、标准紧固件、真实螺纹、导入 STEP 围着开发板做外壳、工程图、上面说的需求核对表，以及按特征一步步回放建模过程的时间线。
 
 还不行的：
 
 - **只有 macOS 包**，而且没有签名。Windows 和 Linux 在计划里。
-- **界面只有中文**：窗口、工具说明、内核的提示、给 agent 的说明都是。工具名和 JSON schema 是英文。英文界面排在路线图第一位。
+- **英文还没覆盖全部。** 窗口和网站有中英两版。给 agent 看的（使用说明、工具描述、内核的提示）仍是中文，agent 读起来没问题；工具名和 JSON schema 是英文。课程正文也只有中文。见 [`docs/i18n.md`](docs/i18n.md)。
 - **建模工具里没有草图约束求解。** 草图用参数和表达式来写。
 - **没有「代码特征」**：特征树表达不了的形状还做不了。
 - **贴合只按顺序摆放一次**，不是约束求解，也没有运动。
@@ -198,6 +198,8 @@ Turnery 目前是 0.5，更新很快。已经能用的：单个零件、共用�
 ## 这个仓库里还有：课程
 
 [turnery.linjiejim.com](https://turnery.linjiejim.com) 是一门中文、讲概念、不绑定软件的 3D 工业建模课，和桌面版用同一个内核、同一种特征树文件。桌面版适合做真东西，网站适合学为什么这样做。
+
+网站的界面、学习路径、工具图鉴和术语表也有英文版（[`/en`](https://turnery.linjiejim.com/en)）；课程正文目前只有中文。
 
 | 板块 | 内容 |
 | --- | --- |
@@ -252,7 +254,7 @@ npm run build
 npm run e2e        # 冒烟测试：构建后在 http://127.0.0.1:4391 起 vite preview，用 Playwright 跑
 ```
 
-桌面版从源码跑、打包和发布见 [`desktop/README.md`](desktop/README.md)。
+桌面版从源码跑、打包和发布见 [`desktop/README.zh-CN.md`](desktop/README.zh-CN.md)。
 
 冒烟测试（`app/e2e/`）走一遍每节课（逐步点「下一步」、交小测、完成本课）和每个拆解（逐步回滚、切参数、装配爆炸和播放），再看首页、学习路径、图鉴和术语表。课程从 `src/content/lessons/index.ts`、模型从 `public/models/index.json` 自动发现，新增内容不用改测试。任何页面报错、`console.error` 或画布空白都算失败，失败截图按路由命名，在 `test-results/` 和 `npx playwright show-report` 里看。
 

@@ -35,8 +35,9 @@ const bridge: TurneryBridge = {
   openExample: () => ipcRenderer.invoke("turnery:open-example"),
   models: () => ipcRenderer.invoke("turnery:models"),
   saveModel: (input) => ipcRenderer.invoke("turnery:models-save", input),
-  assistantSend: (id, messages) => ipcRenderer.invoke("turnery:assistant-send", id, messages),
+  assistantSend: (id, messages, lang) => ipcRenderer.invoke("turnery:assistant-send", id, messages, lang),
   assistantStop: (id) => ipcRenderer.invoke("turnery:assistant-stop", id),
+  setLanguage: (lang) => ipcRenderer.invoke("turnery:set-language", lang),
   onAssistant: (listener) => {
     const handle = (_e: unknown, id: string, chunk: unknown) => listener(id, chunk)
     ipcRenderer.on("turnery:assistant", handle)

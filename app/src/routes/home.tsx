@@ -10,11 +10,15 @@ import { useContinue } from "@/lib/progress"
 import { LESSONS } from "@/content/lessons"
 import { mug } from "@/content/procedural/mug"
 import { defaults } from "@/content/procedural/types"
-import { OPS } from "@/content/ops"
+import { featureNameEn, OPS } from "@/content/ops"
 import { PERSONAS, TRACKS } from "@/content/curriculum"
 import { useModelIndex } from "@/lib/use-async"
 import { PartScene } from "@/three/teardown-scene"
 import type { Viewer } from "@/three/viewer"
+import { byLocale, isEn, t } from "@/lib/i18n"
+
+/** The mug's features are named like 「圆角2」; on English pages that reads "Fillet2", as CAD packages write it. */
+const featureName = (name: string) => (isEn ? featureNameEn(name) : name)
 
 export function HomePage() {
   const models = useModelIndex()
@@ -26,28 +30,40 @@ export function HomePage() {
         <div className="bg-blueprint pointer-events-none absolute inset-0 opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent)]" aria-hidden />
         <div className="relative mx-auto grid max-w-[1200px] grid-cols-[1fr_1.15fr] items-center gap-10 px-6 pb-16 pt-12 max-lg:grid-cols-1 max-sm:px-4">
           <div>
-            <div className="font-mono text-small text-primary">Turnery / 工业建模互动课</div>
+            <div className="font-mono text-small text-primary">{t("Turnery / 工业建模互动课", "Turnery / A hands-on course in mechanical CAD")}</div>
             <h1 className="mt-3 text-hero font-semibold tracking-tight">
-              看懂每一个特征
-              <br />
-              是怎么长出来的
+              {byLocale(
+                <>
+                  看懂每一个特征
+                  <br />
+                  是怎么长出来的
+                </>,
+                <>
+                  See how every feature
+                  <br />
+                  takes shape
+                </>,
+              )}
             </h1>
             <p className="mt-4 max-w-[34em] text-reading text-muted-foreground">
-              从草图、约束到抽壳、装配，用能亲手操作的 3D 一步步学参数化建模。先讲清概念，再对照 SOLIDWORKS、Fusion、Onshape 里的叫法。
+              {t(
+                "从草图、约束到抽壳、装配，用能亲手操作的 3D 一步步学参数化建模。先讲清概念，再对照 SOLIDWORKS、Fusion、Onshape 里的叫法。",
+                "Learn parametric modeling one step at a time, from sketches and constraints to shells and assemblies, in 3D you work with yourself. Each concept comes first, then what SOLIDWORKS, Fusion and Onshape call it.",
+              )}
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
               <Button asChild variant="primary" size="lg">
                 <Link to={next.to}>{next.label}</Link>
               </Button>
               <Button asChild variant="secondary" size="lg">
-                <Link to="/teardown">看案例拆解</Link>
+                <Link to="/teardown">{t("看案例拆解", "See the teardowns")}</Link>
               </Button>
             </div>
             <dl className="mt-10 grid max-w-lg grid-cols-4 gap-4">
-              <Stat value={LESSONS.length} label="节互动课" />
-              <Stat value={models.length} label="个拆解案例" />
-              <Stat value={OPS.length} label="个建模命令" />
-              <Stat value={lessonCount} label="节课的大纲" />
+              <Stat value={LESSONS.length} label={t("节互动课", "interactive lessons")} />
+              <Stat value={models.length} label={t("个拆解案例", "teardowns")} />
+              <Stat value={OPS.length} label={t("个建模命令", "modeling commands")} />
+              <Stat value={lessonCount} label={t("节课的大纲", "topics in the syllabus")} />
             </dl>
           </div>
           <HeroBuild />
@@ -58,19 +74,34 @@ export function HomePage() {
         <div className="mx-auto grid max-w-[1200px] grid-cols-3 gap-4 px-6 py-12 max-md:grid-cols-1 max-sm:px-4">
           <Way
             icon={<BookOpen />}
-            title="互动课"
+            title={t("互动课", "Lessons")}
             to="/learn"
-            link="看学习路径"
-            text="一步一个概念。视角自动转到该看的地方，任务在 3D 里完成：拖角点、加约束、拉箭头。先猜结果，再看发生了什么。"
+            link={t("看学习路径", "See the learning path")}
+            text={t(
+              "一步一个概念。视角自动转到该看的地方，任务在 3D 里完成：拖角点、加约束、拉箭头。先猜结果，再看发生了什么。",
+              "One concept per step. The camera turns to what matters, and you do the task in 3D: drag a corner, add a constraint, pull an arrow. Guess the result first, then see what happened.",
+            )}
           />
           <Way
             icon={<Layers />}
-            title="案例拆解"
+            title={t("案例拆解", "Teardowns")}
             to="/teardown"
-            link="看拆解"
-            text="真实零件按特征树重建，几何由 OpenCascade 内核算出。每个面都标着是哪一步生成或修改的，还能看每一步的 build123d 代码。"
+            link={t("看拆解", "Browse the teardowns")}
+            text={t(
+              "真实零件按特征树重建，几何由 OpenCascade 内核算出。每个面都标着是哪一步生成或修改的，还能看每一步的 build123d 代码。",
+              "Real parts rebuilt feature by feature, with geometry from the OpenCascade kernel. Every face is marked with the step that created or changed it, and every step shows its build123d code.",
+            )}
           />
-          <Way icon={<Box />} title="工具图鉴" to="/atlas" link="翻图鉴" text={`${OPS.length} 个建模命令各一张卡：它做什么、要什么输入、常见的坑，以及在 8 个软件里分别叫什么。`} />
+          <Way
+            icon={<Box />}
+            title={t("工具图鉴", "Command atlas")}
+            to="/atlas"
+            link={t("翻图鉴", "Open the atlas")}
+            text={t(
+              `${OPS.length} 个建模命令各一张卡：它做什么、要什么输入、常见的坑，以及在 8 个软件里分别叫什么。`,
+              `${OPS.length} modeling commands, one entry each: what it does, what it needs, the usual pitfalls, and what 8 CAD packages call it.`,
+            )}
+          />
         </div>
         <div className="mx-auto max-w-[1200px] px-6 pb-12 max-sm:px-4">
           <div className="flex items-center gap-5 rounded-lg border bg-background p-5 max-md:flex-col max-md:items-start">
@@ -78,17 +109,20 @@ export function HomePage() {
               <MessageSquareText />
             </div>
             <div className="flex-1">
-              <div className="text-heading font-semibold">工作台</div>
+              <div className="text-heading font-semibold">{t("工作台", "Workbench")}</div>
               <p className="mt-1 text-body text-muted-foreground">
-                用中文描述一个零件，AI 助教一步步建出参数化特征树，边做边讲每一步为什么这样做。课程里的练习也在这里做。要用自己的 agent 建真东西，用桌面版。
+                {t(
+                  "用中文描述一个零件，AI 助教一步步建出参数化特征树，边做边讲每一步为什么这样做。课程里的练习也在这里做。要用自己的 agent 建真东西，用桌面版。",
+                  "Describe a part in your own words. The AI tutor builds a parametric feature tree one step at a time and explains each step as it goes. The course's practice tasks live here too. To build real things with your own agent, use the desktop app.",
+                )}
               </p>
             </div>
             <div className="flex gap-2">
               <Button asChild variant="secondary">
-                <Link to="/studio">打开工作台</Link>
+                <Link to="/studio">{t("打开工作台", "Open the Workbench")}</Link>
               </Button>
               <Button asChild variant="ghost">
-                <Link to="/desktop">桌面版</Link>
+                <Link to="/desktop">{t("桌面版", "Desktop app")}</Link>
               </Button>
             </div>
           </div>
@@ -97,9 +131,9 @@ export function HomePage() {
 
       <section className="mx-auto max-w-[1200px] px-6 py-12 max-sm:px-4">
         <div className="flex items-center">
-          <h2 className="flex-1 text-title-lg font-semibold">互动课</h2>
+          <h2 className="flex-1 text-title-lg font-semibold">{t("互动课", "Lessons")}</h2>
           <Link to="/learn" className="flex items-center gap-1 text-body text-muted-foreground hover:text-foreground">
-            完整学习路径
+            {t("完整学习路径", "Full learning path")}
             <ArrowRight className="size-4" />
           </Link>
         </div>
@@ -109,7 +143,7 @@ export function HomePage() {
               <div className="flex items-center gap-2 font-mono text-caption text-faint-foreground">
                 <span>{l.track}</span>
                 <span>{l.codes.join(" · ")}</span>
-                <span className="ml-auto">{l.minutes} 分钟</span>
+                <span className="ml-auto">{t(`${l.minutes} 分钟`, `${l.minutes} min`)}</span>
               </div>
               <div className="mt-1.5 text-heading font-semibold">{l.title}</div>
               <p className="mt-1 text-small text-muted-foreground">{l.gist}</p>
@@ -120,9 +154,9 @@ export function HomePage() {
 
       <section className="mx-auto max-w-[1200px] px-6 pb-12 max-sm:px-4">
         <div className="flex items-center">
-          <h2 className="flex-1 text-title-lg font-semibold">案例拆解</h2>
+          <h2 className="flex-1 text-title-lg font-semibold">{t("案例拆解", "Teardowns")}</h2>
           <Link to="/teardown" className="flex items-center gap-1 text-body text-muted-foreground hover:text-foreground">
-            全部案例
+            {t("全部案例", "All teardowns")}
             <ArrowRight className="size-4" />
           </Link>
         </div>
@@ -135,7 +169,7 @@ export function HomePage() {
 
       <section className="border-t">
         <div className="mx-auto max-w-[1200px] px-6 py-12 max-sm:px-4">
-          <h2 className="text-title-lg font-semibold">为谁设计</h2>
+          <h2 className="text-title-lg font-semibold">{t("为谁设计", "Who it's for")}</h2>
           <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4 max-md:grid-cols-1">
             {PERSONAS.map((p) => (
               <div key={p.name}>
@@ -150,7 +184,7 @@ export function HomePage() {
       <footer className="border-t">
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-x-6 gap-y-1 px-6 py-6 text-small text-faint-foreground max-sm:px-4">
           <span>Turnery · 2026</span>
-          <span>几何：build123d + OpenCascade · 渲染：three.js · 草图求解：FreeCAD planegcs</span>
+          <span>{t("几何：build123d + OpenCascade · 渲染：three.js · 草图求解：FreeCAD planegcs", "Geometry: build123d + OpenCascade · Rendering: three.js · Sketch solver: FreeCAD planegcs")}</span>
         </div>
       </footer>
     </main>
@@ -255,19 +289,19 @@ function HeroBuild() {
               }
             >
               <OpIcon op={x.op} />
-              {x.name}
-              {i === step && <span className="font-normal text-muted-foreground max-sm:hidden">· {x.title}</span>}
+              {featureName(x.name)}
+              {i === step && !isEn && <span className="font-normal text-muted-foreground max-sm:hidden">· {x.title}</span>}
             </div>
           ))}
         </div>
         {!running && step >= 0 && (
           <Button variant="secondary" size="sm" className="absolute bottom-4 right-4" onClick={run}>
             <RotateCcw />
-            重播
+            {t("重播", "Replay")}
           </Button>
         )}
       </Viewport>
-      {f && <span className="sr-only">当前步骤：{f.name}</span>}
+      {f && <span className="sr-only">{t("当前步骤：", "Current step: ")}{featureName(f.name)}</span>}
     </div>
   )
 }

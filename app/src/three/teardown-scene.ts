@@ -4,6 +4,7 @@ import { displayStep, loadGlb, partsOf, stepsOf, variantKey, type AssemblyManife
 import { ease } from "./tween"
 import { disposeObject, type Viewer } from "./viewer"
 import type { Params, PartModel } from "@/content/procedural/types"
+import { t } from "@/lib/i18n"
 
 const ISO = new THREE.Vector3(1, -1.1, 0.85)
 
@@ -219,7 +220,7 @@ export class BakedPartScene {
     if (!variant?.file) {
       this.steps = []
       this.clear()
-      this.emit(false, variant ? null : "没有这组参数的烘焙结果")
+      this.emit(false, variant ? null : t("没有这组参数的烘焙结果", "No baked result for these parameter values"))
       return
     }
     this.emit(true, null)

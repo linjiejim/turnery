@@ -1,6 +1,8 @@
 import data from "./curriculum.json"
 import { LESSONS } from "./lessons"
 import { CARDS } from "./cards"
+import { localizeCurriculum } from "./en/curriculum"
+import { isEn } from "@/lib/i18n"
 
 /**
  * The curriculum (tracks → modules → lessons), drafted from the research
@@ -21,9 +23,13 @@ export type Track = { id: string; title: string; note: string; modules: Module[]
 export type Project = { id: string; title: string; prereq: string; interactive: number }
 export type Persona = { name: string; path: string }
 
-export const TRACKS = data.tracks as Track[]
-export const PROJECTS = data.projects as Project[]
-export const PERSONAS = data.personas as Persona[]
+/** In the page's language: on English pages the English (content/en/curriculum.ts) over the Chinese. */
+const local = isEn ? localizeCurriculum(data as Curriculum) : (data as Curriculum)
+type Curriculum = { tracks: Track[]; projects: Project[]; personas: Persona[] }
+
+export const TRACKS = local.tracks
+export const PROJECTS = local.projects
+export const PERSONAS = local.personas
 
 /** Curriculum ids taught by a teardown (model id). Lessons register their own ids. */
 export const TEARDOWN_CODES: Record<string, string> = {

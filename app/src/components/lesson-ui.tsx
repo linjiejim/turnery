@@ -1,6 +1,7 @@
 import * as React from "react"
 import { CircleCheck, CircleDashed, CircleX } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { byLocale, t } from "@/lib/i18n"
 
 /**
  * Building blocks of a lesson step: task card, hints, software notes,
@@ -11,7 +12,7 @@ export function TaskCard({ done, children }: { done: boolean; children: React.Re
     <div className={cn("mt-5 flex gap-2.5 rounded-lg border p-3 transition-colors duration-(--duration-base)", done && "border-transparent bg-success-subtle")}>
       {done ? <CircleCheck className="mt-0.5 size-4 text-success" /> : <CircleDashed className="mt-0.5 size-4 text-faint-foreground" />}
       <div className="min-w-0">
-        <div className={cn("text-small font-medium", done ? "text-success" : "text-muted-foreground")}>{done ? "完成" : "试一试"}</div>
+        <div className={cn("text-small font-medium", done ? "text-success" : "text-muted-foreground")}>{done ? t("完成", "Done") : t("试一试", "Try it")}</div>
         <div className="text-body">{children}</div>
       </div>
     </div>
@@ -22,7 +23,7 @@ export function Hint({ children, tone }: { children: React.ReactNode; tone?: "wa
   return <p className={cn("mt-3 rounded-md px-3 py-2 text-body", tone === "warning" ? "bg-warning-subtle text-warning" : "bg-sunken text-foreground")}>{children}</p>
 }
 
-export function Note({ children, title = "软件差异" }: { children: React.ReactNode; title?: string }) {
+export function Note({ children, title = t("软件差异", "In other software") }: { children: React.ReactNode; title?: string }) {
   return (
     <div className="mt-5 border-l-2 border-border pl-3 text-small text-muted-foreground">
       <span className="font-medium text-foreground">{title} · </span>
@@ -112,7 +113,7 @@ export function Predict({
   const [picked, setPicked] = React.useState<number | null>(null)
   return (
     <div className="mt-5 rounded-lg border p-3">
-      <div className="text-small font-medium text-muted-foreground">先猜一猜</div>
+      <div className="text-small font-medium text-muted-foreground">{t("先猜一猜", "Guess first")}</div>
       <div className="mt-1 text-body font-medium">{question}</div>
       <Choices
         options={options}
@@ -125,7 +126,7 @@ export function Predict({
       />
       {picked !== null && (
         <p className="mt-2 text-body">
-          <span className="font-medium">{picked === answer ? "猜对了。" : "看看视图里发生了什么。"}</span>
+          <span className="font-medium">{picked === answer ? t("猜对了。", "Right. ") : t("看看视图里发生了什么。", "See what happened in the view. ")}</span>
           {explain}
         </p>
       )}
@@ -165,8 +166,16 @@ export function Quiz({ items, onDone }: { items: QuizItem[]; onDone: (score: num
       ))}
       {done && (
         <p className="text-small text-muted-foreground">
-          答对 <span className="font-medium tabular text-foreground">{score}</span> / {items.length}。
-          {score < items.length ? "答错的题会在复习里再出现。" : ""}
+          {byLocale(
+            <>
+              答对 <span className="font-medium tabular text-foreground">{score}</span> / {items.length}。
+              {score < items.length ? "答错的题会在复习里再出现。" : ""}
+            </>,
+            <>
+              <span className="font-medium tabular text-foreground">{score}</span> / {items.length} correct.
+              {score < items.length ? " The ones you missed come back in review." : ""}
+            </>,
+          )}
         </p>
       )}
     </div>
@@ -175,15 +184,15 @@ export function Quiz({ items, onDone }: { items: QuizItem[]; onDone: (score: num
 
 export function StepBar({ titles, current, onJump, className }: { titles: string[]; current: number; onJump: (i: number) => void; className?: string }) {
   return (
-    <div className={cn("flex items-center gap-1", className)} role="tablist" aria-label="课程步骤">
-      {titles.map((t, i) => (
+    <div className={cn("flex items-center gap-1", className)} role="tablist" aria-label={t("课程步骤", "Lesson steps")}>
+      {titles.map((title, i) => (
         <button
           key={i}
           type="button"
           role="tab"
           aria-selected={i === current}
-          aria-label={`第 ${i + 1} 步：${t}`}
-          title={t}
+          aria-label={t(`第 ${i + 1} 步：${title}`, `Step ${i + 1}: ${title}`)}
+          title={title}
           onClick={() => onJump(i)}
           className="group flex h-6 items-center px-0.5"
         >

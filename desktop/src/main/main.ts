@@ -11,6 +11,7 @@ import { inside } from "../../../app/src/desktop/core/project"
 import { PART_EXT, PRODUCT, type CallContext, type ExportFormat, type KernelCall, type LookRequest, type MenuAction, type PickInfo, type RecentProject, type Snapshot } from "../../../app/src/desktop/core/protocol"
 import { addRecentProject, adoptLegacyHome, clearEngineInfo, HOME, PROJECTS_DIR, projectStamp, readRecent, readRecentProjects, readSettings, writeAppInfo, writeEngineInfo, writeSettings } from "../engine/home"
 import { startEngine } from "../engine/host"
+import { setLang, tm } from "./lang"
 import { serveEngine } from "../engine/rpc"
 import { agentSetup } from "./setup"
 import { wireAssistant } from "./assistant"
@@ -360,7 +361,7 @@ async function openProjectAt(from: Workspace | null, root: string, create = fals
   present(ws)
   if (ws.engine.projectRoot === canonical(root) && !create) return true
   const out = await ws.engine.run("open_project", { path: root, create }, userCtx())
-  if (!out.ok) void dialog.showMessageBox({ type: "warning", message: create ? "没能新建项目" : "没能打开项目", detail: out.text.replace(/^✗ /, "") })
+  if (!out.ok) void dialog.showMessageBox({ type: "warning", message: create ? tm("没能新建项目", "Couldn’t create the project") : tm("没能打开项目", "Couldn’t open the project"), detail: out.text.replace(/^✗ /, "") })
   return out.ok
 }
 
@@ -371,7 +372,7 @@ async function openForUser(from: Workspace | null, file: string, create = false)
     (from && (from.engine.empty || !from.engine.projectRoot || inside(from.engine.projectRoot, canonical(path.dirname(p)))) ? from : (emptyWorkspace() ?? newWorkspace()))
   present(ws)
   const res = await ws.engine.openForUser(p, create)
-  if (!res.ok) void dialog.showMessageBox({ type: "warning", message: "打不开这个零件", detail: res.text.replace(/^✗ /, "") })
+  if (!res.ok) void dialog.showMessageBox({ type: "warning", message: tm("打不开这个零件", "Can’t open this part"), detail: res.text.replace(/^✗ /, "") })
   refreshMenu()
   return res.ok
 }
@@ -390,7 +391,7 @@ async function openExample(from: Workspace | null) {
       copyFileSync(path.join(DIST, "examples", EXAMPLE.dir, EXAMPLE.part), file)
     }
   } catch (err) {
-    void dialog.showMessageBox({ type: "warning", message: "没能打开示例", detail: err instanceof Error ? err.message : String(err) })
+    void dialog.showMessageBox({ type: "warning", message: tm("没能打开示例", "Couldn’t open the example"), detail: err instanceof Error ? err.message : String(err) })
     return false
   }
   return (await openProjectAt(from, dest)) && (await openForUser(workspaces.find((w) => w.engine.projectRoot === canonical(dest)) ?? from, file))
@@ -406,9 +407,9 @@ async function newPartDialog(ws: Workspace | null) {
   const dir = project ? path.join(project.root, "parts") : PROJECTS_DIR
   mkdirSync(PROJECTS_DIR, { recursive: true })
   const res = await saveDialog(ws, {
-    title: "新建零件",
-    defaultPath: path.join(dir, `零件${PART_EXT}`),
-    filters: [{ name: "Turnery 零件", extensions: ["json"] }],
+    title: tm("新建零件", "New part"),
+    defaultPath: path.join(dir, `${tm("零件", "part")}${PART_EXT}`),
+    filters: [{ name: tm("Turnery 零件", "Turnery parts"), extensions: ["json"] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
   if (res.canceled || !res.filePath) return null
@@ -420,9 +421,9 @@ async function newPartDialog(ws: Workspace | null) {
 async function newProjectDialog(ws: Workspace | null) {
   mkdirSync(PROJECTS_DIR, { recursive: true })
   const res = await saveDialog(ws, {
-    title: "新建项目",
-    message: "项目是一个文件夹：里面放装配、零件和共用的参数",
-    nameFieldLabel: "项目名",
+    title: tm("新建项目", "New project"),
+    message: tm("项目是一个文件夹：里面放装配、零件和共用的参数", "A project is a folder: its assemblies, parts and shared parameters"),
+    nameFieldLabel: tm("项目名", "Project name"),
     defaultPath: path.join(PROJECTS_DIR, projectStamp()),
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
@@ -431,7 +432,7 @@ async function newProjectDialog(ws: Workspace | null) {
 }
 
 async function openProjectDialog(ws: Workspace | null) {
-  const res = await openDialog(ws, { title: "打开项目文件夹", defaultPath: existsSync(PROJECTS_DIR) ? PROJECTS_DIR : undefined, properties: ["openDirectory", "createDirectory"] })
+  const res = await openDialog(ws, { title: tm("打开项目文件夹", "Open a project folder"), defaultPath: existsSync(PROJECTS_DIR) ? PROJECTS_DIR : undefined, properties: ["openDirectory", "createDirectory"] })
   if (res.canceled || !res.filePaths[0]) return null
   return (await openProjectAt(ws, res.filePaths[0])) ? res.filePaths[0] : null
 }
@@ -440,9 +441,9 @@ async function openProjectDialog(ws: Workspace | null) {
 async function pickFileDialog(ws: Workspace, kind: "part" | "step") {
   const doc = ws.engine.docState()
   const res = await openDialog(ws, {
-    title: kind === "step" ? "选一个 STEP 文件" : "选一个零件或装配",
+    title: kind === "step" ? tm("选一个 STEP 文件", "Choose a STEP file") : tm("选一个零件或装配", "Choose a part or assembly"),
     defaultPath: doc ? path.dirname(doc.path) : undefined,
-    filters: kind === "step" ? [{ name: "STEP", extensions: ["step", "stp"] }] : [{ name: "Turnery 零件和装配", extensions: ["json"] }],
+    filters: kind === "step" ? [{ name: "STEP", extensions: ["step", "stp"] }] : [{ name: tm("Turnery 零件和装配", "Turnery parts and assemblies"), extensions: ["json"] }],
     properties: ["openFile"],
   })
   return res.canceled ? null : (res.filePaths[0] ?? null)
@@ -451,8 +452,8 @@ async function pickFileDialog(ws: Workspace, kind: "part" | "step") {
 /** A part, an assembly, or a project folder. */
 async function openPartDialog(ws: Workspace | null) {
   const res = await openDialog(ws, {
-    title: "打开零件、装配或项目文件夹",
-    filters: [{ name: "Turnery 零件和装配", extensions: ["json"] }],
+    title: tm("打开零件、装配或项目文件夹", "Open a part, assembly or project folder"),
+    filters: [{ name: tm("Turnery 零件和装配", "Turnery parts and assemblies"), extensions: ["json"] }],
     properties: ["openFile", "openDirectory"],
   })
   const picked = res.canceled ? null : res.filePaths[0]
@@ -461,18 +462,18 @@ async function openPartDialog(ws: Workspace | null) {
   return (await openForUser(ws, picked)) ? picked : null
 }
 
-const EXPORT_NAMES: Record<ExportFormat, string> = { step: "STEP", stl: "STL", "3mf": "3MF", py: "build123d 代码", json: "特征树 JSON" }
+const EXPORT_NAMES = (): Record<ExportFormat, string> => ({ step: "STEP", stl: "STL", "3mf": "3MF", py: tm("build123d 代码", "build123d code"), json: tm("特征树 JSON", "feature tree JSON") })
 
 async function exportDialog(ws: Workspace | null, format: ExportFormat) {
   const doc = ws?.engine.docState()
   if (!ws || !doc) return
   const res = await saveDialog(ws, {
-    title: `导出 ${EXPORT_NAMES[format]}`,
+    title: tm(`导出 ${EXPORT_NAMES()[format]}`, `Export ${EXPORT_NAMES()[format]}`),
     defaultPath: path.join(path.dirname(doc.path), `${doc.name}${format === "json" ? "-export" : ""}.${format}`),
   })
   if (res.canceled || !res.filePath) return
   const out = await ws.engine.run("export", { path: res.filePath, format }, userCtx(doc.path))
-  if (!out.ok) void dialog.showMessageBox({ type: "warning", message: "导出失败", detail: out.text })
+  if (!out.ok) void dialog.showMessageBox({ type: "warning", message: tm("导出失败", "Export failed"), detail: out.text })
   else shell.showItemInFolder(res.filePath)
 }
 
@@ -485,9 +486,9 @@ async function saveFigureDialog(ws: Workspace | null, figure: { format: "png" | 
   const doc = ws?.engine.docState()
   const png = figure.format === "png"
   const res = await saveDialog(ws, {
-    title: png ? "导出视图图片" : "导出线稿",
-    defaultPath: path.join(doc ? path.dirname(doc.path) : app.getPath("documents"), `${doc?.name ?? PRODUCT}-${png ? "视图" : "线稿"}.${figure.format}`),
-    filters: [{ name: png ? "PNG 图片" : "SVG 线稿", extensions: [figure.format] }],
+    title: png ? tm("导出视图图片", "Export a picture of the view") : tm("导出线稿", "Export a line drawing"),
+    defaultPath: path.join(doc ? path.dirname(doc.path) : app.getPath("documents"), `${doc?.name ?? PRODUCT}-${png ? tm("视图", "view") : tm("线稿", "drawing")}.${figure.format}`),
+    filters: [{ name: png ? tm("PNG 图片", "PNG image") : tm("SVG 线稿", "SVG line drawing"), extensions: [figure.format] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
   if (res.canceled || !res.filePath) return null
@@ -567,16 +568,16 @@ function refreshMenu() {
             label: PRODUCT,
             submenu: [
               { role: "about" as const },
-              { label: "检查更新…", click: () => void updater.check(true) },
+              { label: tm("检查更新…", "Check for updates…"), click: () => void updater.check(true) },
               {
-                label: "自动检查更新",
+                label: tm("自动检查更新", "Check for updates automatically"),
                 type: "checkbox" as const,
                 checked: updater.supported && updater.autoUpdate,
                 enabled: updater.supported,
                 click: (item: Electron.MenuItem) => updater.setAutoUpdate(item.checked),
               },
               { type: "separator" as const },
-              { label: "接入 Agent…", click: () => send("agent-setup") },
+              { label: tm("接入 Agent…", "Connect an agent…"), click: () => send("agent-setup") },
               { type: "separator" as const },
               { role: "services" as const },
               { type: "separator" as const },
@@ -590,31 +591,31 @@ function refreshMenu() {
         ]
       : []),
     {
-      label: "文件",
+      label: tm("文件", "File"),
       submenu: [
-        { label: "新建项目…", accelerator: "CmdOrCtrl+Shift+N", click: () => void newProjectDialog(focused()) },
-        { label: "打开项目…", accelerator: "CmdOrCtrl+Shift+O", click: () => void openProjectDialog(focused()) },
-        { label: "新建窗口", accelerator: "CmdOrCtrl+Alt+N", click: () => present(newWorkspace()) },
+        { label: tm("新建项目…", "New project…"), accelerator: "CmdOrCtrl+Shift+N", click: () => void newProjectDialog(focused()) },
+        { label: tm("打开项目…", "Open project…"), accelerator: "CmdOrCtrl+Shift+O", click: () => void openProjectDialog(focused()) },
+        { label: tm("新建窗口", "New window"), accelerator: "CmdOrCtrl+Alt+N", click: () => present(newWorkspace()) },
         { type: "separator" },
-        { label: "新建零件…", accelerator: "CmdOrCtrl+N", click: () => void newPartDialog(focused()) },
-        { label: "打开…", accelerator: "CmdOrCtrl+O", click: () => void openPartDialog(focused()) },
-        { label: "打开最近", enabled: recent.length > 0, submenu: recent },
+        { label: tm("新建零件…", "New part…"), accelerator: "CmdOrCtrl+N", click: () => void newPartDialog(focused()) },
+        { label: tm("打开…", "Open…"), accelerator: "CmdOrCtrl+O", click: () => void openPartDialog(focused()) },
+        { label: tm("打开最近", "Open recent"), enabled: recent.length > 0, submenu: recent },
         { type: "separator" },
-        { label: "回到首页", accelerator: "CmdOrCtrl+Shift+H", click: () => void goHome(focused()) },
+        { label: tm("回到首页", "Back to start"), accelerator: "CmdOrCtrl+Shift+H", click: () => void goHome(focused()) },
         { type: "separator" },
-        { label: "导出 STEP…", accelerator: "CmdOrCtrl+E", click: () => void exportDialog(focused(), "step") },
-        { label: "导出 STL…", accelerator: "CmdOrCtrl+Shift+E", click: () => void exportDialog(focused(), "stl") },
-        { label: "导出 3MF…", click: () => void exportDialog(focused(), "3mf") },
+        { label: tm("导出 STEP…", "Export STEP…"), accelerator: "CmdOrCtrl+E", click: () => void exportDialog(focused(), "step") },
+        { label: tm("导出 STL…", "Export STL…"), accelerator: "CmdOrCtrl+Shift+E", click: () => void exportDialog(focused(), "stl") },
+        { label: tm("导出 3MF…", "Export 3MF…"), click: () => void exportDialog(focused(), "3mf") },
         { type: "separator" },
         mac ? { role: "close" } : { role: "quit" },
       ],
     },
     {
-      label: "编辑",
+      label: tm("编辑", "Edit"),
       submenu: [
         // The window decides: undo typing in a field, or undo the last change to the model.
-        { label: "撤销", accelerator: "CmdOrCtrl+Z", click: () => send("undo") },
-        { label: "重做", accelerator: "Shift+CmdOrCtrl+Z", click: () => send("redo") },
+        { label: tm("撤销", "Undo"), accelerator: "CmdOrCtrl+Z", click: () => send("undo") },
+        { label: tm("重做", "Redo"), accelerator: "Shift+CmdOrCtrl+Z", click: () => send("redo") },
         { type: "separator" },
         { role: "cut" },
         { role: "copy" },
@@ -623,30 +624,30 @@ function refreshMenu() {
       ],
     },
     {
-      label: "视图",
+      label: tm("视图", "View"),
       submenu: [
         ...(app.isPackaged ? [] : [{ role: "reload" as const }, { role: "toggleDevTools" as const }, { type: "separator" as const }]),
-        { label: "实际大小", accelerator: "CmdOrCtrl+0", click: () => zoom(0) },
-        { label: "放大", accelerator: "CmdOrCtrl+=", click: () => zoom(1) },
+        { label: tm("实际大小", "Actual size"), accelerator: "CmdOrCtrl+0", click: () => zoom(0) },
+        { label: tm("放大", "Zoom in"), accelerator: "CmdOrCtrl+=", click: () => zoom(1) },
         // ⌘+ (with Shift on most keyboards) and the keypad do the same, without more rows in the menu.
-        { label: "放大", accelerator: "CmdOrCtrl+Plus", visible: false, acceleratorWorksWhenHidden: true, click: () => zoom(1) },
-        { label: "放大", accelerator: "CmdOrCtrl+numadd", visible: false, acceleratorWorksWhenHidden: true, click: () => zoom(1) },
-        { label: "缩小", accelerator: "CmdOrCtrl+-", click: () => zoom(-1) },
-        { label: "缩小", accelerator: "CmdOrCtrl+numsub", visible: false, acceleratorWorksWhenHidden: true, click: () => zoom(-1) },
+        { label: tm("放大", "Zoom in"), accelerator: "CmdOrCtrl+Plus", visible: false, acceleratorWorksWhenHidden: true, click: () => zoom(1) },
+        { label: tm("放大", "Zoom in"), accelerator: "CmdOrCtrl+numadd", visible: false, acceleratorWorksWhenHidden: true, click: () => zoom(1) },
+        { label: tm("缩小", "Zoom out"), accelerator: "CmdOrCtrl+-", click: () => zoom(-1) },
+        { label: tm("缩小", "Zoom out"), accelerator: "CmdOrCtrl+numsub", visible: false, acceleratorWorksWhenHidden: true, click: () => zoom(-1) },
         { type: "separator" },
         // The 3D view's one-letter keys (V C R P M X D E A F H I, ? for all) live in the window, not here:
         // a menu shortcut without ⌘ would eat the letter when typing in a field.
-        { label: "左栏", accelerator: "CmdOrCtrl+B", click: () => send("toggle-left") },
-        { label: "右栏", accelerator: "Alt+CmdOrCtrl+B", click: () => send("toggle-right") },
+        { label: tm("左栏", "Left sidebar"), accelerator: "CmdOrCtrl+B", click: () => send("toggle-left") },
+        { label: tm("右栏", "Right sidebar"), accelerator: "Alt+CmdOrCtrl+B", click: () => send("toggle-right") },
         { type: "separator" },
-        { label: "后退", accelerator: "CmdOrCtrl+[", click: () => send("back") },
-        { label: "前进", accelerator: "CmdOrCtrl+]", click: () => send("forward") },
+        { label: tm("后退", "Back"), accelerator: "CmdOrCtrl+[", click: () => send("back") },
+        { label: tm("前进", "Forward"), accelerator: "CmdOrCtrl+]", click: () => send("forward") },
         { type: "separator" },
         { role: "togglefullscreen" },
       ],
     },
     { role: "windowMenu" },
-    { role: "help", submenu: [{ label: "接入 Agent…", click: () => send("agent-setup") }] },
+    { role: "help", submenu: [{ label: tm("接入 Agent…", "Connect an agent…"), click: () => send("agent-setup") }] },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
@@ -654,6 +655,14 @@ function refreshMenu() {
 // ------------------------------------------------------------------------ IPC
 
 function wireIpc() {
+  // The window's language (its own choice, else the system's): the menus and dialogs follow it.
+  // A change (switched in one window, which reloaded itself) reloads the other windows too: they share
+  // the stored choice but each read it when it loaded.
+  ipcMain.handle("turnery:set-language", (e, lang: unknown) => {
+    if (!setLang(lang)) return
+    refreshMenu()
+    for (const w of BrowserWindow.getAllWindows()) if (w.webContents !== e.sender && !w.webContents.isLoading()) w.webContents.reload()
+  })
   ipcMain.handle("turnery:state", (e) => {
     const { engine } = wsOf(e)
     return { snapshot: engine.snapshot(), doc: engine.docState(), pick: engine.pickRequest() }

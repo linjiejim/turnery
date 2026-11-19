@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai"
+import { isEn, locale, localizedPath, t } from "../lib/i18n"
 import { Tree } from "./dsl"
 import { byteLength, checkTree, LIMITS } from "./limits"
 
@@ -55,20 +56,33 @@ export function sharePayload(input: { title: string; note?: string; tree: Tree; 
 
 /** Why the server would refuse this, before sending it. */
 export function payloadProblem(p: SharePayload): string | null {
-  if (!p.title) return "要有标题"
-  if (p.title.length > LIMITS.title) return `标题太长了（最多 ${LIMITS.title} 字）`
-  if (p.note && p.note.length > LIMITS.note) return `说明太长了（最多 ${LIMITS.note} 字）`
-  const t = checkTree(p.tree)
-  if (!t.ok) return t.tooBig ? `模型太大，不能分享：${t.message}` : t.message
-  if (p.chat && byteLength(JSON.stringify(p.chat)) > LIMITS.chatBytes) return "对话太长了，不勾选对话再试"
+  if (!p.title) return t("要有标题", "Add a title")
+  if (p.title.length > LIMITS.title) return t(`标题太长了（最多 ${LIMITS.title} 字）`, `Title too long (at most ${LIMITS.title} characters)`)
+  if (p.note && p.note.length > LIMITS.note) return t(`说明太长了（最多 ${LIMITS.note} 字）`, `Description too long (at most ${LIMITS.note} characters)`)
+  const checked = checkTree(p.tree)
+  if (!checked.ok) return checked.tooBig ? t(`模型太大，不能分享：${checked.message}`, `Model too big to share: ${checked.message}`) : checked.message
+  if (p.chat && byteLength(JSON.stringify(p.chat)) > LIMITS.chatBytes) return t("对话太长了，不勾选对话再试", "Chat too long. Try again without the chat.")
   return null
 }
 
 export type ShareCreated = { id: string; url: string; deleteToken: string }
 
+/** The share API's errors in English, by code (the server writes its messages in Chinese). */
+const SHARE_ERRORS_EN: Record<string, string> = {
+  "rate-limit": "Too many requests. Try again in a few minutes.",
+  "too-large": "The model is too big to share.",
+  full: "Sharing is full right now. Try again later.",
+  secret: "This looks like it contains a secret key, so it wasn’t shared.",
+  "bad-request": "The share request was malformed.",
+  "bad-id": "That link isn’t valid.",
+  "not-found": "This link doesn’t exist or was deleted.",
+  forbidden: "Wrong delete token: only the browser that made the link can delete it.",
+}
+
 async function failure(r: Response, fallback: string) {
-  const j = (await r.json().catch(() => null)) as { message?: string } | null
-  return new Error(j?.message ?? fallback)
+  const j = (await r.json().catch(() => null)) as { error?: string; message?: string } | null
+  const en = isEn && j?.error ? SHARE_ERRORS_EN[j.error] : undefined
+  return new Error(en ?? (isEn ? fallback : (j?.message ?? fallback)))
 }
 
 export async function createShare(p: SharePayload): Promise<ShareCreated> {
@@ -76,9 +90,9 @@ export async function createShare(p: SharePayload): Promise<ShareCreated> {
   try {
     r = await fetch("/api/studio/share", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(p) })
   } catch {
-    throw new Error("连不上服务器，检查网络后重试。")
+    throw new Error(t("连不上服务器，检查网络后重试。", "Can’t reach the server. Check your connection and try again."))
   }
-  if (!r.ok) throw await failure(r, "没能生成链接，稍后再试。")
+  if (!r.ok) throw await failure(r, t("没能生成链接，稍后再试。", "Couldn’t create the link. Try again later."))
   const created = (await r.json()) as ShareCreated
   rememberShare(created.id, created.deleteToken)
   return created
@@ -93,10 +107,10 @@ export async function loadShare(id: string): Promise<Loaded> {
   try {
     r = await fetch(`/api/studio/share/${id}`)
   } catch {
-    throw new Error("连不上服务器，检查网络后重试。")
+    throw new Error(t("连不上服务器，检查网络后重试。", "Can’t reach the server. Check your connection and try again."))
   }
   if (r.status === 404 || r.status === 400) return { kind: "missing" }
-  if (!r.ok) throw await failure(r, "没能打开这个链接，稍后再试。")
+  if (!r.ok) throw await failure(r, t("没能打开这个链接，稍后再试。", "Couldn’t open this link. Try again later."))
   const raw = (await r.json()) as Record<string, unknown>
   return checkSnapshot(raw)
 }
@@ -117,7 +131,7 @@ export function checkSnapshot(raw: Record<string, unknown>): Loaded {
       id: text(raw.id, 10),
       created: text(raw.created, 40),
       app: text(raw.app, 40),
-      title: text(raw.title, LIMITS.title) || "分享的模型",
+      title: text(raw.title, LIMITS.title) || t("分享的模型", "Shared model"),
       ...(text(raw.note, LIMITS.note) ? { note: text(raw.note, LIMITS.note) } : {}),
       tree: tree.tree,
       ...(chat.length ? { chat } : {}),
@@ -130,14 +144,15 @@ export async function deleteShare(id: string, token: string): Promise<void> {
   try {
     r = await fetch(`/api/studio/share/${id}`, { method: "DELETE", headers: { "x-share-token": token } })
   } catch {
-    throw new Error("连不上服务器，检查网络后重试。")
+    throw new Error(t("连不上服务器，检查网络后重试。", "Can’t reach the server. Check your connection and try again."))
   }
   // Already gone counts as deleted.
-  if (!r.ok && r.status !== 404) throw await failure(r, "没能删除，稍后再试。")
+  if (!r.ok && r.status !== 404) throw await failure(r, t("没能删除，稍后再试。", "Couldn’t delete. Try again later."))
   forgetShare(id)
 }
 
-export const shareUrl = (id: string) => new URL(`/studio/s/${id}`, location.origin).href
+/** A shared link, in the language it was made in (/en/studio/s/… from an English page). */
+export const shareUrl = (id: string) => new URL(localizedPath(`/studio/s/${id}`, locale), location.origin).href
 
 // Delete tokens live only in the browser that made the link.
 const TOKENS = "ft-studio-shares-v1"

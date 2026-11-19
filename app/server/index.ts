@@ -18,7 +18,7 @@ import { Hono } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { Annotations, annotationText } from "../src/studio/annotations"
 import { Tree } from "../src/studio/dsl"
-import { SYSTEM_PROMPT, TEACH_PROMPT, statePrompt, withState } from "../src/studio/prompt"
+import { SYSTEM_PROMPT, TEACH_PROMPT, languageRule, statePrompt, withState } from "../src/studio/prompt"
 import { STUDIO_TOOLS } from "../src/studio/tools"
 import { trimMessages } from "../src/studio/trim"
 import { Budget, clientIp, RateLimiter } from "./limits"
@@ -57,21 +57,23 @@ app.get("/api/studio/status", (c) =>
 app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) => {
   const ip = clientIp((h) => c.req.header(h))
   const userKey = c.req.header("x-deepseek-key")?.trim() || undefined
-  const body = (await c.req.json().catch(() => null)) as { messages?: UIMessage[]; tree?: unknown; summary?: unknown; mode?: unknown } | null
+  const body = (await c.req.json().catch(() => null)) as { messages?: UIMessage[]; tree?: unknown; summary?: unknown; mode?: unknown; lang?: unknown } | null
   if (!body || !Array.isArray(body.messages) || !body.messages.length) return c.json({ error: "bad-request", message: "请求格式不对" }, 400)
+  /** What the learner reads, in the language of the page they sent it from. */
+  const say = (zh: string, en: string) => (body.lang === "en" ? en : zh)
   const tree = Tree.safeParse(body.tree ?? { params: {}, features: [] })
-  if (!tree.success) return c.json({ error: "bad-request", message: "特征树格式不对" }, 400)
+  if (!tree.success) return c.json({ error: "bad-request", message: say("特征树格式不对", "The feature tree is malformed.") }, 400)
   const summary = typeof body.summary === "string" ? body.summary.slice(0, 12000) : ""
 
   const last = body.messages[body.messages.length - 1]
   const startsTurn = last?.role === "user"
   const wait = requests.take(ip) || (startsTurn && !userKey ? turns.take(ip) : 0)
-  if (wait) return c.json({ error: "rate-limit", message: `请求太频繁了，${Math.ceil(wait / 60)} 分钟后再试，或者填自己的 DeepSeek key。` }, 429)
+  if (wait) return c.json({ error: "rate-limit", message: say(`请求太频繁了，${Math.ceil(wait / 60)} 分钟后再试，或者填自己的 DeepSeek key。`, `Too many requests. Try again in ${Math.ceil(wait / 60)} min, or use your own DeepSeek key.`) }, 429)
 
   const route = userKey ? deepseekRoute(userKey, BYOK_MODEL, THINKING, env.DEEPSEEK_BASE_URL) : HOSTED
-  if (!route && !MOCK) return c.json({ error: "no-key", message: "服务器没有配置模型 key：请在设置里填自己的 DeepSeek key。" }, 503)
+  if (!route && !MOCK) return c.json({ error: "no-key", message: say("服务器没有配置模型 key：请在设置里填自己的 DeepSeek key。", "This server has no model key. Add your own DeepSeek key from the ⋯ menu.") }, 503)
   if (!userKey && !MOCK && budget.exhausted())
-    return c.json({ error: "budget", message: "今天的公共额度用完了：明天再来，或者填自己的 DeepSeek key。" }, 429)
+    return c.json({ error: "budget", message: say("今天的公共额度用完了：明天再来，或者填自己的 DeepSeek key。", "Today’s shared quota is used up. Come back tomorrow, or use your own DeepSeek key.") }, 429)
 
   // The state the learner saw when they sent the message (snapshot in its
   // metadata); older clients only send the live tree.
@@ -84,7 +86,7 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
   const messages = await convertToModelMessages(trimMessages(body.messages.map(withAnnotations)), { tools: STUDIO_TOOLS, ignoreIncompleteToolCalls: true })
   const result = streamText({
     model: MOCK ? mockModel() : route!.model,
-    system: `${SYSTEM_PROMPT}${body.mode === "teach" ? `\n\n${TEACH_PROMPT}` : ""}`,
+    system: `${SYSTEM_PROMPT}${body.mode === "teach" ? `\n\n${TEACH_PROMPT}` : ""}${languageRule(body.lang)}`,
     messages: withState(messages, state),
     tools: STUDIO_TOOLS,
     maxOutputTokens: 8000,

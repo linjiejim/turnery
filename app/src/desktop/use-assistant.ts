@@ -2,6 +2,7 @@ import * as React from "react"
 import { useChat } from "@ai-sdk/react"
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai"
 import { trimMessages } from "@/studio/trim"
+import { locale, t } from "@/lib/i18n"
 import { turnery } from "./bridge"
 import { chatTitle, forStorage, newChatId, type ChatSummary } from "./core/chats"
 
@@ -43,7 +44,7 @@ function ipcTransport(): ChatTransport<UIMessage> {
         },
       })
       // Old pictures stay out of the message: only the latest views matter to the model.
-      void turnery.assistantSend(id, trimMessages(messages)).catch(() => undefined)
+      void turnery.assistantSend(id, trimMessages(messages), locale).catch(() => undefined)
       return stream
     },
     reconnectToStream: async () => null,
@@ -158,7 +159,7 @@ function useAssistantState(project: string | null, part: string | null) {
 
   return {
     id: meta.id,
-    title: meta.title ?? (chat.messages.length ? chatTitle(chat.messages) : "新对话"),
+    title: meta.title ?? (chat.messages.length ? chatTitle(chat.messages) : t("新对话", "New chat")),
     messages: chat.messages,
     status: chat.status,
     busy,

@@ -1,43 +1,54 @@
-name: Bug
-description: 页面打不开、3D 画面不对、按钮没反应、显示错乱
+name: Bug · 问题
+description: Something doesn't work, the 3D view is wrong, a tool call fails · 打不开、画面不对、按钮没反应、工具调用出错
 title: "[Bug] "
 labels: ["bug"]
 body:
-  - type: input
-    id: url
+  - type: dropdown
+    id: where
     attributes:
-      label: 页面
-      description: 出问题的页面链接，课程或拆解请写到第几步。
-      placeholder: https://turnery.linjiejim.com/teardown/mug 第 9 步
+      label: Where · 在哪里
+      options:
+        - Desktop app window · 桌面版窗口
+        - Agent / MCP / CLI (turnery mcp, turnery ask…) · agent、MCP、命令行
+        - Website workbench (/studio) · 网页工作台
+        - Website lesson, card or teardown · 网站课程、图文卡、拆解
+        - Other · 其他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or page · 版本或页面
+      description: The desktop app's version (Turnery → About), or the page link and step. · 桌面版版本号（Turnery → 关于），或出问题的页面链接和第几步。
+      placeholder: Turnery 0.11.1 · or · https://turnery.linjiejim.com/teardown/mug step 9
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: 怎么复现
-      description: 一步一步写，别人照着做能看到同样的问题。
+      label: Steps to reproduce · 怎么复现
+      description: Step by step, so someone else sees the same thing. For an agent, the request you gave it. · 一步一步写，别人照着做能看到同样的问题；agent 出错的话写你给它的要求。
       placeholder: |
-        1. 打开…
-        2. 点「下一步」…
-        3. 拖动…
+        1. Open… · 打开…
+        2. Click… · 点…
+        3. Drag… · 拖动…
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: 期望和实际
-      description: 本来应该怎样，实际怎样。
+      label: Expected and actual · 期望和实际
     validations:
       required: true
   - type: input
     id: env
     attributes:
-      label: 浏览器和设备
-      placeholder: Chrome 131 · macOS 15 · 1440×900；或 微信内置浏览器 · iPhone 15
+      label: System and browser · 系统和浏览器
+      placeholder: macOS 15 · Apple silicon · Claude Code 2.x · or · Chrome 131 · 1440×900
     validations:
       required: true
   - type: textarea
     id: extra
     attributes:
-      label: 截图和控制台报错
-      description: 有截图最好。打开开发者工具（F12）看到红色报错的话，也贴过来。
+      label: Screenshots, logs, the part file · 截图、日志、零件文件
+      description: A screenshot helps most. Red errors in the browser console (F12), the tool result the agent got, or the .turnery.json file are welcome too. · 有截图最好；浏览器控制台（F12）的红色报错、agent 收到的工具结果、零件的 .turnery.json 也可以贴上来。

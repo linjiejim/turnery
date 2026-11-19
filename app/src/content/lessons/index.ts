@@ -1,10 +1,12 @@
 import type { LessonMeta } from "./types"
+import { localizeLessons } from "@/content/en/lessons"
+import { isEn } from "@/lib/i18n"
 
 /**
  * Every interactive lesson, in curriculum order. Lessons load on demand so
  * each one's scene code stays out of the main bundle.
  */
-export const LESSONS: LessonMeta[] = [
+const LESSONS_ZH: LessonMeta[] = [
   // ---------------------------------------------------------------- T0 公共地基
   {
     id: "coordinates",
@@ -201,6 +203,9 @@ export const LESSONS: LessonMeta[] = [
     load: () => import("./zebra-stripes"),
   },
 ]
+
+/** The lessons in the page's language: on English pages, the English title and gist (content/en/lessons.ts). */
+export const LESSONS = isEn ? localizeLessons(LESSONS_ZH) : LESSONS_ZH
 
 export const lessonMeta = (id: string | undefined) => LESSONS.find((l) => l.id === id)
 

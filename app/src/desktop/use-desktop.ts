@@ -5,6 +5,7 @@
 import * as React from "react"
 import * as THREE from "three"
 import { notify } from "@/components/ui/toast"
+import { t } from "@/lib/i18n"
 import type { PickInfo } from "@/studio/annotations"
 import { treeText, type ToolRun } from "@/studio/apply"
 import { EMPTY_TREE, type Tree } from "@/studio/dsl"
@@ -175,7 +176,7 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
         }
         // Based on the version on screen: if the agent changed it meanwhile, the engine refuses rather than overwrite.
         const r = await call("set_tree", { tree: next, base_rev: revRef.current })
-        return /^✗ 模型已经是/.test(r.text) ? "Agent 刚改过模型，你的改动没有生效：看一眼最新的模型再改。" : errorOf(r)
+        return /^✗ 模型已经是/.test(r.text) ? t("Agent 刚改过模型，你的改动没有生效：看一眼最新的模型再改。", "The agent just changed the model, so your change didn’t apply. Look at the latest model and try again.") : errorOf(r)
       },
       [call],
     ),
@@ -286,7 +287,7 @@ export function useDesktopNotes(
   const openDraft = React.useCallback(
     (info: PickInfo | null) => {
       if (info && request && request.kind !== "any" && info.kind !== request.kind) {
-        notify(request.kind === "face" ? "这次要点一个面：点在面的中间，离边远一点" : "这次要点一条边")
+        notify(request.kind === "face" ? t("这次要点一个面：点在面的中间，离边远一点", "Pick a face this time: click its middle, away from the edges") : t("这次要点一条边", "Pick an edge this time"))
         return
       }
       setDraft(info)
@@ -307,7 +308,7 @@ export function useDesktopNotes(
       setFocus(null)
       if (request) {
         await turnery.answerPick(request.id, { info, text })
-        notify.success("已告诉 agent 你点的位置")
+        notify.success(t("已告诉 agent 你点的位置", "Told the agent where you clicked"))
         return
       }
       const r = await turnery.call("add_note", { pick: info, text }, path)
@@ -330,7 +331,7 @@ export function useDesktopNotes(
       const hashes = a.selector ? await locate(a.kind, a.selector) : null
       if (!hashes?.length) {
         setFocus(null)
-        notify(`${a.kind === "face" ? "这个面" : "这条边"}已经变了，在现在的模型上找不到`)
+        notify(a.kind === "face" ? t("这个面已经变了，在现在的模型上找不到", "This face has changed and can’t be found on the current model") : t("这条边已经变了，在现在的模型上找不到", "This edge has changed and can’t be found on the current model"))
         return
       }
       setFocus({ kind: a.kind, hashes, pin: { n: a.n, point: a.point as Pin["point"], part: a.part } })
@@ -346,7 +347,7 @@ export function useDesktopNotes(
         notify.error(r.text.replace(/^✗ /, ""))
         return false
       }
-      notify.success("已记下，agent 用 get_notes 会读到")
+      notify.success(t("已记下，agent 用 get_notes 会读到", "Saved. The agent will read it with get_notes"))
       return true
     },
     [path],
@@ -368,7 +369,7 @@ export function useDesktopNotes(
     [display],
   )
 
-  const whole = doc?.kind === "assembly" ? "装配" : "零件"
+  const whole = doc?.kind === "assembly" ? t("装配", "assembly") : t("零件", "part")
   const update = React.useCallback(
     async (n: number, input: Record<string, unknown>) => {
       const note = notes?.find((x) => x.n === n)
@@ -405,7 +406,7 @@ export function useDesktopNotes(
       const hashes = n.kind === "region" ? [] : d.groups.filter((g) => (n.kind === "parts" ? g.part !== undefined && parts.has(g.part) : origins.has(g.origin))).map((g) => g.hash)
       // An area: back to the view it was marked from, with its box or strokes.
       const region = n.kind === "region" && n.region ? { camera: n.region.camera, ...(n.region.rect ? { rect: n.region.rect } : {}), ...(n.region.strokes ? { strokes: n.region.strokes } : {}) } : undefined
-      if (!hashes.length && !pin && !region) return notify("在现在的模型上找不到它了")
+      if (!hashes.length && !pin && !region) return notify(t("在现在的模型上找不到它了", "Can’t find it on the current model anymore"))
       setFocus({ kind: "face", hashes, ...(pin ? { pin } : {}), ...(region ? { region } : {}) })
     },
     [display, show],

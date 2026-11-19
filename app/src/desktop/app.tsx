@@ -3,6 +3,7 @@ import { Boxes, CircleAlert, MousePointerClick, Sparkles, X } from "lucide-react
 import { Button, IconButton } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { notify } from "@/components/ui/toast"
+import { t } from "@/lib/i18n"
 import { renderShots, renderViews } from "@/studio/look"
 import { figurePicture } from "@/studio/figure"
 import { selectGroup, wholeNames, wholeOf } from "@/studio/part-selection"
@@ -110,7 +111,7 @@ export function DesktopApp() {
       shownByAgent.current = false
     }
   }, [show, path, setFocus])
-  const agentHover: Hover | null = show?.feature && show.path === path ? { ids: [show.feature], label: show.label ?? "Agent 指的特征" } : null
+  const agentHover: Hover | null = show?.feature && show.path === path ? { ids: [show.feature], label: show.label ?? t("Agent 指的特征", "Feature the agent points to") } : null
   const clearShow = () => setShow(null)
   // A pick request is answered only on the part it asks about.
   const pickHere = pick && pick.path === path ? pick : null
@@ -182,7 +183,7 @@ export function DesktopApp() {
     const lit = new Set(pointedPiece ? [pointedPart] : wholeOf(pieces, pointedPart))
     return faces.filter((g) => g.part !== undefined && lit.has(g.part)).map((g) => g.hash)
   }, [pointedPart, pointedPiece, pieces, faces])
-  const ownHover = React.useMemo<Hover | null>(() => (selectionHover ? { ids: [selectionHover], feature: selectionHover, label: "零件或步骤", faces: hoverFaces } : null), [selectionHover, hoverFaces])
+  const ownHover = React.useMemo<Hover | null>(() => (selectionHover ? { ids: [selectionHover], feature: selectionHover, label: t("零件或步骤", "Part or step"), faces: hoverFaces } : null), [selectionHover, hoverFaces])
   const modelHover = ownHover ?? agentHover
   const tree = studio.tree
   const assemblyParts = React.useMemo(() => {
@@ -270,20 +271,23 @@ export function DesktopApp() {
   // One component of the assembly selected (all of it, or some of its pieces): it can be opened.
   const picked = assembly ? assemblyParts.filter((x) => selectedParts.includes(x.index)) : []
   const one = picked.length && picked.every((x) => x.id === picked[0].id) ? picked[0] : undefined
-  const why = !assembly ? null : picked.length && !one ? "一次打开一个零件" : one ? (openTarget(doc!, one.file).reason ?? null) : null
+  const why = !assembly ? null : picked.length && !one ? t("一次打开一个零件", "Open one part at a time") : one ? (openTarget(doc!, one.file).reason ?? null) : null
   const noteButton = (
-    <Button size="sm" variant="ghost" title="给选中的零件写一条备注" onClick={() => noteOnParts(selectedNames)}>
-      备注<Kbd>C</Kbd>
+    <Button size="sm" variant="ghost" title={t("给选中的零件写一条备注", "Write a note on the selected parts")} onClick={() => noteOnParts(selectedNames)}>
+      {t("备注", "Note")}
+      <Kbd>C</Kbd>
     </Button>
   )
   const selectionActions = !doc ? null : !assembly ? noteButton : (
     <>
       {noteButton}
-      <Button size="sm" variant="ghost" title={why ?? "单独打开它的零件文件（也可以双击零件）"} disabled={Boolean(why) || !one} onClick={() => one && void openPart(doc, one.file, false)}>
-        打开零件<Kbd>↵</Kbd>
+      <Button size="sm" variant="ghost" title={why ?? t("单独打开它的零件文件（也可以双击零件）", "Open its part file on its own (or double-click the part)")} disabled={Boolean(why) || !one} onClick={() => one && void openPart(doc, one.file, false)}>
+        {t("打开零件", "Open part")}
+        <Kbd>↵</Kbd>
       </Button>
-      <Button size="sm" variant="ghost" title={why ?? "在装配里改它，其余零件留在周围"} disabled={Boolean(why) || !one} onClick={() => one && void openPart(doc, one.file, true)}>
-        在装配里改<Kbd>⇧↵</Kbd>
+      <Button size="sm" variant="ghost" title={why ?? t("在装配里改它，其余零件留在周围", "Edit it in the assembly, with the other parts around it")} disabled={Boolean(why) || !one} onClick={() => one && void openPart(doc, one.file, true)}>
+        {t("在装配里改", "Edit in assembly")}
+        <Kbd>⇧↵</Kbd>
       </Button>
     </>
   )
@@ -336,7 +340,7 @@ export function DesktopApp() {
                 return r.ok
               }
               const ok = await history.renaming(file, now, rename(file, name))
-              if (ok) notify.undo(`已改名为「${name.trim()}」`, () => void history.renaming(now, file, rename(now, was)))
+              if (ok) notify.undo(t(`已改名为「${name.trim()}」`, `Renamed to “${name.trim()}”`), () => void history.renaming(now, file, rename(now, was)))
               return ok
             }}
           />
@@ -368,7 +372,12 @@ export function DesktopApp() {
                 hover={treeHover ?? modelHover}
                 annotations={notes}
                 busy={Boolean(loading)}
-                copy={{ hint: pick || loading || !annotation ? null : "单击模型上的面或边，给 agent 留一条备注", add: pickHere ? "就是这里" : "记下备注", next: notes.nextPin, busy: "模型还在加载，完成后即可选面和标注" }}
+                copy={{
+                  hint: pick || loading || !annotation ? null : t("单击模型上的面或边，给 agent 留一条备注", "Click a face or an edge on the model to leave the agent a note"),
+                  add: pickHere ? t("就是这里", "This one") : t("记下备注", "Save note"),
+                  next: notes.nextPin,
+                  busy: t("模型还在加载，完成后即可选面和标注", "The model is still loading. You can pick faces and add notes once it’s done."),
+                }}
                 reselect={reselect}
                 parts={partsView}
                 onParts={setPartsView}
@@ -416,7 +425,9 @@ export function DesktopApp() {
               <>
                 {pick && <PickBanner request={pick} elsewhere={pick.path !== path} />}
                 {show && show.path === path && !pick && <ShowBanner request={show} onClose={clearShow} />}
-                {doc.report?.checksError && <Banner tone="info" icon={<Boxes />}>后台检查失败：{doc.report.checksError}。可继续查看，精确结果暂不可用。</Banner>}
+                {doc.report?.checksError && <Banner tone="info" icon={<Boxes />}>
+                    {t(`后台检查失败：${doc.report.checksError}。可继续查看，精确结果暂不可用。`, `Background checks failed: ${doc.report.checksError}. You can keep looking; exact results aren’t available for now.`)}
+                  </Banner>}
                 {doc.error && (
                   <Banner tone="danger" icon={<CircleAlert />}>
                     {doc.error}
@@ -455,7 +466,7 @@ export function DesktopApp() {
       <AgentSetupDialog open={setupOpen} onOpenChange={setSetupOpen} />
       <NoteComposer
         text={notes.compose?.text ?? null}
-        about={notes.compose ? composeAbout(notes.compose, doc?.kind === "assembly" ? "装配" : "零件", display?.parts ?? []) : ""}
+        about={notes.compose ? composeAbout(notes.compose, doc?.kind === "assembly" ? t("装配", "assembly") : t("零件", "part"), display?.parts ?? []) : ""}
         onClose={() => notes.setCompose(null)}
         onSave={async (text) => {
           if (!(await notes.addPartNote(text, notes.compose?.about))) return false
@@ -485,7 +496,7 @@ function Banner({ tone, icon, children, action, keep }: { tone: "info" | "warnin
 
 /** The agent is waiting for a click: say what it asked, and let the person decline. */
 function PickBanner({ request, elsewhere }: { request: PickRequest; elsewhere: boolean }) {
-  const what = request.kind === "face" ? "一个面" : request.kind === "edge" ? "一条边" : "一个面或一条边"
+  const what = request.kind === "face" ? t("一个面", "a face") : request.kind === "edge" ? t("一条边", "an edge") : t("一个面或一条边", "a face or an edge")
   const part = request.path.split(/[\\/]/).pop()
   return (
     <Banner
@@ -495,16 +506,16 @@ function PickBanner({ request, elsewhere }: { request: PickRequest; elsewhere: b
         <>
           {elsewhere && (
             <Button size="sm" variant="secondary" onClick={() => void turnery.call("open_part", { path: request.path })}>
-              切到 {part}
+              {t(`切到 ${part}`, `Switch to ${part}`)}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => void turnery.answerPick(request.id, null)}>
-            不点了
+            {t("不点了", "Skip")}
           </Button>
         </>
       }
     >
-      <span className="font-medium">Agent 请你{elsewhere ? `在 ${part} 上` : ""}点{what}：</span>
+      <span className="font-medium">{t(`Agent 请你${elsewhere ? `在 ${part} 上` : ""}点${what}：`, `The agent asks you to click ${what}${elsewhere ? ` on ${part}` : ""}: `)}</span>
       {request.prompt}
     </Banner>
   )
@@ -516,22 +527,28 @@ function ShowBanner({ request, onClose }: { request: ShowRequest; onClose: () =>
       tone="info"
       icon={<Sparkles />}
       action={
-        <IconButton label="取消高亮" size="icon-sm" onClick={onClose}>
+        <IconButton label={t("取消高亮", "Clear highlight")} size="icon-sm" onClick={onClose}>
           <X />
         </IconButton>
       }
     >
-      <span className="font-medium">Agent 指给你看：</span>
-      {request.label ?? (request.hashes ? `${request.hashes.length} ${request.kind === "face" ? "个面" : "条边"}` : "")}
+      <span className="font-medium">{t("Agent 指给你看：", "The agent shows you: ")}</span>
+      {request.label ??
+        (request.hashes
+          ? t(
+              `${request.hashes.length} ${request.kind === "face" ? "个面" : "条边"}`,
+              `${request.hashes.length} ${request.kind === "face" ? (request.hashes.length === 1 ? "face" : "faces") : request.hashes.length === 1 ? "edge" : "edges"}`,
+            )
+          : "")}
     </Banner>
   )
 }
 
 /** The window's own keys, after the view's in the 「快捷键」 card. */
 const DESKTOP_KEYS = [
-  { keys: "↵ / ⇧↵", what: "单独打开选中的零件（也可以双击零件）/ 在装配里改它" },
-  { keys: "⌘B / ⌥⌘B", what: "收起或展开左栏 / 右栏" },
-  { keys: "⌘[ / ⌘]", what: "后退 / 前进" },
+  { keys: "↵ / ⇧↵", what: t("单独打开选中的零件（也可以双击零件）/ 在装配里改它", "Open the selected part on its own (or double-click it) / edit it in the assembly") },
+  { keys: "⌘B / ⌥⌘B", what: t("收起或展开左栏 / 右栏", "Hide or show the left / right panel") },
+  { keys: "⌘[ / ⌘]", what: t("后退 / 前进", "Back / forward") },
 ]
 
 /**
@@ -591,9 +608,15 @@ const baseOf = (p: string) => p.split(/[\\/]/).pop() ?? p
 /** The dialog's line on what the note is about. */
 function composeAbout(c: Compose, whole: string, parts: { name: string; whole?: string }[]) {
   const a = c.about
-  if (a?.feature) return `关于步骤「${a.name ?? a.feature}」。`
-  if (a?.parts?.length) return `关于零件${wholeNames(parts, a.parts).map((p) => `「${p}」`).join("")}（整个零件，不用点在面或边上）。`
-  return `关于整个${whole}。`
+  if (a?.feature) return t(`关于步骤「${a.name ?? a.feature}」。`, `About step “${a.name ?? a.feature}”.`)
+  if (a?.parts?.length) {
+    const names = wholeNames(parts, a.parts)
+    return t(
+      `关于零件${names.map((p) => `「${p}」`).join("")}（整个零件，不用点在面或边上）。`,
+      `About ${names.length === 1 ? "part" : "parts"} ${names.map((p) => `“${p}”`).join(", ")} as a whole (no need to click a face or an edge).`,
+    )
+  }
+  return t(`关于整个${whole}。`, `About the whole ${whole}.`)
 }
 
 const AGENT_SEEN = "turnery:agent-seen"

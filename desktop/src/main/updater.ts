@@ -12,6 +12,7 @@ import { readSettings, writeSettings } from "../engine/home"
 import { bundleOf, cannotReplace, clearStaging, download, stagingDir, swapBundles, unpack } from "../update/install"
 import { assetFor, compareVersions, parseManifest, platformKey } from "../update/manifest"
 import { UPDATE_PUBLIC_KEY, UPDATE_URL } from "../update/public-key"
+import { tm } from "./lang"
 
 const FIRST_CHECK = 15_000
 const EVERY = 6 * 60 * 60 * 1000
@@ -44,7 +45,7 @@ export function createUpdater(hooks: { status: (s: UpdateStatus) => void; notice
   async function fetchManifest() {
     const res = await net.fetch(url, { signal: AbortSignal.timeout(30_000), cache: "no-store" })
     if (res.status === 404) return null // no release published yet
-    if (!res.ok) throw new Error(`读不到更新清单：HTTP ${res.status}`)
+    if (!res.ok) throw new Error(tm(`读不到更新清单：HTTP ${res.status}`, `Couldn’t read the update list: HTTP ${res.status}`))
     return parseManifest(await res.json())
   }
 
@@ -53,7 +54,7 @@ export function createUpdater(hooks: { status: (s: UpdateStatus) => void; notice
     if (why) throw new Error(why)
     const manifest = await fetchManifest()
     if (!manifest || compareVersions(manifest.version, app.getVersion()) <= 0) {
-      if (asked) hooks.notice({ tone: "success", text: `Turnery ${app.getVersion()} 已是最新版本` })
+      if (asked) hooks.notice({ tone: "success", text: tm(`Turnery ${app.getVersion()} 已是最新版本`, `Turnery ${app.getVersion()} is up to date`) })
       return
     }
     const { version } = manifest
@@ -83,12 +84,12 @@ export function createUpdater(hooks: { status: (s: UpdateStatus) => void; notice
       throw e
     }
     set({ phase: "ready", version })
-    if (asked) hooks.notice({ tone: "success", text: `Turnery ${version} 已下载好，重启后生效` })
+    if (asked) hooks.notice({ tone: "success", text: tm(`Turnery ${version} 已下载好，重启后生效`, `Turnery ${version} is downloaded; restart to use it`) })
   }
 
   function check(manual: boolean) {
     if (staged) {
-      if (manual) hooks.notice({ tone: "info", text: `Turnery ${staged.version} 已下载好，重启后生效` })
+      if (manual) hooks.notice({ tone: "info", text: tm(`Turnery ${staged.version} 已下载好，重启后生效`, `Turnery ${staged.version} is downloaded; restart to use it`) })
       return Promise.resolve()
     }
     if (manual) {
@@ -98,7 +99,7 @@ export function createUpdater(hooks: { status: (s: UpdateStatus) => void; notice
     }
     running ??= update()
       .catch((e) => {
-        if (asked) hooks.notice({ tone: "error", text: `检查更新失败：${reason(e)}` })
+        if (asked) hooks.notice({ tone: "error", text: tm(`检查更新失败：${reason(e)}`, `Couldn’t check for updates: ${reason(e)}`) })
         else console.warn("[turnery] update:", reason(e))
       })
       .finally(() => {

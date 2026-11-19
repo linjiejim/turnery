@@ -24,7 +24,8 @@ await writeFile(assembly, JSON.stringify({ params: {}, features: [
 ] }))
 const errors = [], checks = []
 const started = performance.now()
-const app = await _electron.launch({ executablePath: path.join(root, "desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"), args: [path.join(root, "desktop"), `--user-data-dir=${path.join(out, "profile")}`, "--open", process.argv[2] ? path.resolve(process.argv[2]) : assembly], env: { ...process.env, TURNERY_HOME: path.join(out, "home") }, timeout: 30_000 })
+const app = await _electron.launch({ executablePath: path.join(root, "desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"), // --lang: the checks below find controls by their Chinese names, whatever the system language.
+  args: [path.join(root, "desktop"), `--user-data-dir=${path.join(out, "profile")}`, "--lang=zh-CN", "--open", process.argv[2] ? path.resolve(process.argv[2]) : assembly], env: { ...process.env, TURNERY_HOME: path.join(out, "home") }, timeout: 30_000 })
 let page
 try {
   page = await app.firstWindow()

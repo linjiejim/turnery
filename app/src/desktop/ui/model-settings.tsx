@@ -6,8 +6,12 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { notify } from "@/components/ui/toast"
+import { t } from "@/lib/i18n"
 import { turnery } from "../bridge"
 import type { ModelSettings } from "../core/protocol"
+
+/** The main process says how a key is kept in Chinese (desktop/src/main/assistant.ts KEY_NOTE): its English. */
+const KEY_NOTE_EN: Record<string, string> = { "来自环境变量": "From an environment variable", "已加密保存": "Saved, encrypted", "已保存（明文，文件权限 600）": "Saved (plain text, file mode 600)" }
 
 /** Which model the built-in assistant uses: a provider, a model name, a key. */
 export function ModelSettingsDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; onSaved: (s: ModelSettings) => void }) {
@@ -45,7 +49,7 @@ export function ModelSettingsDialog({ open, onOpenChange, onSaved }: { open: boo
       onSaved(next)
       onOpenChange(false)
     } catch {
-      notify.error("没能保存模型设置")
+      notify.error(t("没能保存模型设置", "Couldn’t save the model settings"))
     } finally {
       setSaving(false)
     }
@@ -55,17 +59,17 @@ export function ModelSettingsDialog({ open, onOpenChange, onSaved }: { open: boo
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="md">
-        <DialogHeader title="助手用哪个模型" description="对话建模用你自己的模型和 key。key 只留在这台电脑上，不进项目文件夹。" />
+        <DialogHeader title={t("助手用哪个模型", "Assistant model")} description={t("对话建模用你自己的模型和 key。key 只留在这台电脑上，不进项目文件夹。", "Modeling by chat uses your own model and key. The key stays on this computer and never goes into the project folder.")} />
         <DialogBody className="space-y-4 pb-2">
           {settings && p && (
             <>
-              <Field label="服务商">
-                <Select aria-label="服务商" value={preset} onValueChange={(id) => pick(settings, id)} options={settings.presets.map((x) => ({ value: x.id, label: x.name }))} />
+              <Field label={t("服务商", "Provider")}>
+                <Select aria-label={t("服务商", "Provider")} value={preset} onValueChange={(id) => pick(settings, id)} options={settings.presets.map((x) => ({ value: x.id, label: x.name }))} />
               </Field>
-              <Field label="模型名" hint={p.defaultModel ? `不填就用 ${p.defaultModel}` : "这家要自己填模型名，照它的文档写"}>
-                <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={p.defaultModel || "模型名"} spellCheck={false} />
+              <Field label={t("模型名", "Model name")} hint={p.defaultModel ? t(`不填就用 ${p.defaultModel}`, `Leave blank to use ${p.defaultModel}`) : t("这家要自己填模型名，照它的文档写", "This provider needs a model name; use the one from its docs")}>
+                <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={p.defaultModel || t("模型名", "Model name")} spellCheck={false} />
               </Field>
-              <Field label="地址" hint={p.defaultBaseURL ? "一般不用改" : p.id === "custom" ? "OpenAI 兼容的地址，通常以 /v1 结尾" : "不填用官方地址"}>
+              <Field label={t("地址", "Base URL")} hint={p.defaultBaseURL ? t("一般不用改", "Usually left as is") : p.id === "custom" ? t("OpenAI 兼容的地址，通常以 /v1 结尾", "An OpenAI-compatible URL, usually ending in /v1") : t("不填用官方地址", "Leave blank for the official URL")}>
                 <Input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder={p.defaultBaseURL || "https://…/v1"} spellCheck={false} />
               </Field>
               {!p.keyless && (
@@ -73,31 +77,31 @@ export function ModelSettingsDialog({ open, onOpenChange, onSaved }: { open: boo
                   label="Key"
                   hint={
                     p.hasKey
-                      ? `${p.keyNote}。留空就继续用它。`
+                      ? t(`${p.keyNote}。留空就继续用它。`, `${KEY_NOTE_EN[p.keyNote] ?? p.keyNote}. Leave blank to keep it.`)
                       : settings.keysEncrypted
-                        ? "保存时用系统的钥匙串加密。"
-                        : "保存在 ~/.turnery/providers.json，明文，文件只有你能读。"
+                        ? t("保存时用系统的钥匙串加密。", "Encrypted with the system keychain when saved.")
+                        : t("保存在 ~/.turnery/providers.json，明文，文件只有你能读。", "Saved in ~/.turnery/providers.json as plain text; only you can read the file.")
                   }
                 >
-                  <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={p.hasKey ? "••••••••" : "粘贴 key"} autoComplete="off" spellCheck={false} />
+                  <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={p.hasKey ? "••••••••" : t("粘贴 key", "Paste key")} autoComplete="off" spellCheck={false} />
                 </Field>
               )}
               <label className="flex items-center justify-between gap-3 text-body">
                 <span>
-                  这个模型能看图
-                  <span className="block text-caption text-muted-foreground">打开后，助手用「看一眼」时会收到渲染图；看不了图的模型改用测量来确认。</span>
+                  {t("这个模型能看图", "This model can see images")}
+                  <span className="block text-caption text-muted-foreground">{t("打开后，助手用「看一眼」时会收到渲染图；看不了图的模型改用测量来确认。", "When on, the assistant gets rendered images when it looks at the model. Models that can’t see images check by measuring instead.")}</span>
                 </span>
-                <Switch checked={vision} onCheckedChange={setVision} aria-label="这个模型能看图" />
+                <Switch checked={vision} onCheckedChange={setVision} aria-label={t("这个模型能看图", "This model can see images")} />
               </label>
             </>
           )}
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消", "Cancel")}
           </Button>
           <Button variant="primary" disabled={!ready} loading={saving} onClick={() => void save()}>
-            保存并使用
+            {t("保存并使用", "Save and use")}
           </Button>
         </DialogFooter>
       </DialogContent>

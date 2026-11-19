@@ -23,6 +23,15 @@ import { useAsync } from "@/lib/use-async"
 import { loadGlb, loadIndex, loadManifest, type AssemblyManifest, type Manifest, type ModelIndexEntry, type PartManifest } from "@/three/baked"
 import { BakedAssemblyScene, BakedPartScene, type BakedState, type FaceStats } from "@/three/teardown-scene"
 import type { Viewer } from "@/three/viewer"
+import { ZhOnlyNotice } from "@/components/zh-only"
+import { isEn, t } from "@/lib/i18n"
+import { featureNameEn } from "@/content/ops"
+
+/**
+ * A feature's name as shown: the models name features like 「拉伸2」, which on English pages reads
+ * "Extrude2" (the CAD packages' own English style). Other names stay as they are.
+ */
+const featureName = (name: string) => (isEn ? featureNameEn(name) : name)
 
 
 // ------------------------------------------------------------------ gallery
@@ -32,9 +41,15 @@ export function TeardownIndex() {
   const models = index.data ? Object.values(index.data) : []
   return (
     <Page width="wide" className="mx-auto">
-      <PageHeader title="案例拆解" info="真实物件按特征树一步步重建：几何由 build123d 和 OpenCascade 内核离线算出，每个面都标明是哪一步生成或修改的。" />
+      <PageHeader
+        title={t("案例拆解", "Teardowns")}
+        info={t(
+          "真实物件按特征树一步步重建：几何由 build123d 和 OpenCascade 内核离线算出，每个面都标明是哪一步生成或修改的。",
+          "Real objects rebuilt one feature at a time. The geometry is computed ahead of time with build123d and the OpenCascade kernel, and every face is marked with the step that created or changed it.",
+        )}
+      />
       {index.error ? (
-        <StateView kind="error" description="模型清单没加载出来。" onRetry={index.retry} />
+        <StateView kind="error" description={t("模型清单没加载出来。", "The model list didn't load.")} onRetry={index.retry} />
       ) : (
         <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
           {index.loading && Array.from({ length: 3 }, (_, i) => <div key={i} className="aspect-[4/3] rounded-lg border bg-sunken" />)}
@@ -54,7 +69,7 @@ export function TeardownIndex() {
                 <div className="flex items-center gap-2">
                   <span className="text-heading font-semibold">{p.title}</span>
                   <Badge tone="outline" className="ml-auto">
-                    规划中
+                    {t("规划中", "Planned")}
                   </Badge>
                 </div>
                 <div className="text-small text-muted-foreground">{p.subtitle}</div>
@@ -82,7 +97,7 @@ function ModelCard({ model }: { model: ModelIndexEntry }) {
         </div>
         <div className="text-small text-muted-foreground">{model.subtitle}</div>
         <div className="mt-1 text-caption text-faint-foreground">
-          {model.kind === "part" ? `单零件 · ${model.features} 个特征` : `装配 · ${model.parts} 种零件`}
+          {model.kind === "part" ? t(`单零件 · ${model.features} 个特征`, `Part · ${model.features} features`) : t(`装配 · ${model.parts} 种零件`, `Assembly · ${model.parts} distinct parts`)}
         </div>
       </div>
     </Link>
@@ -100,13 +115,13 @@ export function TeardownPage() {
   if (manifest.loading)
     return (
       <div className="grid h-dvh place-items-center">
-        <Spinner label="正在加载模型" />
+        <Spinner label={t("正在加载模型", "Loading the model")} />
       </div>
     )
   if (manifest.error || !manifest.data)
     return (
       <div className="grid h-dvh place-items-center">
-        <StateView kind="empty" title="没有这个案例" action={<Link to="/teardown">回到案例列表</Link>} />
+        <StateView kind="empty" title={t("没有这个案例", "No such teardown")} action={<Link to="/teardown">{t("回到案例列表", "Back to teardowns")}</Link>} />
       </div>
     )
   const m = manifest.data as Manifest
@@ -132,7 +147,7 @@ function Shell({
   return (
     <div className="flex h-dvh flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
-        <IconButton label="返回案例列表" onClick={() => navigate("/teardown")}>
+        <IconButton label={t("返回案例列表", "Back to teardowns")} onClick={() => navigate("/teardown")}>
           <ArrowLeft />
         </IconButton>
         <span className="truncate text-body font-semibold">{title}</span>
@@ -168,7 +183,9 @@ function SourceLink({ path, label, className }: { path: string; label: string; c
     </a>
   ) : (
     <div className={cls}>
-      {label}：<span className="font-mono text-caption">{path}</span>
+      {label}
+      {t("：", ": ")}
+      <span className="font-mono text-caption">{path}</span>
     </div>
   )
 }
@@ -193,6 +210,7 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
   const last = Math.max(0, available - 1)
   const failedAt = state.variant && !state.variant.ok ? state.variant.failedAt : undefined
   const failedIndex = failedAt ? m.features.findIndex((f) => f.id === failedAt) : -1
+  const failedFeature = m.features[failedIndex]
 
   const onReady = React.useCallback(
     (v: Viewer) => {
@@ -260,11 +278,11 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
   return (
     <Shell
       title={m.title}
-      meta={`案例拆解 · 单零件 · ${m.features.length} 个特征`}
+      meta={t(`案例拆解 · 单零件 · ${m.features.length} 个特征`, `Teardown · part · ${m.features.length} features`)}
       actions={
         <>
           <ToggleLabel
-            label="显示后续特征"
+            label={t("显示后续特征", "Show later features")}
             checked={showFuture}
             onChange={(v) => {
               setShowFuture(v)
@@ -272,22 +290,22 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
             }}
           />
           <ToggleLabel
-            label="剖切"
+            label={t("剖切", "Section")}
             checked={section}
             onChange={(v) => {
               setSection(v)
               scene.current?.setSection(v)
             }}
           />
-          <ToggleLabel label="自动转到关键视角" checked={autoCam} onChange={setAutoCam} />
+          <ToggleLabel label={t("自动转到关键视角", "Turn to key views")} checked={autoCam} onChange={setAutoCam} />
         </>
       }
       left={
         <div className="p-2">
-          <div className="px-2 pb-1 pt-1 text-small font-medium text-muted-foreground">特征树</div>
+          <div className="px-2 pb-1 pt-1 text-small font-medium text-muted-foreground">{t("特征树", "Feature tree")}</div>
           <div className="flex h-8 items-center gap-2 rounded-sm px-2 text-body text-faint-foreground">
             <SquareDashed className="size-4" />
-            原点与基准面
+            {t("原点与基准面", "Origin and planes")}
           </div>
           {m.features.map((x, i) => {
             const failed = i === failedIndex
@@ -316,38 +334,44 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
                   ) : (
                     <OpIcon op={x.op} className={cn("size-4", i === upto ? "text-primary" : "text-muted-foreground")} />
                   )}
-                  <span className="shrink-0">{x.name}</span>
-                  <span className="truncate text-small text-faint-foreground">{failed ? "重建失败" : x.title}</span>
+                  <span className="shrink-0">{featureName(x.name)}</span>
+                  <span className="truncate text-small text-faint-foreground">{failed ? t("重建失败", "Rebuild failed") : x.title}</span>
                 </button>
                 {i === upto && i < m.features.length - 1 && !failed && (
-                  <div className="mx-2 my-1 flex items-center gap-2" aria-label="回滚条">
+                  <div className="mx-2 my-1 flex items-center gap-2" aria-label={t("回滚条", "Rollback bar")}>
                     <span className="h-0.5 flex-1 rounded-full bg-primary" />
-                    <span className="text-caption text-primary">回滚到这里</span>
+                    <span className="text-caption text-primary">{t("回滚到这里", "Rolled back to here")}</span>
                   </div>
                 )}
               </React.Fragment>
             )
           })}
-          <p className="mt-4 px-2 text-caption text-faint-foreground">↑ ↓ 逐步回滚。悬停一个特征，看它生成（蓝）和修改（橙）了哪些面。</p>
+          <p className="mt-4 px-2 text-caption text-faint-foreground">
+            {t(
+              "↑ ↓ 逐步回滚。悬停一个特征，看它生成（蓝）和修改（橙）了哪些面。",
+              "↑ ↓ roll back one step at a time. Hover a feature to see the faces it created (blue) and changed (orange).",
+            )}
+          </p>
         </div>
       }
       right={
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-full flex-col">
           <TabsList className="sticky top-0 z-10 bg-background px-4">
-            <TabsTrigger value="step">这一步</TabsTrigger>
-            <TabsTrigger value="code">代码</TabsTrigger>
+            <TabsTrigger value="step">{t("这一步", "This step")}</TabsTrigger>
+            <TabsTrigger value="code">{t("代码", "Code")}</TabsTrigger>
             <TabsTrigger value="params">
-              参数
-              {failedAt && <span className="size-1.5 rounded-full bg-destructive" aria-label="这组参数会失败" />}
+              {t("参数", "Parameters")}
+              {failedAt && <span className="size-1.5 rounded-full bg-destructive" aria-label={t("这组参数会失败", "These values fail")} />}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="step" className="p-4">
+            <ZhOnlyNotice what="This teardown's step text" className="mb-4" />
             <div className="text-small text-muted-foreground">
-              第 {upto + 1} 步，共 {m.features.length} 步
+              {t(`第 ${upto + 1} 步，共 ${m.features.length} 步`, `Step ${upto + 1} of ${m.features.length}`)}
             </div>
             <h2 className="mt-1 flex items-center gap-2 text-title font-semibold">
               <OpIcon op={f.op} className="size-5 text-primary" />
-              {f.name} · {f.title}
+              {featureName(f.name)} · {f.title}
             </h2>
             <div className="mt-1 font-mono text-caption tabular text-muted-foreground">{summary}</div>
             <p className="mt-3 text-reading">{f.why}</p>
@@ -360,17 +384,22 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
             {f.op !== "sketch" && stats && (
               <div className="mt-4 grid grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1 text-small">
                 <span className="size-2.5 rounded-xs bg-primary" />
-                <span>这一步新生成的面</span>
+                <span>{t("这一步新生成的面", "Faces created by this step")}</span>
                 <span className="tabular text-muted-foreground">{stats.new}</span>
                 <span className="size-2.5 rounded-xs bg-scene-modified" />
-                <span>被这一步修改的面</span>
+                <span>{t("被这一步修改的面", "Faces changed by this step")}</span>
                 <span className="tabular text-muted-foreground">{stats.modified}</span>
                 <span className="size-2.5 rounded-xs border bg-muted" />
-                <span>没有变化的面</span>
+                <span>{t("没有变化的面", "Unchanged faces")}</span>
                 <span className="tabular text-muted-foreground">{stats.kept}</span>
                 {/* A big orange area reads as "this step reshaped it"; it only means the edges moved. */}
                 {stats.modifiedShare >= 0.2 && (
-                  <p className="col-span-3 mt-1 text-caption text-muted-foreground">「被修改」只是边界变了：面还在原来的曲面上，被这一步裁剪或延伸。</p>
+                  <p className="col-span-3 mt-1 text-caption text-muted-foreground">
+                    {t(
+                      "「被修改」只是边界变了：面还在原来的曲面上，被这一步裁剪或延伸。",
+                      "“Changed” only means the boundary moved: the face is still on the same surface, trimmed or extended by this step.",
+                    )}
+                  </p>
                 )}
               </div>
             )}
@@ -378,24 +407,30 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
               <OpTerm id={f.op} />
             </div>
             <div className="mt-6 border-t pt-4">
-              <div className="text-small font-medium text-muted-foreground">这个案例教什么</div>
+              <div className="text-small font-medium text-muted-foreground">{t("这个案例教什么", "What this teardown teaches")}</div>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-body">
-                {(m.teaches ?? []).map((t) => (
-                  <li key={t}>{t}</li>
+                {(m.teaches ?? []).map((point) => (
+                  <li key={point}>{point}</li>
                 ))}
               </ul>
             </div>
           </TabsContent>
           <TabsContent value="code" className="space-y-3 p-4">
             <p className="text-small text-muted-foreground">
-              这一步在 build123d 里的写法。整个模型就是这样一段 Python：网站上的几何，正是由它离线算出来的。
+              {t(
+                "这一步在 build123d 里的写法。整个模型就是这样一段 Python：网站上的几何，正是由它离线算出来的。",
+                "This step as build123d code. The whole model is one Python script like this, and the geometry on this site was computed from it ahead of time.",
+              )}
             </p>
-            {f.code ? <CodeBlock code={f.code} /> : <p className="text-small text-faint-foreground">这一步没有单独的代码。</p>}
-            <SourceLink path={m.source} label="完整源码" />
+            {f.code ? <CodeBlock code={f.code} /> : <p className="text-small text-faint-foreground">{t("这一步没有单独的代码。", "This step has no code of its own.")}</p>}
+            <SourceLink path={m.source} label={t("完整源码", "Full source")} />
           </TabsContent>
           <TabsContent value="params" className="p-4">
             <p className="text-small text-muted-foreground">
-              这些组合都在内核里实际算过。失败的组合不隐藏：它们说明了特征之间的约束。
+              {t(
+                "这些组合都在内核里实际算过。失败的组合不隐藏：它们说明了特征之间的约束。",
+                "The kernel has actually computed every combination here. The ones that fail stay visible: they show how the features constrain each other.",
+              )}
             </p>
             {starterFor(m.id) && (
               <Link
@@ -403,8 +438,10 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
                 className="mt-3 flex items-center gap-2 rounded-md border p-3 text-small transition-colors duration-(--duration-fast) hover:bg-accent"
               >
                 <span className="flex-1">
-                  <span className="font-medium text-foreground">在工作台里打开</span>
-                  <span className="block text-muted-foreground">同一棵特征树，参数可以取任意值，还能接着加特征。</span>
+                  <span className="font-medium text-foreground">{t("在工作台里打开", "Open in the Workbench")}</span>
+                  <span className="block text-muted-foreground">
+                    {t("同一棵特征树，参数可以取任意值，还能接着加特征。", "The same feature tree, where parameters take any value and you can keep adding features.")}
+                  </span>
                 </span>
                 <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
               </Link>
@@ -413,10 +450,13 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
               <div className="mt-3 rounded-lg bg-destructive-subtle p-3">
                 <div className="flex items-center gap-2 text-body font-medium text-destructive">
                   <CircleX className="size-4" />
-                  这组参数在「{m.features[failedIndex]?.name}」失败
+                  {t(`这组参数在「${failedFeature?.name ?? ""}」失败`, `These values fail at “${featureName(failedFeature?.name ?? "")}”`)}
                 </div>
-                <p className="mt-1 text-body">{m.failures[failedAt] ?? "内核没能完成这一步。"}</p>
-                <p className="mt-1 font-mono text-caption text-muted-foreground">内核原话：{state.variant?.reason}</p>
+                <p className="mt-1 text-body">{m.failures[failedAt] ?? t("内核没能完成这一步。", "The kernel couldn't finish this step.")}</p>
+                <p className="mt-1 font-mono text-caption text-muted-foreground">
+                  {t("内核原话：", "Kernel message: ")}
+                  {state.variant?.reason}
+                </p>
               </div>
             )}
             <div className="mt-4 space-y-4">
@@ -424,7 +464,9 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
                 <div key={p.id} data-testid={`param-${p.id}`}>
                   <div className="flex items-baseline gap-2">
                     <span className="text-small font-medium">{p.label}</span>
-                    <span className="text-caption text-faint-foreground">在 {m.features.find((x) => x.id === p.feature)?.name} 里生效</span>
+                    <span className="text-caption text-faint-foreground">
+                      {t(`在 ${m.features.find((x) => x.id === p.feature)?.name ?? ""} 里生效`, `Used by ${featureName(m.features.find((x) => x.id === p.feature)?.name ?? "")}`)}
+                    </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {p.values.map((val) => {
@@ -445,7 +487,7 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
                             values[p.id] === val && "border-primary bg-selected text-foreground",
                             !ok && "border-dashed text-destructive",
                           )}
-                          title={ok ? undefined : "这个组合会失败"}
+                          title={ok ? undefined : t("这个组合会失败", "This combination fails")}
                         >
                           {val}
                           {p.unit && <span className="text-faint-foreground">{p.unit}</span>}
@@ -457,7 +499,7 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
               ))}
             </div>
             <div className="mt-6 border-t pt-4">
-              <div className="text-small font-medium text-muted-foreground">其他尺寸（固定）</div>
+              <div className="text-small font-medium text-muted-foreground">{t("其他尺寸（固定）", "Other dimensions (fixed)")}</div>
               <dl className="mt-2 grid grid-cols-[1fr_auto] gap-y-1 text-small">
                 {m.params
                   .filter((p) => !p.values.length)
@@ -480,7 +522,7 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
         {state.loading && (
           <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-md border bg-popover px-3 py-1.5 text-small shadow-popover">
             <Spinner />
-            正在加载这组参数的模型
+            {t("正在加载这组参数的模型", "Loading the model for these values")}
           </div>
         )}
         {state.error && (
@@ -492,22 +534,25 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
           <div className="absolute left-3 top-3 flex max-w-[min(420px,calc(100%-120px))] gap-2 rounded-md border bg-popover px-3 py-2 text-small shadow-popover">
             <CircleX className="mt-0.5 size-4 shrink-0 text-destructive" />
             <span>
-              <span className="font-medium">重建失败 · </span>
-              这组参数做到「{m.features[failedIndex]?.name} {m.features[failedIndex]?.title}」就失败了，模型停在上一步。
+              <span className="font-medium">{t("重建失败 · ", "Rebuild failed · ")}</span>
+              {t(
+                `这组参数做到「${failedFeature?.name ?? ""} ${failedFeature?.title ?? ""}」就失败了，模型停在上一步。`,
+                `With these values the rebuild fails at “${featureName(failedFeature?.name ?? "")} ${failedFeature?.title ?? ""}”, so the model stops at the step before.`,
+              )}
               <button type="button" className="ml-1 underline underline-offset-4" onClick={() => setTab("params")}>
-                为什么
+                {t("为什么", "Why")}
               </button>
             </span>
           </div>
         )}
         <div className="absolute inset-x-3 bottom-3 flex items-center gap-1 rounded-lg border bg-popover p-1 shadow-popover">
-          <IconButton label="上一步" size="icon-sm" disabled={upto === 0} onClick={() => rollTo(upto - 1)}>
+          <IconButton label={t("上一步", "Previous step")} size="icon-sm" disabled={upto === 0} onClick={() => rollTo(upto - 1)}>
             <ChevronLeft />
           </IconButton>
-          <IconButton label={playing ? "暂停" : "从头播放建模过程"} size="icon-sm" onClick={play} disabled={!available}>
+          <IconButton label={playing ? t("暂停", "Pause") : t("从头播放建模过程", "Play the build from the start")} size="icon-sm" onClick={play} disabled={!available}>
             {playing ? <Pause /> : <Play />}
           </IconButton>
-          <IconButton label="下一步" size="icon-sm" disabled={upto >= last} onClick={() => rollTo(upto + 1)}>
+          <IconButton label={t("下一步", "Next step")} size="icon-sm" disabled={upto >= last} onClick={() => rollTo(upto + 1)}>
             <ChevronRight />
           </IconButton>
           <span className="mx-1 h-5 w-px bg-border" />
@@ -516,7 +561,7 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
               <React.Fragment key={x.id}>
                 <button
                   type="button"
-                  title={`${x.name} · ${x.title}`}
+                  title={`${featureName(x.name)} · ${x.title}`}
                   disabled={i >= available}
                   onClick={() => {
                     stop()
@@ -529,7 +574,7 @@ function PartTeardown({ manifest: m }: { manifest: PartManifest }) {
                   )}
                 >
                   {i === failedIndex ? <CircleX /> : <OpIcon op={x.op} className={i === upto ? "text-primary" : undefined} />}
-                  {x.name}
+                  {featureName(x.name)}
                 </button>
                 {i === upto && i < m.features.length - 1 && <span className="h-5 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />}
               </React.Fragment>
@@ -633,10 +678,10 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
   return (
     <Shell
       title={m.title}
-      meta={`案例拆解 · 装配 · ${m.parts.length} 种 ${total} 个零件`}
+      meta={t(`案例拆解 · 装配 · ${m.parts.length} 种 ${total} 个零件`, `Teardown · assembly · ${total} parts, ${m.parts.length} distinct`)}
       actions={
         <ToggleLabel
-          label="剖切"
+          label={t("剖切", "Section")}
           checked={section}
           onChange={(v) => {
             setSection(v)
@@ -647,8 +692,8 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
       left={
         <div className="p-2">
           <div className="flex items-center px-2 pb-1 pt-1 text-small font-medium text-muted-foreground">
-            <span className="flex-1">零件清单</span>
-            <span className="text-caption font-normal">装配顺序</span>
+            <span className="flex-1">{t("零件清单", "Parts list")}</span>
+            <span className="text-caption font-normal">{t("装配顺序", "Assembly order")}</span>
           </div>
           {parts.map((p) => (
             <button
@@ -681,36 +726,42 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
       }
       right={
         <div className="p-4">
+          <ZhOnlyNotice what="This teardown's part notes" className="mb-4" />
           {sel ? (
             <>
-              <div className="text-small text-muted-foreground">第 {sel.order} 个装上</div>
+              <div className="text-small text-muted-foreground">{t(`第 ${sel.order} 个装上`, `Assembly step ${sel.order}`)}</div>
               <h2 className="mt-1 text-title font-semibold">{sel.name}</h2>
-              <dl className="mt-3 grid grid-cols-[64px_1fr] gap-y-1.5 text-body">
-                <dt className="text-muted-foreground">数量</dt>
+              <dl className={cn("mt-3 grid gap-y-1.5 text-body", isEn ? "grid-cols-[80px_1fr]" : "grid-cols-[64px_1fr]")}>
+                <dt className="text-muted-foreground">{t("数量", "Quantity")}</dt>
                 <dd className="tabular">{sel.qty}</dd>
-                <dt className="text-muted-foreground">材料</dt>
+                <dt className="text-muted-foreground">{t("材料", "Material")}</dt>
                 <dd>{sel.material}</dd>
-                <dt className="text-muted-foreground">工艺</dt>
+                <dt className="text-muted-foreground">{t("工艺", "Process")}</dt>
                 <dd>{sel.process}</dd>
               </dl>
               <p className="mt-4 text-reading">{sel.note}</p>
               {sel.model && (
                 <Button asChild variant="secondary" size="sm" className="mt-4">
-                  <Link to={`/teardown/${sel.model}`}>看这个零件的特征树</Link>
+                  <Link to={`/teardown/${sel.model}`}>{t("看这个零件的特征树", "See this part's feature tree")}</Link>
                 </Button>
               )}
             </>
           ) : (
             <>
-              <h2 className="text-title font-semibold">怎么看这张爆炸图</h2>
+              <h2 className="text-title font-semibold">{t("怎么看这张爆炸图", "How to read this exploded view")}</h2>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-reading">
-                <li>零件沿真实的拆卸方向分开。</li>
-                <li>「按装配顺序播放」把零件一个个装回去，顺序就是产线上的工序。</li>
-                <li>打开剖切，看零件之间怎么配合、怎么固定。</li>
+                <li>{t("零件沿真实的拆卸方向分开。", "The parts move apart in the directions they really come off.")}</li>
+                <li>
+                  {t(
+                    "「按装配顺序播放」把零件一个个装回去，顺序就是产线上的工序。",
+                    "“Play in assembly order” puts the parts back one at a time, in the order they go on at the factory.",
+                  )}
+                </li>
+                <li>{t("打开剖切，看零件之间怎么配合、怎么固定。", "Turn on the section to see how the parts fit together and what holds them in place.")}</li>
               </ul>
               {m.notes.length > 0 && (
                 <>
-                  <h3 className="mt-6 text-heading font-semibold">这件东西里的设计规则</h3>
+                  <h3 className="mt-6 text-heading font-semibold">{t("这件东西里的设计规则", "Design rules at work here")}</h3>
                   <ul className="mt-2 space-y-2 text-body text-muted-foreground">
                     {m.notes.map((n) => (
                       <li key={n}>{n}</li>
@@ -718,7 +769,7 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
                   </ul>
                 </>
               )}
-              <SourceLink path={m.source} label="build123d 源码" className="mt-6" />
+              <SourceLink path={m.source} label={t("build123d 源码", "build123d source")} className="mt-6" />
             </>
           )}
         </div>
@@ -728,7 +779,7 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
         {!ready && !error && (
           <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-md border bg-popover px-3 py-1.5 text-small shadow-popover">
             <Spinner />
-            正在加载装配
+            {t("正在加载装配", "Loading the assembly")}
           </div>
         )}
         {error && (
@@ -738,7 +789,7 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
         )}
         <div className="absolute inset-x-3 bottom-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-popover px-3 py-1.5 shadow-popover">
           <label className="flex min-w-48 flex-1 items-center gap-3 text-small font-medium">
-            爆炸
+            {t("爆炸", "Explode")}
             <input
               type="range"
               min={0}
@@ -758,7 +809,7 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
           </label>
           {section && (
             <label className="flex min-w-40 items-center gap-3 text-small font-medium">
-              剖切位置
+              {t("剖切位置", "Section position")}
               <input
                 type="range"
                 min={range[0]}
@@ -796,7 +847,7 @@ function AssemblyTeardown({ manifest: m }: { manifest: AssemblyManifest }) {
           ))}
           <Button size="sm" variant="secondary" onClick={play} disabled={!ready}>
             {playing ? <Pause /> : <Play />}
-            {playing ? "停止播放" : "按装配顺序播放"}
+            {playing ? t("停止播放", "Stop") : t("按装配顺序播放", "Play in assembly order")}
           </Button>
         </div>
       </Viewport>

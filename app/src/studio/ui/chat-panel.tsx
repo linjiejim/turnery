@@ -2,6 +2,7 @@ import * as React from "react"
 import { Check, ChevronDown, ChevronRight, CircleHelp, Eye, ImagePlus, ListChecks, Palette, Pencil, Search, SlidersHorizontal, Square, Trash2, TriangleAlert, X, type LucideIcon } from "lucide-react"
 import type { FileUIPart, UIMessage } from "ai"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import { Button, IconButton } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Segmented } from "@/components/ui/segmented"
@@ -21,35 +22,47 @@ import { Hint } from "@/components/hint"
 
 /** Requests to start from: a short label on the chip, the whole request sent. */
 const EXAMPLES = [
-  { label: "80×50×30 小盒子", text: "做一个 80×50×30 的小盒子，顶部开口，壁厚 2，竖边 R6 圆角" },
-  { label: "⌀80 杯子", text: "做一个外径 80、高 100 的杯子，壁厚 3，杯底外缘 R5 圆角" },
-  { label: "6 孔法兰盘", text: "做一个法兰盘：外径 120、厚 10，中心孔 ⌀40，在 ⌀90 圆周上均布 6 个 ⌀8 孔" },
-  { label: "四孔安装板", text: "做一块 100×60×5 的安装板，四角各一个 ⌀6 通孔，离边 8 mm" },
+  {
+    label: t("80×50×30 小盒子", "80×50×30 box"),
+    text: t("做一个 80×50×30 的小盒子，顶部开口，壁厚 2，竖边 R6 圆角", "Make an 80×50×30 box, open at the top, walls 2 thick, R6 fillets on the vertical edges"),
+  },
+  {
+    label: t("⌀80 杯子", "⌀80 cup"),
+    text: t("做一个外径 80、高 100 的杯子，壁厚 3，杯底外缘 R5 圆角", "Make a cup with outer diameter 80 and height 100, walls 3 thick, an R5 fillet on the outer bottom edge"),
+  },
+  {
+    label: t("6 孔法兰盘", "6-hole flange"),
+    text: t("做一个法兰盘：外径 120、厚 10，中心孔 ⌀40，在 ⌀90 圆周上均布 6 个 ⌀8 孔", "Make a flange: outer diameter 120, 10 thick, a ⌀40 center hole, and 6 ⌀8 holes evenly spaced on a ⌀90 circle"),
+  },
+  {
+    label: t("四孔安装板", "4-hole mounting plate"),
+    text: t("做一块 100×60×5 的安装板，四角各一个 ⌀6 通孔，离边 8 mm", "Make a 100×60×5 mounting plate with a ⌀6 through hole in each corner, 8 mm from the edges"),
+  },
 ]
 
 const TOOL_LABEL: Record<string, { label: string; op?: OpId; icon?: LucideIcon }> = {
-  set_params: { label: "参数", icon: SlidersHorizontal },
-  sketch: { label: "草图", op: "sketch" },
-  extrude: { label: "拉伸", op: "extrude" },
-  revolve: { label: "旋转", op: "revolve" },
-  fillet: { label: "圆角", op: "fillet" },
-  chamfer: { label: "倒角", op: "chamfer" },
-  shell: { label: "抽壳", op: "shell" },
-  hole: { label: "孔", op: "hole" },
-  linear_pattern: { label: "线性阵列", op: "pattern" },
-  circular_pattern: { label: "圆周阵列", op: "pattern" },
-  mirror: { label: "镜像", op: "mirror" },
-  sweep: { label: "扫掠", op: "sweep" },
-  loft: { label: "放样", op: "loft" },
-  draft: { label: "拔模", op: "draft" },
-  rib: { label: "筋", op: "rib" },
-  split: { label: "拆件", op: "cut" },
-  edit_feature: { label: "修改特征", icon: Pencil },
-  delete_feature: { label: "删除特征", icon: Trash2 },
-  inspect: { label: "查看模型", icon: Search },
-  look: { label: "看一眼", icon: Eye },
-  check: { label: "核对要求", icon: ListChecks },
-  set_appearance: { label: "颜色", icon: Palette },
+  set_params: { label: t("参数", "Parameters"), icon: SlidersHorizontal },
+  sketch: { label: t("草图", "Sketch"), op: "sketch" },
+  extrude: { label: t("拉伸", "Extrude"), op: "extrude" },
+  revolve: { label: t("旋转", "Revolve"), op: "revolve" },
+  fillet: { label: t("圆角", "Fillet"), op: "fillet" },
+  chamfer: { label: t("倒角", "Chamfer"), op: "chamfer" },
+  shell: { label: t("抽壳", "Shell"), op: "shell" },
+  hole: { label: t("孔", "Hole"), op: "hole" },
+  linear_pattern: { label: t("线性阵列", "Linear pattern"), op: "pattern" },
+  circular_pattern: { label: t("圆周阵列", "Circular pattern"), op: "pattern" },
+  mirror: { label: t("镜像", "Mirror"), op: "mirror" },
+  sweep: { label: t("扫掠", "Sweep"), op: "sweep" },
+  loft: { label: t("放样", "Loft"), op: "loft" },
+  draft: { label: t("拔模", "Draft"), op: "draft" },
+  rib: { label: t("筋", "Rib"), op: "rib" },
+  split: { label: t("拆件", "Split"), op: "cut" },
+  edit_feature: { label: t("修改特征", "Edit feature"), icon: Pencil },
+  delete_feature: { label: t("删除特征", "Delete feature"), icon: Trash2 },
+  inspect: { label: t("查看模型", "Inspect model"), icon: Search },
+  look: { label: t("看一眼", "Look"), icon: Eye },
+  check: { label: t("核对要求", "Check"), icon: ListChecks },
+  set_appearance: { label: t("颜色", "Color"), icon: Palette },
 }
 
 /** Tools that only look at the model. */
@@ -137,7 +150,7 @@ export function ChatPanel({
       const parts = await Promise.all(picked.map(toImagePart))
       setFiles((f) => [...f, ...parts].slice(0, 2))
     } catch {
-      setFileError("这张图读不出来，换一张 JPG 或 PNG 试试。")
+      setFileError(t("这张图读不出来，换一张 JPG 或 PNG 试试。", "Couldn’t read this image. Try a JPG or PNG."))
     }
   }
 
@@ -172,7 +185,7 @@ export function ChatPanel({
               ))}
               {chat.paused && (
                 <div className="rounded-md border p-3 text-small text-muted-foreground">
-                  这一轮已经调用了 {MAX_CALLS_PER_TURN} 次工具，先停一下。看看模型，需要的话说「继续」。
+                  {t(`这一轮已经调用了 ${MAX_CALLS_PER_TURN} 次工具，先停一下。看看模型，需要的话说「继续」。`, `Paused after ${MAX_CALLS_PER_TURN} tool calls this turn. Have a look at the model, and say “continue” if needed.`)}
                 </div>
               )}
               {err && (
@@ -182,7 +195,7 @@ export function ChatPanel({
                     <span>{err}</span>
                   </div>
                   <Button size="sm" variant="secondary" className="mt-2" onClick={() => void chat.regenerate()}>
-                    重试
+                    {t("重试", "Retry")}
                   </Button>
                 </div>
               )}
@@ -193,7 +206,7 @@ export function ChatPanel({
       </div>
       <div className="shrink-0 border-t p-3">
         {notes.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5" aria-label="要随消息发出的标注">
+          <div className="mb-2 flex flex-wrap gap-1.5" aria-label={t("要随消息发出的标注", "Notes to send with the message")}>
             {notes.map((a) => (
               <NoteChip key={a.n} a={a} onClick={() => annotations.setFocus({ kind: a.kind, hashes: [a.hash] })} onRemove={() => annotations.remove(a.n)} />
             ))}
@@ -203,10 +216,10 @@ export function ChatPanel({
           <div className="mb-2 flex gap-2">
             {files.map((f, i) => (
               <div key={i} className="relative">
-                <img src={f.url} alt="参考图" className="size-14 rounded-md border object-cover" />
+                <img src={f.url} alt={t("参考图", "Reference image")} className="size-14 rounded-md border object-cover" />
                 <button
                   type="button"
-                  aria-label="移除这张图"
+                  aria-label={t("移除这张图", "Remove this image")}
                   onClick={() => setFiles((x) => x.filter((_, k) => k !== i))}
                   className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full border bg-background text-muted-foreground hover:text-foreground"
                 >
@@ -221,7 +234,7 @@ export function ChatPanel({
           ref={box}
           rows={2}
           value={text}
-          placeholder={!ready ? "建模内核加载中…" : notes.length ? "补充说明（可以不写）… Enter 发送" : "描述你想做的零件，或者说要改哪里… Enter 发送"}
+          placeholder={!ready ? t("建模内核加载中…", "Loading the modeling kernel…") : notes.length ? t("补充说明（可以不写）… Enter 发送", "Add a comment (optional)… Enter to send") : t("描述你想做的零件，或者说要改哪里… Enter 发送", "Describe the part you want, or what to change… Enter to send")}
           disabled={!ready}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -231,31 +244,31 @@ export function ChatPanel({
             }
           }}
           className="resize-none"
-          aria-label="给建模助教的消息"
+          aria-label={t("给建模助教的消息", "Message to the modeling tutor")}
         />
         <div className="mt-2 flex items-center gap-2">
           <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => void attach(e.target.files).finally(() => (e.target.value = ""))} />
-          <IconButton label="附参考图（照片或草图）" size="icon-sm" disabled={!ready || files.length >= 2} onClick={() => picker.current?.click()}>
+          <IconButton label={t("附参考图（照片或草图）", "Attach a reference image (photo or sketch)")} size="icon-sm" disabled={!ready || files.length >= 2} onClick={() => picker.current?.click()}>
             <ImagePlus />
           </IconButton>
           <Segmented
             size="sm"
-            aria-label="对话模式"
+            aria-label={t("对话模式", "Chat mode")}
             value={chat.mode}
             onValueChange={chat.setMode}
             options={[
-              { value: "build", label: "直接做" },
-              { value: "teach", label: "边做边学" },
+              { value: "build", label: t("直接做", "Just build") },
+              { value: "teach", label: t("边做边学", "Learn as you go") },
             ]}
           />
           {chat.busy ? (
             <Button size="sm" variant="secondary" className="ml-auto" onClick={() => void chat.stop()}>
               <Square />
-              停止
+              {t("停止", "Stop")}
             </Button>
           ) : (
             <Button size="sm" variant="primary" className="ml-auto" disabled={!canSend} onClick={submit}>
-              发送
+              {t("发送", "Send")}
             </Button>
           )}
         </div>
@@ -269,20 +282,20 @@ function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: st
   return (
     <div className="flex flex-col items-center pb-8 text-center">
       <h2 className="flex items-center gap-1.5 text-heading font-semibold">
-        用说的来建模
+        {t("用说的来建模", "Model by describing it")}
         <Hint
-          label="怎么用"
+          label={t("怎么用", "How it works")}
           tips={[
-            "说出零件的形状和尺寸，助教一步步建出参数化特征树。",
-            "「边做边学」：关键步骤先让你猜，再讲为什么。",
-            "每一步都能回滚查看，参数可以直接拖。",
-            "几何由 OpenCascade 内核在你的浏览器里算出。",
-            ...(model ? [`助教用的模型：${model}`] : []),
+            t("说出零件的形状和尺寸，助教一步步建出参数化特征树。", "Describe the part’s shape and size; the tutor builds a parametric feature tree step by step."),
+            t("「边做边学」：关键步骤先让你猜，再讲为什么。", "“Learn as you go”: at key steps you guess first, then hear why."),
+            t("每一步都能回滚查看，参数可以直接拖。", "Roll back to any step, and drag the parameters directly."),
+            t("几何由 OpenCascade 内核在你的浏览器里算出。", "The geometry is computed by the OpenCascade kernel in your browser."),
+            ...(model ? [t(`助教用的模型：${model}`, `Tutor’s model: ${model}`)] : []),
           ]}
         />
       </h2>
       {practicing ? (
-        <p className="mt-2 max-w-72 text-body text-muted-foreground">说说你打算怎么做，助教会带你一步步建。</p>
+        <p className="mt-2 max-w-72 text-body text-muted-foreground">{t("说说你打算怎么做，助教会带你一步步建。", "Say how you plan to build it, and the tutor will walk you through it.")}</p>
       ) : (
         <>
           <div className="mt-4 flex max-w-72 flex-wrap justify-center gap-2">
@@ -302,12 +315,12 @@ function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: st
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" className="mt-3 text-muted-foreground" disabled={disabled}>
-                打开示例模型
+                {t("打开示例模型", "Open an example model")}
                 <ChevronDown />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
-              <DropdownMenuLabel>现成的特征树，不用 AI</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("现成的特征树，不用 AI", "Ready-made feature trees, no AI")}</DropdownMenuLabel>
               {STARTERS.map((s) => (
                 <DropdownMenuItem key={s.id} onSelect={() => onLoad(s.tree)}>
                   {s.title}
@@ -367,7 +380,7 @@ function Message({
         {images.length > 0 && (
           <div className="mb-2 flex gap-2">
             {images.map((f, i) => (
-              <img key={i} src={f.url} alt={f.filename === ANNOTATED_VIEW ? "标注截图" : "参考图"} className="max-h-28 rounded-md border" />
+              <img key={i} src={f.url} alt={f.filename === ANNOTATED_VIEW ? t("标注截图", "Annotated view") : t("参考图", "Reference image")} className="max-h-28 rounded-md border" />
             ))}
           </div>
         )}
@@ -403,20 +416,21 @@ function annotationsOf(m: UIMessage): Annotation[] | null {
 
 /** ① 平面 · 来自「拉伸1」：开个孔 — click to show it on the model. */
 function NoteChip({ a, onClick, onRemove }: { a: Annotation | Note; onClick: () => void; onRemove?: () => void }) {
-  const label = a.note.trim() || `${a.kind === "face" ? "面" : "边"} · ${a.what}`
+  const kind = a.kind === "face" ? t("面", "Face") : t("边", "Edge")
+  const label = a.note.trim() || `${kind} · ${a.what}`
   return (
     <span className="inline-flex max-w-full items-center rounded-md border bg-background text-small">
       <button
         type="button"
         onClick={onClick}
-        title={`${a.kind === "face" ? "面" : "边"} · ${a.what} · ${a.where}`}
+        title={`${kind} · ${a.what} · ${a.where}`}
         className="flex min-w-0 items-center gap-1 px-2 py-1 text-left hover:text-foreground"
       >
         <span className="font-semibold text-primary">{circled(a.n)}</span>
         <span className="truncate">{label}</span>
       </button>
       {onRemove && (
-        <button type="button" onClick={onRemove} aria-label={`删除标注 ${a.n}`} className="grid size-6 shrink-0 place-items-center text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onRemove} aria-label={t(`删除标注 ${a.n}`, `Remove note ${a.n}`)} className="grid size-6 shrink-0 place-items-center text-muted-foreground hover:text-foreground">
           <X className="size-3.5" />
         </button>
       )}
@@ -437,28 +451,29 @@ function TurnStatus({ chat }: { chat: StudioChat }) {
     <div role="status" className="sticky bottom-0 flex items-center gap-2 bg-background/95 px-4 py-2 text-small text-muted-foreground">
       <Spinner className="size-3.5" />
       <span className="truncate">{activity(chat)}…</span>
-      {seconds >= 3 && <span className="ml-auto shrink-0 text-caption text-faint-foreground tabular">{seconds} 秒</span>}
+      {seconds >= 3 && <span className="ml-auto shrink-0 text-caption text-faint-foreground tabular">{t(`${seconds} 秒`, `${seconds} s`)}</span>}
     </div>
   )
 }
 
 function activity(chat: StudioChat): string {
   const last = chat.messages.at(-1)
-  if (chat.status === "submitted" || last?.role !== "assistant") return "思考中"
+  if (chat.status === "submitted" || last?.role !== "assistant") return t("思考中", "Thinking")
   const p = last.parts.at(-1)
-  if (p?.type === "text" && p.state === "streaming") return "正在回复"
+  if (p?.type === "text" && p.state === "streaming") return t("正在回复", "Replying")
   if (p?.type.startsWith("tool-")) {
-    const t = p as ToolPart
-    if (t.state === "input-streaming" || t.state === "input-available") {
-      const name = t.type.slice(5)
-      if (name === "look") return "正在看模型"
-      if (name === "inspect") return "正在查看模型"
+    const tool = p as ToolPart
+    if (tool.state === "input-streaming" || tool.state === "input-available") {
+      const name = tool.type.slice(5)
+      if (name === "look") return t("正在看模型", "Looking at the model")
+      if (name === "inspect") return t("正在查看模型", "Inspecting the model")
       const label = TOOL_LABEL[name]?.label ?? name
-      const target = (t.input?.name as string | undefined) ?? (t.input?.id as string | undefined)
-      return `正在${t.state === "input-streaming" ? "写" : "做"}「${label}${target && target !== label ? ` · ${target}` : ""}」`
+      const target = (tool.input?.name as string | undefined) ?? (tool.input?.id as string | undefined)
+      const what = `${label}${target && target !== label ? ` · ${target}` : ""}`
+      return tool.state === "input-streaming" ? t(`正在写「${what}」`, `Writing “${what}”`) : t(`正在做「${what}」`, `Running “${what}”`)
     }
   }
-  return "思考中"
+  return t("思考中", "Thinking")
 }
 
 function Reasoning({ parts }: { parts: string[] }) {
@@ -466,7 +481,7 @@ function Reasoning({ parts }: { parts: string[] }) {
     <details className="group text-small text-faint-foreground">
       <summary className="flex cursor-pointer list-none items-center gap-1 select-none">
         <ChevronRight className="size-3.5 transition-transform duration-(--duration-fast) group-open:rotate-90" />
-        思考过程
+        {t("思考过程", "Thinking")}
       </summary>
       <div className="mt-1 space-y-3 border-l pl-3 whitespace-pre-wrap">
         {parts.map((t, i) => (
@@ -526,11 +541,11 @@ function ToolCard({ part, onSelectFeature }: { part: ToolPart; onSelectFeature: 
           {rows.map((l, i) => (
             <li key={i} className="flex items-start gap-1.5">
               {l.startsWith("✓") ? (
-                <Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-label="满足" />
+                <Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-label={t("满足", "Met")} />
               ) : l.startsWith("?") ? (
-                <CircleHelp className="mt-0.5 size-3.5 shrink-0 text-faint-foreground" aria-label="量不了" />
+                <CircleHelp className="mt-0.5 size-3.5 shrink-0 text-faint-foreground" aria-label={t("量不了", "Can’t measure")} />
               ) : (
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-label="不满足" />
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-label={t("不满足", "Not met")} />
               )}
               <span className="min-w-0 text-muted-foreground">{l.slice(2).replace(/^\S+「/, "「")}</span>
             </li>
@@ -539,11 +554,14 @@ function ToolCard({ part, onSelectFeature }: { part: ToolPart; onSelectFeature: 
       )}
       {!running && firstLine && !open && !rows.length && <div className="truncate px-3 pb-2 text-muted-foreground">{firstLine.replace(/^[✓✗]\s*/, "")}</div>}
       {open && text && <div className="border-t px-3 py-2 whitespace-pre-wrap text-muted-foreground">{text}</div>}
-      {open && typeof input.intent === "string" && <div className="border-t px-3 py-2 text-muted-foreground">设计意图：{input.intent}</div>}
+      {open && typeof input.intent === "string" && <div className="border-t px-3 py-2 text-muted-foreground">
+          {t("设计意图：", "Design intent: ")}
+          {input.intent}
+        </div>}
       {part.output?.images?.length ? (
         <div className="grid grid-cols-2 gap-1 border-t p-1">
           {part.output.images.map((src, i) => (
-            <img key={i} src={src} alt="助教看到的视图" className="w-full rounded-sm border" />
+            <img key={i} src={src} alt={t("助教看到的视图", "What the tutor saw")} className="w-full rounded-sm border" />
           ))}
         </div>
       ) : null}

@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge"
 import { LESSONS, lessonMeta } from "@/content/lessons"
 import type { LessonController, LessonDef } from "@/content/lessons/types"
 import type { Viewer } from "@/three/viewer"
+import { ZhOnlyNotice } from "@/components/zh-only"
+import { t } from "@/lib/i18n"
 
 /**
  * Lesson player: text on the left, model on the right (stacked on phones).
@@ -51,19 +53,19 @@ export function LessonPage() {
   if (!meta)
     return (
       <div className="grid h-dvh place-items-center">
-        <StateView kind="empty" title="没有这节课" action={<Link to="/learn">回到学习路径</Link>} />
+        <StateView kind="empty" title={t("没有这节课", "No such lesson")} action={<Link to="/learn">{t("回到学习路径", "Back to the learning path")}</Link>} />
       </div>
     )
   if (error)
     return (
       <div className="grid h-dvh place-items-center">
-        <StateView kind="error" description="课程没加载出来。" onRetry={() => location.reload()} />
+        <StateView kind="error" description={t("课程没加载出来。", "The lesson didn't load.")} onRetry={() => location.reload()} />
       </div>
     )
   if (!def)
     return (
       <div className="grid h-dvh place-items-center">
-        <Spinner label="正在加载课程" />
+        <Spinner label={t("正在加载课程", "Loading the lesson")} />
       </div>
     )
   return <Player key={def.id} def={def} />
@@ -138,16 +140,16 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
   return (
     <div className="flex h-dvh flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
-        <IconButton label="返回学习路径" onClick={() => navigate("/learn")}>
+        <IconButton label={t("返回学习路径", "Back to the learning path")} onClick={() => navigate("/learn")}>
           <ArrowLeft />
         </IconButton>
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="truncate text-body font-semibold">{def.title}</span>
           <span className="text-small text-faint-foreground max-sm:hidden">
-            {def.codes.join(" · ")} · 约 {meta.minutes} 分钟
+            {def.codes.join(" · ")} · {t(`约 ${meta.minutes} 分钟`, `About ${meta.minutes} min`)}
           </span>
         </div>
-        <StepBar titles={[...def.steps.map((x) => x.title), "小测"]} current={step} onJump={go} className="mx-auto max-sm:hidden" />
+        <StepBar titles={[...def.steps.map((x) => x.title), t("小测", "Quiz")]} current={step} onJump={go} className="mx-auto max-sm:hidden" />
         <span className="ml-auto pr-2 text-small tabular text-muted-foreground sm:ml-0">
           {step + 1} / {total}
         </span>
@@ -156,28 +158,32 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
       <div className="flex min-h-0 flex-1 max-md:flex-col-reverse">
         <aside className="flex w-[400px] shrink-0 flex-col border-r max-md:h-[50dvh] max-md:w-full max-md:border-r-0 max-md:border-t">
           <div key={step} className="min-h-0 flex-1 animate-fade-in overflow-y-auto px-5 py-5">
-            <div className="text-small text-muted-foreground">{isQuiz ? "最后" : `第 ${step + 1} 步`}</div>
-            <h1 className="mt-1 text-title font-semibold">{isQuiz ? "小测" : s.title}</h1>
+            {step === 0 && <ZhOnlyNotice what="This lesson" className="mb-4" />}
+            <div className="text-small text-muted-foreground">{isQuiz ? t("最后", "Last") : t(`第 ${step + 1} 步`, `Step ${step + 1}`)}</div>
+            <h1 className="mt-1 text-title font-semibold">{isQuiz ? t("小测", "Quiz") : s.title}</h1>
             {isQuiz ? (
               <>
-                <p className="mt-3 text-reading">答完就完成本课。每题都有解释，答错也有收获。</p>
+                <p className="mt-3 text-reading">
+                  {t("答完就完成本课。每题都有解释，答错也有收获。", "Answer every question to finish the lesson. Each one comes with an explanation, so a wrong answer still teaches you something.")}
+                </p>
                 <Quiz items={def.quiz} onDone={finishQuiz} />
                 <PracticeLinks lesson={def.id} />
                 {quizDone && (
                   <div className="mt-6 rounded-lg border p-4">
-                    <div className="text-heading font-semibold">本课要点</div>
+                    <div className="text-heading font-semibold">{t("本课要点", "Takeaways")}</div>
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-body text-muted-foreground">
-                      {def.takeaways.map((t) => (
-                        <li key={t}>{t}</li>
+                      {def.takeaways.map((point) => (
+                        <li key={point}>{point}</li>
                       ))}
                     </ul>
                     {def.next && (
                       <div className="mt-3 text-small text-muted-foreground">
-                        接着看{" "}
+                        {t("接着看", "Read next:")}{" "}
                         <Link to={def.next.to} className="font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground">
                           {def.next.label}
                         </Link>
-                        ：{def.next.text}
+                        {t("：", ": ")}
+                        {def.next.text}
                       </div>
                     )}
                   </div>
@@ -191,10 +197,10 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
                 {s.note && <Note title={s.noteTitle}>{s.note}</Note>}
                 {s.terms && (
                   <div className="mt-6">
-                    <div className="mb-2 text-small text-faint-foreground">本步用到</div>
+                    <div className="mb-2 text-small text-faint-foreground">{t("本步用到", "Used in this step")}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {s.terms.map((t) => (
-                        <OpTerm key={t} id={t} />
+                      {s.terms.map((term) => (
+                        <OpTerm key={term} id={term} />
                       ))}
                     </div>
                   </div>
@@ -204,7 +210,7 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
           </div>
           <div className="flex shrink-0 items-center gap-2 border-t px-4 py-3">
             <Button variant="secondary" disabled={step === 0} onClick={() => go(step - 1)}>
-              上一步
+              {t("上一步", "Back")}
             </Button>
             {isQuiz ? (
               <Button
@@ -216,11 +222,11 @@ function Player({ def }: { def: LessonDef<any, LessonController<any>> }) {
                   navigate(nextLesson ? `/lesson/${nextLesson.id}` : "/learn")
                 }}
               >
-                {nextLesson ? "完成，下一课" : "完成本课"}
+                {nextLesson ? t("完成，下一课", "Done, next lesson") : t("完成本课", "Finish the lesson")}
               </Button>
             ) : (
               <Button variant={done ? "primary" : "secondary"} className="flex-1" onClick={() => go(step + 1)}>
-                {done ? "下一步" : "先跳过"}
+                {done ? t("下一步", "Next") : t("先跳过", "Skip for now")}
               </Button>
             )}
           </div>
@@ -241,14 +247,14 @@ function PracticeLinks({ lesson }: { lesson: string }) {
   if (!list.length) return null
   return (
     <div className="mt-6 space-y-2">
-      <div className="text-small text-faint-foreground">去工作台练一练</div>
+      <div className="text-small text-faint-foreground">{t("去工作台练一练", "Practice in the Workbench")}</div>
       {list.map((p) => {
         const done = progress.done.includes(practiceKey(p.id))
         return (
           <Link key={p.id} to={`/studio?practice=${p.id}`} className="block rounded-lg border p-3 transition-colors duration-(--duration-fast) hover:bg-accent">
             <div className="flex items-center gap-2">
               <span className="text-body font-medium">{p.title}</span>
-              {done && <Badge tone="success">已完成</Badge>}
+              {done && <Badge tone="success">{t("已完成", "Done")}</Badge>}
             </div>
             <p className="mt-1 text-small text-muted-foreground">{p.task}</p>
           </Link>

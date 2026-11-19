@@ -1,4 +1,5 @@
 import * as React from "react"
+import { t } from "../lib/i18n"
 import { setFieldAt } from "./apply"
 import type { DisplayData } from "./kernel/build"
 import type { Studio } from "./use-studio"
@@ -68,8 +69,8 @@ export function useReselect(studio: Studio) {
 
   const apply = React.useCallback(async () => {
     const s = ref.current
-    if (!s?.result) return "还没有选中能描述的面或边"
-    const err = await studio.editTree((t) => setFieldAt(t, s.feature, s.field, s.result!.selector))
+    if (!s?.result) return t("还没有选中能描述的面或边", "Nothing selected that can be described yet")
+    const err = await studio.editTree((tree) => setFieldAt(tree, s.feature, s.field, s.result!.selector))
     if (!err) setState(null)
     return err
   }, [studio])

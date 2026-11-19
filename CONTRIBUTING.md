@@ -1,128 +1,139 @@
-# 参与贡献
+# Contributing
 
-> Turnery is a desktop app that lets coding agents build parametric CAD over MCP, plus a Chinese-language, concept-first course on the same kernel. Contributions are welcome in Chinese or English; this guide covers running the site, checks, lessons, models, design rules, commit style and how to cite sources for content fixes.
-> Code is MIT and lesson text is CC BY 4.0; by contributing you agree to license your contribution the same way.
+English · [简体中文](CONTRIBUTING.zh-CN.md)
 
-欢迎改错字、纠正说法、报 bug、提新课，也欢迎直接写一节课或一个拆解模型。这份说明讲怎么跑起来、提交前查什么，以及内容纠错为什么一定要给出处。
+> Code is MIT and lesson text and docs are CC BY 4.0; by contributing you agree to license your contribution the same way.
 
-## 跑起来
+Bug reports, typo fixes, corrections, new lessons and new teardown models are all welcome, in English or Chinese. This guide covers how to run things, what to check before you open a pull request, how the two languages work, and why every content correction needs a source.
 
-需要：
+## Run it
 
-- Node.js 22。CI 用的是这个版本，20 以上一般也行。
-- 改 `models/` 时还要 Python 3.11 以上。
+You need:
+
+- Node.js 22 (CI uses it; 20 or later usually works).
+- Python 3.11 or later, only if you change `models/`.
+
+The website, the browser workbench and the desktop window's interface all live in `app/`:
 
 ```bash
 git clone https://github.com/linjiejim/turnery.git
 cd turnery/app
-npm ci              # 国内网络慢时加 --registry=https://registry.npmmirror.com
-npm run dev         # http://localhost:5287
+npm ci
+npm run dev         # http://localhost:5287, English pages under /en
 ```
 
-只改前端不需要 Python：烘焙好的模型已经提交在 `app/public/models/`。
+The baked teardown models are committed in `app/public/models/`, so front-end work needs no Python.
 
-## 提交前检查
+The desktop app (Electron, the MCP server and the CLI) lives in `desktop/` and builds the window from `app/`:
+
+```bash
+cd desktop
+npm ci
+npm run build                         # desktop/dist
+TURNERY_HOME=/tmp/turnery-dev npm start   # opens the window, apart from an installed Turnery
+```
+
+Point your agent at the build you are working on with `node desktop/dist/cli.mjs mcp` instead of the installed app (see [`desktop/README.md`](desktop/README.md)).
+
+## Before you open a pull request
 
 ```bash
 cd app
-npm run check       # 类型检查 + oxlint + 设计守卫 + 单元测试
-npm run build       # 生产构建，并为每个页面生成带标题和描述的 HTML
+npm run check       # types, oxlint, design guards, unit tests
+npm run build       # production build, plus one prerendered HTML page per route
+npm run e2e         # Playwright, when you changed something on screen
 ```
 
-`npm run check` 和 `npm run build` 都要通过；CI 部署前也跑这两步。
+```bash
+cd desktop
+npm run check && npm test && npm run build
+```
 
-- oxlint 要零警告。
-- 设计守卫（`src/tests/design`）会拦住：
-  - 裸色值
-  - 12px 以下的字号
-  - 手写的弹层
+CI runs the same steps; all of them have to pass.
 
-## 写一节课
+- oxlint with zero warnings.
+- The design guards (`app/src/tests/design`) stop raw colour values, font sizes under 12px and hand-rolled popovers.
+- The i18n guard stops a `t()` pair whose English half still has Chinese in it.
 
-完整说明见 [`docs/dev/lesson-authoring.md`](docs/dev/lesson-authoring.md)。要点：
+## Two languages
 
-- 一节课由两个文件组成，放在 `app/src/content/lessons/`：
-  - `<id>.scene.ts`：场景控制器。
-  - `<id>.tsx`：步骤、文字、任务、小测。
-- 参考 `revolve`（最标准）和 `sketch-to-solid`（交互最多）。
-- 4–7 步，一步一个概念：
-  - 每步自动转到关键视角。
-  - 任务在 3D 里完成。
-  - 易错处先猜再看。
-- 最后 3 道小测，每题都有解释。
-- 开发模式下打开 `/lesson/<文件名>` 就能试；上线前在 `lessons/index.ts` 里注册。
+The interface exists in Chinese and English: the website's English pages are under `/en/…`, and the desktop window follows the system language or the language menu in its title bar. How it works and what is and isn't translated: [`docs/i18n.md`](docs/i18n.md). The rules you'll meet most:
 
-## 写一个拆解模型
+- Every string on screen is written as a pair where it's used: `t("回到最新", "Back to latest")`. Keep the Chinese exactly as it is (tests match it) and put the English next to it.
+- Text for the agent or a model (the MCP guide, tool descriptions, kernel and engine messages, system prompts) is Chinese only for now: don't wrap it in `t()`.
+- The English for the course catalog (curriculum, lesson titles, command atlas, glossary) lives in `app/src/content/en/`. Lesson and card bodies are Chinese for now, and English pages say so.
+- English copy: sentence case, short sentences, verbs on buttons, no "Please". Chinese copy: short sentences, 「」 quotes, a space between Chinese and Latin text or numbers, buttons as verb + object in six characters or fewer.
 
-完整说明见 [`docs/dev/models.md`](docs/dev/models.md)。
+## Write a lesson
 
-模型用 [build123d](https://github.com/gumyr/build123d) 写在 `models/parts/<id>.py` 或 `models/assemblies/<id>.py`，由烘焙器 `turnerybake` 离线算成 GLB。
+Full guide (Chinese): [`docs/dev/lesson-authoring.md`](docs/dev/lesson-authoring.md). In short:
+
+- A lesson is two files in `app/src/content/lessons/`: `<id>.scene.ts`, the scene controller, and `<id>.tsx`, the steps, text, tasks and quiz.
+- Start from `revolve` (the most standard) or `sketch-to-solid` (the most interactive).
+- 4–7 steps, one concept each: every step turns the camera to what matters, the task happens in 3D, and the easy mistake is guessed before it is shown.
+- Three quiz questions at the end, each with an explanation.
+- In dev mode open `/lesson/<file name>`; register it in `lessons/index.ts` (and its English title in `content/en/lessons.ts`) before it ships.
+
+## Write a teardown model
+
+Full guide (Chinese): [`docs/dev/models.md`](docs/dev/models.md).
+
+Models are written in [build123d](https://github.com/gumyr/build123d) under `models/parts/<id>.py` or `models/assemblies/<id>.py`, and baked offline into GLB by `turnerybake`:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r models/requirements.txt
-cd models && ../.venv/bin/python -m turnerybake <id>    # 只烘焙一个模型
+cd models && ../.venv/bin/python -m turnerybake <id>    # bake one model
 ```
 
-规则：
+- Put `# @step <id>` before each feature and call `r.solid` or `r.sketch` once after it.
+- A parameter combination that fails is teaching material: give it a `failures` explanation.
+- Re-bake after changing a model and commit the changes in `app/public/models/<id>/` with it.
 
-- 每个特征前写 `# @step <id>`，每个特征后调用一次 `r.solid` 或 `r.sketch`。
-- 失败的参数组合是教学内容，给它写好 `failures` 解释。
-- 改了模型就重新烘焙，把 `app/public/models/<id>/` 的变化一起提交。
+## Design rules
 
-## 设计规则
+The interface is built on jim-uiux; this project's own conventions are in [`docs/DESIGN.md`](docs/DESIGN.md). The ones that come up most:
 
-界面基于 jim-uiux，项目自己的约定见 [`docs/DESIGN.md`](docs/DESIGN.md)。最常碰到的几条：
+- **Colour**: semantic tokens only (`bg-primary`, `text-muted-foreground`, `--scene-*`), never colour values. The 3D scene reads its colours from the theme tokens too.
+- **Type**: the type scale only (`text-caption` and up), nothing under 12px; weights 400 / 500 / 600.
+- **Popovers**: use the dialogs, drawers and popovers in `components/ui/`, never your own. Changes to `components/ui/` follow jim-uiux upstream: open an issue first.
+- **Coordinates**: Z is up; when you mention SOLIDWORKS, say that it defaults to Y up.
 
-- **颜色**：只用语义 token（`bg-primary`、`text-muted-foreground`、`--scene-*`），不写颜色值。3D 场景的颜色也从主题 token 读取。
-- **字号**：只用字号阶梯（`text-caption` 及以上），不小于 12px。
-- **字重**：只用 400 / 500 / 600。
-- **弹层**：用 `components/ui/` 里的对话框、抽屉、浮层，不手写。
-- **ui 组件**：`components/ui/` 下的组件和 jim-uiux 上游保持一致，要改请先提 Issue 说明。
-- **文案**：
-  - 简体中文，短句。
-  - 引号用「」。
-  - 中英文、中文与数字之间加空格。
-  - 按钮写「动词 + 对象」，不超过 6 个字。
-- **坐标**：Z 轴朝上；提到 SOLIDWORKS 时说明它默认 Y 轴朝上。
+## Commits
 
-## 提交规范
-
-用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)，主题用中文，一个提交只做一件事：
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), one change per commit. The history is mostly written in Chinese; either language is fine for yours.
 
 ```
-fix(app): 3D 打印课第一步把零件拉近
-feat(content): 新增「尺寸公差与配合」互动课
-docs: 添加许可证与第三方声明
+fix(app): bring the part closer in the first step of the 3D printing lesson
+feat(content): add the "tolerances and fits" lesson
+docs: add the license and third-party notices
 ```
 
-- 类型：`feat`、`fix`、`docs`、`refactor`、`test`、`chore`、`ci`。
-- 范围：
-  - `app`：网站代码。
-  - `content`：课程文字、术语、大纲。
-  - `models`：模型和烘焙器。
-  - `ci`：工作流。
-- 正文写为什么这样改；内容纠错在正文里写出处。
+- Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`.
+- Scopes: `app` (website, workbench, window), `desktop` (Electron, MCP, CLI), `turnery` (the app as a whole, releases), `content` (lesson text, terms, curriculum), `models` (models and the baker), `ci`.
+- The body says why. For a content correction, the body carries the source.
 
-## 内容纠错：必须给出处
+## Content corrections need a source
 
-课程里的工程说法会被当成「标准答案」学，所以每一处纠错都要能查到依据。
+What the course says about engineering is learned as the right answer, so every correction has to be traceable.
 
-1. **先开 Issue**，用「内容纠错」模板。写清：
-   - 哪节课、哪一步
-   - 原文怎么写
-   - 应该怎么写
-   - 出处
-2. **出处按可信度从高到低**：
-   - **标准原文**：GB/T、ISO、ASME 等，写明标准号、年份和条款，例如「GB/T 4457.5-2013 第 4.1 条」。
-   - **软件官方帮助**：写明软件、版本和界面语言，并附链接，例如「SOLIDWORKS 2022 帮助（简体中文）· 图纸属性」。
-   - **正式出版的教材、手册**：写明书名、版次和页码。
-   - **论坛帖子和个人博客**：只能作旁证，不能单独作依据。
-3. **软件叫法因版本、语言而异时**，写清是哪个版本，或者改成「因版本而异」，不要以偏概全。
-4. **改动合并后**，出处写进提交正文。需要时也写进课程里的注释，例如「见 GB/T 14692」。
+1. **Open an issue first** with the "Content correction" template: which lesson and step, what it says now, what it should say, and the source.
+2. **Sources, most trusted first**:
+   - **The standard itself**: GB/T, ISO, ASME… with number, year and clause, e.g. "GB/T 4457.5-2013, clause 4.1".
+   - **The software's official help**: software, version and interface language, with a link, e.g. "SOLIDWORKS 2022 Help (English) · Sheet Properties".
+   - **Published textbooks and handbooks**: title, edition and page.
+   - **Forum posts and blogs**: supporting evidence only, never the only source.
+3. **When a command's name differs between versions or languages**, say which version, or write "varies by version"; don't generalise from one.
+4. **Once merged**, the source goes in the commit body, and where useful in a comment next to the text ("see GB/T 14692").
 
-没有出处的修改建议也欢迎提，我们会去核对；但在找到依据之前不会改课程文字。
+Suggestions without a source are welcome too, and we will look into them, but the lesson text won't change until there is one.
 
-## 许可
+## Security
 
-提交的代码按 MIT（[`LICENSE`](LICENSE)），课程文字和文档按 CC BY 4.0（[`LICENSE-content`](LICENSE-content)）发布。引入新的第三方依赖或素材时，在 [`THIRD_PARTY.md`](THIRD_PARTY.md) 里补上许可证和链接。不接受许可证和 MIT 不兼容的依赖，例如 GPL 的库直接打进网站产物。
+Please don't report security issues in public issues: see [`SECURITY.md`](SECURITY.md).
+
+## License
+
+Code is under MIT ([`LICENSE`](LICENSE)); lesson text and docs are under CC BY 4.0 ([`LICENSE-content`](LICENSE-content)). When you add a third-party dependency or asset, add its license and link to [`THIRD_PARTY.md`](THIRD_PARTY.md). Dependencies whose license isn't compatible with MIT (a GPL library bundled into the site, for example) can't be accepted.
+
+Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).

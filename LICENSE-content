@@ -32,6 +32,8 @@ the MIT licence (see LICENSE). Third-party components: see THIRD_PARTY.md.
    why、pitfall、failures、notes 等文字字段，以及烘焙后 app/public/models/
    下各 manifest.json 里的同一份文字。
 6. docs/ 下的全部文档，包括 docs/research/ 的调研报告和原始笔记。
+7. 以上各项的英文译文：app/src/content/en/ 下的大纲、课名、图鉴、术语和拆解
+   文字。
 
 Text written for learners, plus the research and documentation:
 
@@ -47,6 +49,8 @@ Text written for learners, plus the research and documentation:
    (title, subtitle, teaches, why, pitfall, failures, notes, …) and the same
    text in the baked app/public/models/**/manifest.json.
 6. Everything under docs/, including the research in docs/research/.
+7. The English translations of the above in app/src/content/en/ (curriculum,
+   lesson titles, atlas, glossary and teardown text).
 
 
 二、哪些用 MIT · What is MIT
@@ -56,7 +60,7 @@ Text written for learners, plus the research and documentation:
 场景控制器和判定逻辑）、模型代码和烘焙器（models/）、内核实测代码（spikes/），
 以及烘焙出的几何文件（app/public/models/**/*.glb）。
 
-一个文件里两种都有时（例如课程的 .tsx），代码按 MIT，给学习者读的中文文字
+一个文件里两种都有时（例如课程的 .tsx），代码按 MIT，给学习者读的中英文文字
 按 CC BY 4.0。
 
 Everything that runs is MIT (see LICENSE): the website code (app/, including

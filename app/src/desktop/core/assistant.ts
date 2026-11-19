@@ -4,7 +4,7 @@
 // part it works on, no shell. Runs wherever the engine runs (the Electron main process, the CLI,
 // a unit test); nothing here imports Electron.
 import { convertToModelMessages, isStepCount, jsonSchema, streamText, tool, type LanguageModel, type ModelMessage, type ToolSet, type UIMessage } from "ai"
-import { withState } from "../../studio/prompt"
+import { languageRule, withState } from "../../studio/prompt"
 import { trimMessages } from "../../studio/trim"
 import { AGENT_GUIDE, agentCommands, inputJsonSchema } from "./catalog"
 import { normalizePartPath, type Engine } from "./engine"
@@ -34,6 +34,8 @@ export type AssistantRun = {
   maxSteps?: number
   abortSignal?: AbortSignal
   providerOptions?: Parameters<typeof streamText>[0]["providerOptions"]
+  /** The language the person reads in: English adds a rule to the system prompt (studio/prompt.ts). */
+  lang?: "zh" | "en"
   /** Each command as it finishes, in order: for a log line, a test, the CLI's output. */
   onCall?: (call: { name: string; input: unknown; result: CommandResult }) => void
 }
@@ -100,7 +102,7 @@ export async function runAssistant(run: AssistantRun) {
   const state = await assistantState(engine, ctx)
   return streamText({
     model,
-    system: vision ? AGENT_GUIDE : AGENT_GUIDE + NO_VISION,
+    system: (vision ? AGENT_GUIDE : AGENT_GUIDE + NO_VISION) + languageRule(run.lang),
     messages: withState(run.messages, state),
     tools: assistantTools({ engine, ctx, vision, onCall: run.onCall, abortSignal: run.abortSignal }),
     stopWhen: isStepCount(run.maxSteps ?? MAX_STEPS),

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Check, Crosshair, PenLine, RotateCcw, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { byLocale, t } from "@/lib/i18n"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Segmented } from "@/components/ui/segmented"
@@ -18,7 +19,7 @@ export function NotesPanel({ doc, onLocate, onWrite }: { doc: DocState; onLocate
   const open = doc.notes.filter((n) => n.status === "open")
   const list = (filter === "open" ? open : [...doc.notes].sort((a, b) => Number(a.status === "resolved") - Number(b.status === "resolved") || b.n - a.n)).slice()
   const update = (n: PartNote, input: Record<string, unknown>) => turnery.call("update_note", { id: n.id, ...input }, doc.path)
-  const whole = doc.kind === "assembly" ? "装配" : "零件"
+  const whole = doc.kind === "assembly" ? t("装配", "assembly") : t("零件", "part")
   /** The note whose words are being changed here. */
   const [editing, setEditing] = React.useState<string | null>(null)
   return (
@@ -26,28 +27,28 @@ export function NotesPanel({ doc, onLocate, onWrite }: { doc: DocState; onLocate
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
         <Segmented
           size="sm"
-          aria-label="显示哪些备注"
+          aria-label={t("显示哪些备注", "Which notes to show")}
           value={filter}
           onValueChange={setFilter}
           options={[
-            { value: "open", label: `未处理 ${open.length}` },
-            { value: "all", label: `全部 ${doc.notes.length}` },
+            { value: "open", label: t(`未处理 ${open.length}`, `Open ${open.length}`) },
+            { value: "all", label: t(`全部 ${doc.notes.length}`, `All ${doc.notes.length}`) },
           ]}
         />
         <div className="flex items-center gap-1">
           <Hint
-            label="备注怎么用"
+            label={t("备注怎么用", "How notes work")}
             align="end"
             tips={[
-              "备注模式（C）下单击一个面或一条边，写下要改什么；选中零件时按 C，写的是关于这些零件的。",
-              "R 框出一片、P 用画笔圈出一处，再写备注。",
-              `关于整个${whole}的，点「写一条」。点模型上的编号或这里的文字可以改。`,
-              "agent 用 get_notes 读备注，改完会写一句回复。",
+              t("备注模式（C）下单击一个面或一条边，写下要改什么；选中零件时按 C，写的是关于这些零件的。", "In note mode (C), click a face or an edge and write what to change. With parts selected, C writes a note about those parts."),
+              t("R 框出一片、P 用画笔圈出一处，再写备注。", "R boxes an area and P circles one with the pen; then write the note."),
+              t(`关于整个${whole}的，点「写一条」。点模型上的编号或这里的文字可以改。`, `For a note about the whole ${whole}, click “Write one”. Click a number on the model or the text here to edit a note.`),
+              t("agent 用 get_notes 读备注，改完会写一句回复。", "The agent reads notes with get_notes and writes a reply when it’s done."),
             ]}
           />
           <Button size="sm" variant="ghost" onClick={onWrite}>
             <PenLine />
-            写一条
+            {t("写一条", "Write one")}
           </Button>
         </div>
       </div>
@@ -56,7 +57,7 @@ export function NotesPanel({ doc, onLocate, onWrite }: { doc: DocState; onLocate
           <StateView
             size="sm"
             kind="empty"
-            title={filter === "open" && doc.notes.length ? "备注都处理完了" : "还没有备注"}
+            title={filter === "open" && doc.notes.length ? t("备注都处理完了", "All notes resolved") : t("还没有备注", "No notes yet")}
           />
         ) : (
           <ul className="divide-y">
@@ -78,21 +79,21 @@ export function NotesPanel({ doc, onLocate, onWrite }: { doc: DocState; onLocate
                       ) : (
                         <button
                           type="button"
-                          title="点一下改文字"
+                          title={t("点一下改文字", "Click to edit")}
                           className={cn("min-w-0 cursor-text rounded-sm text-left text-body break-words outline-none focus-visible:ring-2 focus-visible:ring-ring", !n.text && "text-muted-foreground")}
                           onClick={() => setEditing(n.id)}
                         >
-                          {n.text || "（只标了位置）"}
+                          {n.text || t("（只标了位置）", "(location only)")}
                         </button>
                       )}
-                      <Badge tone={n.status === "open" ? "warning" : "success"}>{n.status === "open" ? "未处理" : "已处理"}</Badge>
+                      <Badge tone={n.status === "open" ? "warning" : "success"}>{n.status === "open" ? t("未处理", "Open") : t("已处理", "Resolved")}</Badge>
                     </div>
                     <p className="mt-0.5 text-caption text-muted-foreground">
                       {noteAbout(n, whole)} · {n.id}
                     </p>
                     {n.reply && (
                       <p className="mt-2 rounded-md bg-muted px-2.5 py-1.5 text-small">
-                        <span className="font-medium">Agent：</span>
+                        <span className="font-medium">{t("Agent：", "Agent: ")}</span>
                         {n.reply}
                       </p>
                     )}
@@ -100,23 +101,23 @@ export function NotesPanel({ doc, onLocate, onWrite }: { doc: DocState; onLocate
                       {pinned(n) && (
                         <Button size="sm" variant="ghost" onClick={() => onLocate(n)}>
                           <Crosshair />
-                          定位
+                          {t("定位", "Locate")}
                         </Button>
                       )}
                       {n.status === "open" ? (
                         <Button size="sm" variant="ghost" onClick={() => void update(n, { status: "resolved" })}>
                           <Check />
-                          标为已处理
+                          {t("标为已处理", "Mark resolved")}
                         </Button>
                       ) : (
                         <Button size="sm" variant="ghost" onClick={() => void update(n, { status: "open" })}>
                           <RotateCcw />
-                          重新打开
+                          {t("重新打开", "Reopen")}
                         </Button>
                       )}
                       <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void update(n, { remove: true })}>
                         <Trash2 />
-                        删除
+                        {t("删除", "Delete")}
                       </Button>
                     </div>
                   </div>
@@ -163,7 +164,7 @@ function NoteText({ note, onSave, onDone }: { note: PartNote; onSave: (text: str
           void finish(true)
         }
       }}
-      aria-label={`备注 ${note.n} 的文字`}
+      aria-label={t(`备注 ${note.n} 的文字`, `Text of note ${note.n}`)}
     />
   )
 }
@@ -176,23 +177,31 @@ export function ActivityPanel({ doc }: { doc: DocState }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-1 border-b px-4">
-        <span className="text-caption text-muted-foreground">谁改了什么，最新的在上面</span>
-        <Hint className="ml-auto" align="end" label="动态是什么" tips={["agent、你在窗口里，或者直接改文件：每一次改动都记在这里。", "每一条都能撤销（⌘Z）。"]} />
+        <span className="text-caption text-muted-foreground">{t("谁改了什么，最新的在上面", "Who changed what, newest first")}</span>
+        <Hint
+          className="ml-auto"
+          align="end"
+          label={t("动态是什么", "What activity shows")}
+          tips={[
+            t("agent、你在窗口里，或者直接改文件：每一次改动都记在这里。", "Every change is recorded here: the agent’s, yours in the window, or edits made to the file directly."),
+            t("每一条都能撤销（⌘Z）。", "Each one can be undone (⌘Z)."),
+          ]}
+        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {doc.changes.length === 0 ? (
-          <StateView size="sm" kind="empty" title="还没有改动" />
+          <StateView size="sm" kind="empty" title={t("还没有改动", "No changes yet")} />
         ) : (
           <ul className="divide-y">
             {doc.changes.map((c) => (
               <li key={c.seq ?? `${c.rev}-${c.at}`} className="flex items-start gap-2.5 px-4 py-2.5">
-                <Badge tone={ACTOR_TONE[c.actor]} className="mt-0.5 w-11 justify-center">
+                <Badge tone={ACTOR_TONE[c.actor]} className={cn("mt-0.5 justify-center", byLocale("w-11", "min-w-11"))}>
                   {ACTOR_LABEL[c.actor]}
                 </Badge>
                 <div className="min-w-0 flex-1">
                   <p className="text-body break-words">{c.summary}</p>
                   <p className="mt-0.5 text-caption text-faint-foreground tabular">
-                    第 {c.rev} 版 · {ago(c.at, now)}
+                    {t(`第 ${c.rev} 版 · ${ago(c.at, now)}`, `Version ${c.rev} · ${ago(c.at, now)}`)}
                   </p>
                 </div>
               </li>

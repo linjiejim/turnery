@@ -2,7 +2,8 @@ import type * as React from "react"
 import { Link } from "react-router"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import { TERMS } from "@/content/terms"
+import { TERMS, termAside } from "@/content/terms"
+import { t } from "@/lib/i18n"
 
 /** A glossary concept, one click away: its definition, why it matters, and a link to the glossary. */
 export function ConceptTerm({ id, className }: { id: string; className?: string }) {
@@ -19,7 +20,7 @@ export function ConceptTerm({ id, className }: { id: string; className?: string 
           )}
         >
           {term.name}
-          <span className="text-faint-foreground">概念</span>
+          <span className="text-faint-foreground">{t("概念", "concept")}</span>
         </button>
       </PopoverTrigger>
       <TermCard term={term} />
@@ -47,7 +48,7 @@ function TermCard({ term }: { term: (typeof TERMS)[number] }) {
   return (
       <PopoverContent className="w-80">
         <div className="text-heading font-semibold">
-          {term.name} <span className="font-normal text-muted-foreground">{term.en}</span>
+          {term.name} {termAside(term) && <span className="font-normal text-muted-foreground">{termAside(term)}</span>}
         </div>
         <p className="mt-1 text-small">{term.def}</p>
         <p className="mt-1.5 text-small text-muted-foreground">{term.why}</p>
@@ -55,7 +56,7 @@ function TermCard({ term }: { term: (typeof TERMS)[number] }) {
           to={`/glossary?tab=concepts#${term.id}`}
           className="mt-3 inline-block text-small font-medium underline decoration-border underline-offset-4 hover:decoration-foreground"
         >
-          在术语表里看
+          {t("在术语表里看", "See in the glossary")}
         </Link>
       </PopoverContent>
   )

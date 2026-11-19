@@ -1,6 +1,9 @@
 // A face / edge selector in plain words, for the feature card:
 // { parallel: "Z", of: "ext1", expect: 4 } → 「平行于 Z 的边 · 来自 拉伸1 · 4 条」
 // { not: { extreme: "+Z" } }               → 「除了最上面一圈以外的边」
+// Also written into messages to the assistant, so Chinese unless the caller says it is for the screen
+// (`shown`), where it follows the page's language.
+import { isEn } from "../lib/i18n"
 import { displayName, type Tree } from "./dsl"
 
 type Sel = Record<string, unknown>
@@ -10,7 +13,8 @@ const FACING: Record<string, string> = { "+Z": "朝上", "-Z": "朝下", "+X": "
 const SURFACE: Record<string, string> = { plane: "平面", cylinder: "圆柱面", cone: "圆锥面", sphere: "球面", torus: "环面", freeform: "自由曲面" }
 const CURVE: Record<string, string> = { line: "直线", circle: "圆弧", freeform: "曲线" }
 
-export function selectorWords(sel: unknown, kind: "face" | "edge", tree: Tree): string {
+export function selectorWords(sel: unknown, kind: "face" | "edge", tree: Tree, shown = false): string {
+  if (shown && isEn) return selectorWordsEn(sel, kind, tree)
   if (!sel || typeof sel !== "object") return kind === "face" ? "（没有条件）" : "（没有条件）"
   const s = sel as Sel
   const name = (id: string) => {
@@ -45,5 +49,51 @@ export function selectorWords(sel: unknown, kind: "face" | "edge", tree: Tree): 
   if (typeof s.of === "string") parts.push(`来自 ${name(s.of)}`)
   if (Array.isArray(s.near)) parts.push(`靠近 (${s.near.join(", ")})`)
   if (typeof s.expect === "number") parts.push(`${s.expect} ${unitWord}`)
+  return parts.join(" · ")
+}
+
+// English, for the screen only: 「edges parallel to Z · from Extrude1 · 4 edges」「edges except the top loop」.
+const SIDE_EN: Record<string, string> = { "+Z": "top", "-Z": "bottom", "+X": "rightmost (+X)", "-X": "leftmost (-X)", "+Y": "back (+Y)", "-Y": "front (-Y)" }
+const FACING_EN: Record<string, string> = { "+Z": "facing up", "-Z": "facing down", "+X": "facing right (+X)", "-X": "facing left (-X)", "+Y": "facing back (+Y)", "-Y": "facing front (-Y)" }
+const SURFACE_EN: Record<string, string> = { plane: "plane", cylinder: "cylindrical face", cone: "conical face", sphere: "spherical face", torus: "toroidal face", freeform: "freeform surface" }
+const CURVE_EN: Record<string, string> = { line: "straight", circle: "arc", freeform: "curved" }
+
+function selectorWordsEn(sel: unknown, kind: "face" | "edge", tree: Tree): string {
+  if (!sel || typeof sel !== "object") return "(no conditions)"
+  const s = sel as Sel
+  const name = (id: string) => {
+    const f = tree.features.find((x) => x.id === id)
+    return f ? displayName(tree, f) : id
+  }
+  const mods: string[] = []
+  if (typeof s.normal === "string") mods.push(FACING_EN[s.normal])
+  if (typeof s.parallel === "string") mods.push(`parallel to ${s.parallel}`)
+  if (s.at && typeof s.at === "object") {
+    const at = s.at as { axis: string; value: unknown }
+    mods.push(`at ${at.axis} = ${at.value}`)
+  }
+  if (s.radius !== undefined) mods.push(`R${s.radius}`)
+  const extreme = typeof s.extreme === "string" ? SIDE_EN[s.extreme] : ""
+  let phrase: string
+  if (kind === "face") {
+    const kindWord = typeof s.kind === "string" ? SURFACE_EN[s.kind] : s.normal ? "plane" : "face"
+    phrase = [extreme, kindWord, mods.join(", ")].filter(Boolean).join(" ")
+  } else {
+    const kindWord = typeof s.kind === "string" ? `${CURVE_EN[s.kind]} edges` : "edges"
+    phrase = extreme ? `${kindWord} of the ${extreme} loop` : kindWord
+    if (mods.length) phrase += `${extreme ? "," : ""} ${mods.join(", ")}`
+  }
+  if (s.faces && typeof s.faces === "object") phrase = `edges of the ${selectorWordsEn(s.faces, "face", tree).split(" · ")[0]}`
+  if (s.not && typeof s.not === "object") {
+    const not = s.not as Sel
+    const what =
+      typeof not.extreme === "string" ? (kind === "edge" ? `the ${SIDE_EN[not.extreme]} loop` : `the ${SIDE_EN[not.extreme]} face`) : `the ${selectorWordsEn(not, kind, tree).split(" · ")[0]}`
+    phrase = `${phrase}${extreme || mods.length || s.kind ? "," : ""} except ${what}`
+  }
+
+  const parts = [phrase]
+  if (typeof s.of === "string") parts.push(`from ${name(s.of)}`)
+  if (Array.isArray(s.near)) parts.push(`near (${s.near.join(", ")})`)
+  if (typeof s.expect === "number") parts.push(`${s.expect} ${kind === "face" ? (s.expect === 1 ? "face" : "faces") : s.expect === 1 ? "edge" : "edges"}`)
   return parts.join(" · ")
 }

@@ -1,6 +1,7 @@
 // `window.turnery`, set up by the Electron preload script. Opened anywhere else
 // (a plain browser), every call fails and the page says where to open it.
 import type { TurneryBridge } from "./core/protocol"
+import { t } from "@/lib/i18n"
 
 declare global {
   interface Window {
@@ -10,7 +11,7 @@ declare global {
 
 export const inApp = typeof window !== "undefined" && Boolean(window.turnery)
 
-const missing = () => Promise.reject(new Error("只能在 Turnery App 里使用"))
+const missing = () => Promise.reject(new Error(t("只能在 Turnery App 里使用", "Only works in the Turnery app")))
 
 export const turnery: TurneryBridge =
   window.turnery ??
@@ -33,6 +34,7 @@ export const turnery: TurneryBridge =
     saveModel: missing,
     assistantSend: missing,
     assistantStop: () => Promise.resolve(),
+    setLanguage: () => Promise.resolve(),
     onAssistant: () => () => {},
     chats: () => Promise.resolve([]),
     chatRead: () => Promise.resolve(null),

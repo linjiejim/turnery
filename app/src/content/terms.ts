@@ -1,12 +1,17 @@
+import { isEn } from "../lib/i18n"
+import { TERMS_EN, type TermEn } from "./en/terms"
+
 /**
  * Concept cards for the glossary: the ideas behind the commands. Each links
  * to the lessons and teardowns where it is taught. Commands (extrude, shell…)
- * live in ops.ts.
+ * live in ops.ts. English pages get the English text from en/terms.ts.
  */
 export type Term = {
   id: string
   name: string
   en: string
+  /** English pages only: other names it goes by, shown beside the name where Chinese pages show `en`. */
+  aka?: string
   group: "草图与参数化" | "特征树" | "装配" | "读图与公差" | "制造" | "曲面"
   /** One or two sentences. */
   def: string
@@ -16,7 +21,7 @@ export type Term = {
   models?: string[]
 }
 
-export const TERMS: Term[] = [
+const TERMS_ZH: Term[] = [
   {
     id: "datum",
     name: "基准",
@@ -271,3 +276,15 @@ export const TERMS: Term[] = [
     lessons: ["zebra-stripes"],
   },
 ]
+
+/** A concept in English: the overlay's text over the Chinese, Chinese wherever it has none. Pure, for tests. */
+export function localizeTerm(term: Term, en: Partial<TermEn> | undefined): Term {
+  if (!en) return term
+  return { ...term, name: en.name || term.name, aka: en.aka, def: en.def || term.def, why: en.why || term.why }
+}
+
+/** The concepts in the page's language. */
+export const TERMS: Term[] = isEn ? TERMS_ZH.map((term) => localizeTerm(term, TERMS_EN[term.id])) : TERMS_ZH
+
+/** The small text beside a concept's name: its English name on Chinese pages, its other names (if any) on English ones. */
+export const termAside = (term: Term) => (isEn ? term.aka : term.en)

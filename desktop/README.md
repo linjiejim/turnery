@@ -2,60 +2,62 @@
 
 # Turnery
 
-让本机的 coding agent（Claude Code、Codex……）通过 MCP 或命令行建参数化零件；你在 Turnery 窗口里实时看它每一步建了什么，拖参数、改特征，在面或边上留备注，agent 下一次调用就会知道。
+English · [简体中文](README.zh-CN.md)
 
-名字：turnery 是车削工坊，把料夹在轴上一刀刀车出形状的地方；turn 也是 agent 的一轮。标志是一个拉出厚度的小写 t，顶上斜切一刀：草图拉伸成实体。标志和图标由 `resources/logo/make-logo.py`（build123d 精确生成几何）和 `scripts/make-icons.py` 生成。
+Your local coding agent (Claude Code, Codex…) builds parametric parts through MCP or the command line. In the Turnery window you watch each step as it is built, drag parameters, change features and leave notes on faces or edges; the agent sees them on its next call.
 
-- 建模能力和网页版 Turnery 工作台是同一套：特征树 JSON、语义选择器、OpenCascade 内核（`app/src/studio`）。
-- AI 来自你自己的 agent（这时 Turnery 不调用任何模型，也不需要 key），或者来自内置助手：窗口右侧「对话」页签，用你自己配的模型和 key（`~/.turnery/providers.json`，或环境变量 `TURNERY_API_KEY_<预设>`）。命令行是 `turnery model`、`turnery ask "<一句话>"`。助手只能调建模命令；它和外部 agent 各记各的「自你上次调用以来」。
-- 零件就是一个 `.turnery.json` 文件（特征树 JSON），可以放进 git、可以直接编辑；备注在旁边的 `.notes.json`。
-- 一个文件夹就是一个项目：左栏列出里面的装配和零件。「文件 → 新建项目」建一个文件夹，里面放同名的空装配和共享参数文件；装配的特征树底部「+ 零件」新建零件（放在 `parts/` 下，共用项目参数）、放进已有零件或 STEP。
-- 新建项目缺省放在 `~/.turnery/projects/` 下，不改名就用时间命名（`YYYYMMDDhhmmss`）。打开项目时优先打开和文件夹同名的装配。
-- 一个窗口一个项目，几个项目可以同时开、互不干扰：每个窗口有自己的引擎和内核线程。当前窗口已经有项目时，「新建项目」「打开项目」会开一个新窗口；同一个项目只在一个窗口里打开。「文件 → 新建窗口」（⌥⌘N）开一个空窗口。
-- 标题栏的首页按钮（⇧⌘H）关掉这个窗口的项目，回到首页；首页列出最近的项目，也能打开随 App 带的示例（传感器外壳）。第一次启动时会自动打开这个示例一次：它被拷到 `~/.turnery/projects/sensor-enclosure/`，改动都留在那份拷贝里。
-- 界面上的说明收在灰色 ⓘ 里：鼠标指上去就全部显示，移开就收起；单击会保持打开，直到点别处或按 Esc。
-- ⌘= / ⌘- / ⌘0 缩放整个窗口，下次启动还是这个比例。装配里选中零件后按 H 隐藏，⇧H 显示全部隐藏的零件（选中零件的工具栏里也有这两个按钮）。
+The name: a turnery is a turning shop, where stock is held on a spindle and cut into shape pass by pass; a turn is also one round of an agent. The logo is a lowercase t extruded to a thickness, its top cut at an angle: a sketch extruded into a solid. The logo and icons are made by `resources/logo/make-logo.py` (exact geometry from build123d) and `scripts/make-icons.py`.
 
-## 装好、跑起来
+- The modeling is the same as in the Turnery workbench on the website: feature tree JSON, semantic selectors, the OpenCascade kernel (`app/src/studio`).
+- The AI is either your own agent (then Turnery calls no model and needs no key) or the built-in assistant: the “Chat” (对话) button in the window’s title bar, with a model and key you set up (`~/.turnery/providers.json`, or the environment variable `TURNERY_API_KEY_<PRESET>`). From the command line: `turnery model`, `turnery ask "<one sentence>"`. The assistant can only call modeling commands. It and outside agents are each told separately what changed since their last call.
+- A part is one `.turnery.json` file (feature tree JSON). It goes in git and you can edit it directly. Notes are in the `.notes.json` next to it.
+- A folder is a project: the left panel lists its assemblies and parts. “File → New project” (文件 → 新建项目) makes a folder with an empty assembly and a shared parameter file of the same name. “+ Part” (+ 零件) at the bottom of an assembly's feature tree makes a new part (under `parts/`, using the project's parameters) or adds an existing part or a STEP file.
+- New projects go under `~/.turnery/projects/` by default and are named by the time (`YYYYMMDDhhmmss`) unless you rename them. Opening a project opens the assembly named after the folder, if there is one.
+- One project per window. Several projects can be open at once without getting in each other's way: each window has its own engine and kernel thread. When the current window already has a project, “New project” (新建项目) and “Open project” (打开项目) open a new window; a project is only ever open in one window. “File → New window” (文件 → 新建窗口, ⌥⌘N) opens an empty window.
+- The home button in the title bar (⇧⌘H) closes the window's project and goes back to the start page. The start page lists recent projects and can open the example that ships with the app (a sensor enclosure). The first launch opens this example once: it is copied to `~/.turnery/projects/sensor-enclosure/`, and your changes stay in that copy.
+- Explanations in the interface are tucked into a grey ⓘ: point at it to show all of it, move away to hide it. A click keeps it open until you click elsewhere or press Esc.
+- ⌘= / ⌘- / ⌘0 zoom the whole window, and the zoom is kept for the next launch. In an assembly, select parts and press H to hide them; ⇧H shows every hidden part (the toolbar of the selected part has both as buttons too).
+
+## Install and run
 
 ```bash
-cd app && npm install --registry=https://registry.npmmirror.com      # 共用的代码和依赖
+cd app && npm install --registry=https://registry.npmmirror.com      # the shared code and dependencies
 cd ../desktop
 ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ NODE_USE_ENV_PROXY=1 \
   npm install --registry=https://registry.npmmirror.com
-npm run build      # 构建到 dist/
-npm start          # 打开 Turnery
+npm run build      # builds into dist/
+npm start          # opens Turnery
 ```
 
-- Electron 的二进制从 GitHub 下载，本机直连慢时用上面的镜像；`NODE_USE_ENV_PROXY=1` 让 Node 的 fetch 走 `https_proxy`。
-- `npm run dev`：窗口走 Vite 开发服务器（热更新），主进程和引擎改了要重新运行。
-- `npm run dist`：打包成 `release/mac-arm64/Turnery.app`，再由 `scripts/release.mjs` 签上临时签名（ad hoc），在 `release/upload/` 里做出 dmg 和更新用的 zip。本机打的包不生成更新清单，也不会推送给已安装的 App。
+- The Electron binary is downloaded from GitHub; the mirrors above are for when a direct connection is slow. `NODE_USE_ENV_PROXY=1` makes Node's fetch use `https_proxy`.
+- `npm run dev`: the window is served by the Vite dev server (hot reload). After changing the main process or the engine, run it again.
+- `npm run dist`: packages `release/mac-arm64/Turnery.app`, then `scripts/release.mjs` signs it ad hoc and makes the dmg and the update zip in `release/upload/`. A local build writes no update manifest and is never pushed to installed apps.
 
-## 下载安装和更新
+## Download, install and update
 
-从 [GitHub Releases](https://github.com/linjiejim/turnery/releases/latest) 下载 `Turnery-<版本>-arm64.dmg`（Intel Mac 选 `x64`），把 Turnery 拖进「应用程序」。Turnery 没有 Apple 签名，第一次打开时 macOS 会拦一下：到「系统设置 → 隐私与安全性」点「仍要打开」。也可以在终端运行 `xattr -dr com.apple.quarantine /Applications/Turnery.app`。
+Download `Turnery-<version>-arm64.dmg` from [GitHub Releases](https://github.com/linjiejim/turnery/releases/latest) (`x64` for an Intel Mac) and drag Turnery to Applications. Turnery is not signed by Apple, so macOS blocks it the first time you open it: go to System Settings → Privacy & Security and click “Open Anyway”. Or run `xattr -dr com.apple.quarantine /Applications/Turnery.app` in a terminal.
 
-装好以后 Turnery 会自己更新：启动 15 秒后检查一次，之后每 6 小时检查一次。它读取最新 release 里的 `turnery-update.json`，在后台下载这台机器对应的 zip，校验大小、SHA-256 和签名（公钥内置在 App 里，`desktop/src/update/public-key.ts`），解压到 App 旁边的隐藏文件夹 `.turnery-update/`。下载好以后，标题栏出现「重启以更新到 x.y.z」；不点也没关系，下次退出 Turnery 时会换上新版本。
+Once installed, Turnery updates itself: it checks 15 seconds after launch and then every 6 hours. It reads `turnery-update.json` from the latest release, downloads the zip for this machine in the background, verifies its size, SHA-256 and signature (the public key is built into the app, `desktop/src/update/public-key.ts`), and unpacks it into a hidden folder `.turnery-update/` next to the app. When the download is ready, the title bar shows “Restart to update to x.y.z” (重启以更新到 x.y.z). You don't have to click it: the new version goes in the next time you quit Turnery.
 
-- 菜单 Turnery → 检查更新…：立即检查，结果会提示出来（已是最新、正在下载、失败原因）。
-- 菜单 Turnery → 自动检查更新：取消勾选后就不再自动检查，设置存在 `~/.turnery/settings.json`。
-- 只有放在可写位置的 Turnery.app 能自动更新：直接从 dmg 里运行不行，被 macOS 隔离运行（App Translocation）时也不行，检查更新会说明原因。
-- 下载走 Chromium 的网络栈，跟随系统代理。
-- 测试时可以用环境变量 `TURNERY_UPDATE_URL` 指向另一份清单；签名照样要校验。
+- Menu Turnery → “Check for updates…” (检查更新…): checks now and tells you the result (up to date, downloading, or why it failed).
+- Menu Turnery → “Check for updates automatically” (自动检查更新): untick it to stop the automatic checks. The setting is stored in `~/.turnery/settings.json`.
+- Only a Turnery.app in a writable location can update itself: not when it runs straight from the dmg, and not when macOS runs it in isolation (App Translocation). Checking for updates tells you why.
+- Downloads go through Chromium's network stack and follow the system proxy.
+- For testing, the environment variable `TURNERY_UPDATE_URL` points to another manifest; the signature is still verified.
 
-### 发布
+### Releasing
 
-1. 改 `desktop/package.json` 的 `version`（同时改 `package-lock.json` 顶部的版本），合并进 main。
-2. 推送 `turnery-v<版本>` tag。工作流 `.github/workflows/turnery-release.yml` 会核对 tag 和版本号是否一致，然后在 macOS 上构建 arm64 和 x64 两个包，签名并打包，建一个草稿 release，上传 dmg、zip 和 `turnery-update.json`。
-3. 检查草稿，然后发布，并设为 latest：`gh release edit turnery-v<版本> --draft=false --latest`。已安装的 App 只读最新一个已发布的 release，发布这一步才算推送了更新。这个仓库的 latest release 只留给 Turnery 用。
+1. Change `version` in `desktop/package.json` (and the version at the top of `package-lock.json`), and merge into main.
+2. Push the tag `turnery-v<version>`. The workflow `.github/workflows/turnery-release.yml` checks that the tag matches the version, then builds the arm64 and x64 packages on macOS, signs and packages them, creates a draft release and uploads the dmgs, the zips and `turnery-update.json`.
+3. Check the draft, then publish it and mark it latest: `gh release edit turnery-v<version> --draft=false --latest`. Installed apps read only the latest published release, so the update goes out at this step. The latest release of this repository is reserved for Turnery.
 
-仓库先后叫过 `featuretree`（到 2026-11-08）和 `arbor`（到 2026-11-10），App 也叫过 Arbor。改名时更新包的 bundle id 变了（`com.linjiejim.arbor` → `com.linjiejim.turnery`），所以 Arbor 0.5.x 及更早的 App 不会自动更新到 Turnery：要手动下载一次。以后不要再建名叫 `featuretree` 或 `arbor` 的仓库，否则 GitHub 对旧地址的转发会断。旧文件照常能用：`*.arbor.json`、`*.arbor-asm.json` 仍然能打开和保存，新建的文件用 `*.turnery.json`；第一次启动 Turnery 时，`~/.arbor` 会整个改名为 `~/.turnery`（旧的 Arbor 还在运行时不动）。
+The repository was called `featuretree` (until 2026-11-08) and then `arbor` (until 2026-11-10), and the app was once called Arbor. The rename changed the bundle id (`com.linjiejim.arbor` → `com.linjiejim.turnery`), so Arbor 0.5.x and earlier do not update to Turnery on their own: download it once by hand. Don't create a repository named `featuretree` or `arbor` again, or GitHub's redirects from the old addresses break. Old files still work: `*.arbor.json` and `*.arbor-asm.json` still open and save, and new files are `*.turnery.json`. On Turnery's first launch, `~/.arbor` is renamed to `~/.turnery` as a whole (left alone while the old Arbor is still running).
 
-更新包的签名用一把 ed25519 私钥，存在仓库 secret `TURNERY_UPDATE_KEY`（PEM 格式）；维护者本机备份在 `~/.arbor-release/update-key.pem`。已安装的 App 只认这把钥匙签的更新：换钥匙就要同时换掉 `public-key.ts`，并且所有人都得手动重新下载一次。`release.mjs` 写清单前会先用内置公钥验一遍签名，钥匙不对就在发布时报错，不会等到用户那边才失败。
+Update packages are signed with an ed25519 private key, stored in the repository secret `TURNERY_UPDATE_KEY` (PEM). The maintainer keeps a local backup in `~/.arbor-release/update-key.pem`. Installed apps accept only updates signed with this key: changing the key means replacing `public-key.ts` too, and everyone has to download the app again by hand. Before writing the manifest, `release.mjs` verifies the signature with the built-in public key, so a wrong key fails at release time and not on users' machines.
 
-## 接入 agent
+## Connect an agent
 
-窗口右上角「接入 Agent」会给出这台机器上的完整命令。形式是：
+“Connect an agent” (接入 Agent) at the top right of the window gives the full commands for this machine. They look like this:
 
 ```bash
 claude mcp add --scope user turnery -- /Applications/Turnery.app/Contents/Resources/bin/turnery mcp
@@ -65,102 +67,103 @@ claude mcp add --scope user turnery -- /Applications/Turnery.app/Contents/Resour
 codex mcp add turnery -- /Applications/Turnery.app/Contents/Resources/bin/turnery mcp
 ```
 
-Claude Code 也可以装插件，除了 MCP 服务还带一个 `build-part` skill：
+Claude Code can also install the plugin, which brings a `build-part` skill along with the MCP server:
 
 ```
 /plugin marketplace add linjiejim/turnery
 /plugin install turnery@turnery
 ```
 
-插件在仓库的 `plugin/` 下，`plugin/scripts/turnery-mcp.sh` 负责找到已安装的 Turnery（`/Applications`、`~/Applications` 或环境变量 `TURNERY_BIN`），找不到时在 stderr 里说明去哪装。`packages/turnery-mcp/` 是同样作用的 npm 启动包，给 MCP Registry 和只认 `npx` 的客户端用。
+The plugin is in the repository's `plugin/`. `plugin/scripts/turnery-mcp.sh` finds the installed Turnery (`/Applications`, `~/Applications` or the environment variable `TURNERY_BIN`); when it can't, it says on stderr where to get it. `packages/turnery-mcp/` is an npm launcher that does the same, for the MCP Registry and for clients that only take `npx`.
 
-从源码跑时，把路径换成 `desktop/bin/turnery`。其他支持 MCP 的 agent 写进它们的 `mcpServers` 配置（`command` + `args: ["mcp"]`）。
+When running from source, use `desktop/bin/turnery` as the path. Other MCP agents take it in their `mcpServers` config (`command` + `args: ["mcp"]`).
 
-然后对 agent 说，例如：「用 turnery 建一个 80×50×30 的盒子，壁厚 2，外圆角 R4，四角 M3 螺纹孔，建完核对尺寸再看一眼。」
+Then tell the agent, for example: “Use turnery to build an 80×50×30 box, 2 mm walls, R4 outer fillets, M3 tapped holes in the four corners. Check the dimensions and take a look when you are done.”
 
-## 怎么工作
+## How it works
 
 ```
-Claude Code / Codex ──MCP (stdio)──► turnery mcp ──HTTP 127.0.0.1──► Turnery 主进程：引擎 ◄──IPC──► 窗口
-                     turnery CLI ───────────────────┘                  │ OpenCascade 在 worker 线程里
+Claude Code / Codex ──MCP (stdio)──► turnery mcp ──HTTP 127.0.0.1──► Turnery main process: engine ◄──IPC──► window
+                     turnery CLI ───────────────────┘                  │ OpenCascade in a worker thread
                                                                       ▼
-                                              你的项目目录：part.turnery.json、part.notes.json
+                                              your project folder: part.turnery.json, part.notes.json
 ```
 
-- **引擎**（`app/src/desktop/core/engine.ts`）管打开的零件、撤销、备注和全部命令；和平台无关，Electron 主进程和命令行用的是同一份。
-- **内核**在 Node 的 worker 线程里跑（`desktop/src/engine/kernel-thread.ts`），每个零件一个内核（最近用的 4 个），切回一个零件时直接用上次的结果，不重建；wasm 堆超过 1.4 GB 就换一个线程，只重放当前零件，其余零件下次用到时再建。
-- **`turnery mcp`** 每次调用都转给正在运行的 App，所以窗口里能看到每一步；App 没开时会自动启动它（不抢焦点）；启动不了就在自己进程里起一个无窗口的引擎（这时 `look` 和 `request_pick` 不可用）。
-- **多个窗口时调用发到哪**：发到这个项目所在的窗口（零件或文件夹在哪个窗口的项目里）；`open_project` 打开一个还没打开的项目时，用空窗口或新开一个窗口；其余情况留在这个 agent 上次用的窗口。所以两个 agent 各做各的项目，各在各的窗口里。窗口关掉后，agent 10 分钟内还在用的引擎会留着（`look` 会再开窗口），否则释放。
-- **无窗口模式**：`turnery mcp --headless`（或环境变量 `TURNERY_HEADLESS=1`）在 App 没运行时把它在后台启动，不显示窗口也不占 Dock，`look` 在隐藏的窗口里照常出图。运行 Turnery 或 `turnery open` 会把窗口叫出来；agent 调 `request_pick` 时也会弹出窗口。没人调用 30 分钟后自动退出。已经在运行的 App 不管是不是无窗口，都直接用它。
-- **谁改的都算**：agent、窗口里的你、直接改文件（编辑器、git），每次改动都记在「动态」里、都能撤销。agent 下一次调用时，结果开头会写「自你上次调用以来，用户改了：W 40 → 45」，避免它把你的改动改回去。
-- **发现**：App 启动时把端口和随机 token 写进 `~/.turnery/engine.json`（权限 600），把怎么启动自己写进 `~/.turnery/app.json`；只监听 127.0.0.1，并检查 Host 头。
+- **The engine** (`app/src/desktop/core/engine.ts`) holds the open parts, undo, notes and every command. It does not depend on the platform: the Electron main process and the command line run the same code.
+- **The kernel** runs in a Node worker thread (`desktop/src/engine/kernel-thread.ts`), one kernel per part (the 4 most recently used). Switching back to a part reuses its last result, with no rebuild. When the wasm heap goes over 1.4 GB, the thread is replaced and only the current part is replayed; the other parts are rebuilt when they are next used.
+- **`turnery mcp`** passes every call to the running app, which is why each step shows in the window. If the app is not open, it starts it (without taking focus). If the app can't start, it runs an engine without a window in its own process (then `look` and `request_pick` are unavailable).
+- **Which window a call goes to, with several open**: the window whose project contains the part or folder. `open_project` on a project that isn't open yet uses an empty window or opens a new one. Otherwise the call stays in the window this agent used last. So two agents working on two projects each get their own window. When a window is closed, its engine is kept as long as an agent has used it in the last 10 minutes (`look` opens the window again); otherwise it is released.
+- **Headless mode**: `turnery mcp --headless` (or the environment variable `TURNERY_HEADLESS=1`) starts the app in the background when it isn't running, with no window and no Dock icon; `look` still renders, in a hidden window. Launching Turnery or running `turnery open` brings the window up, and so does an agent calling `request_pick`. After 30 minutes without calls it quits. An app that is already running is used as it is, headless or not.
+- **Every edit counts, whoever makes it**: the agent, you in the window, or the file itself (an editor, git). Every change is recorded under “Activity” (动态) and can be undone. On the agent's next call, the result starts with “自你上次调用以来，用户改了：W 40 → 45” (since your last call, the user changed: W 40 → 45), so it does not change your edit back.
+- **Discovery**: on launch the app writes its port and a random token to `~/.turnery/engine.json` (mode 600) and how to start itself to `~/.turnery/app.json`. It listens on 127.0.0.1 only and checks the Host header.
 
-## 给 agent 的工具（40 个）
+## Tools for the agent (40)
 
-| 类 | 工具 |
+| Group | Tools |
 | --- | --- |
-| 零件和装配 | `guide`、`open_project`（一个文件夹作为项目，`create` 建出空装配和参数文件）、`open_part`（零件 `.turnery.json` 或装配 `.turnery-asm.json`；带 `context` 就是在装配里改这个零件，其他零件半透明显示在旁边）、`list_parts`（项目里的全部装配和零件）、`get_state`、`share_params`（几个零件共用一个参数文件 `*.params.json`） |
-| 建模（和网页工作台同一套） | `set_params`、`sketch`、`extrude`、`revolve`、`fillet`、`chamfer`、`shell`、`hole`、`linear_pattern`、`circular_pattern`、`mirror`、`sweep`、`loft`、`draft`、`split`、`rib`、`edit_feature`、`delete_feature` |
-| 只有桌面版的建模 | `import`：读一个 STEP 文件（开发板、元件的官方模型），缺省作参考体；`component`：装配里放一个零件文件、子装配、STEP 或标准件（`standard`：ISO 螺钉、螺母、垫圈、热熔螺母），用 `rotate` / `at` 或 `mates` 贴合摆放（面贴面、平齐、同轴；选中几个孔就放几个）；`thread`：真实螺纹几何（外螺纹、内螺纹，M2–M12 粗牙或自定螺距，可加打印间隙）。建模工具还多几个写法：加料时 `part` 写新名字就新建零件、`mode: "intersect"` 求交、`revolve.start` / `symmetric`、草图点的 `spline` 和拐角圆角 `r`、`extrude.onto` 沿平面或圆柱面等深刻字、`hole` 的 `fit: "insert"` 热熔螺母孔、选边的 `outer`（只要面的外轮廓） |
-| 整体改 | `set_tree`（可带 `base_rev` 防止覆盖）、`move_feature`、`undo`、`redo` |
-| 观测 | `inspect`、`look`（窗口渲染的视图图片；`focus` 特写、`section` 剖视、`dir` 任意方向、`hide` 藏零件，最后一步改动很小时自动加一张特写，结果写比例尺）、`measure`（面、边、特征、零件之间；给出坐标） |
-| 核对与交付 | `check`（和网页工作台同一张需求核对表：存进零件，每次重建自动重算；桌面版多几项：`position` 坐标、`gap` 两处之间的距离（`max: 0` = 必须贴上）、`clearance` 间隙、`interference` 不干涉，后两项可以对参考体或零件）、`export`（step / stl（多零件打包成 zip）/ py / json / bom 零件清单，标准件按规格合并计数） |
-| 和人协作 | `get_notes`、`resolve_note`、`request_pick`（请你在窗口里点一个面或边，等你点完）、`show`（在窗口里高亮给你看） |
+| Parts and assemblies | `guide`, `open_project` (a folder as a project; `create` makes an empty assembly and parameter file), `open_part` (a part `.turnery.json` or an assembly `.turnery-asm.json`; with `context`, you edit the part inside the assembly, with the other parts shown translucent around it), `list_parts` (every assembly and part in the project), `get_state`, `share_params` (several parts share one parameter file `*.params.json`) |
+| Modeling (the same as the web workbench) | `set_params`, `sketch`, `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `hole`, `linear_pattern`, `circular_pattern`, `mirror`, `sweep`, `loft`, `draft`, `split`, `rib`, `edit_feature`, `delete_feature` |
+| Modeling only in the desktop app | `import`: reads a STEP file (the official model of a dev board or component), as a reference body by default; `component`: places a part file, a sub-assembly, a STEP file or a standard part (`standard`: ISO screws, nuts, washers, heat-set inserts) in an assembly, positioned with `rotate` / `at` or with `mates` (face to face, flush, concentric; select several holes and it places one in each); `thread`: real thread geometry (external and internal, M2–M12 coarse or a custom pitch, with optional print clearance). The modeling tools also take a few more forms: when adding material, a new name in `part` makes a new part; `mode: "intersect"` intersects; `revolve.start` / `symmetric`; `spline` sketch points and corner fillets `r`; `extrude.onto` engraves at an even depth along a plane or a cylinder; `fit: "insert"` on `hole` for heat-set insert holes; `outer` when selecting edges (only the outer loop of the face) |
+| Whole-tree edits | `set_tree` (with `base_rev` to avoid overwriting), `move_feature`, `undo`, `redo` |
+| Seeing | `inspect`, `look` (images of views rendered by the window; `focus` close-ups, `section` cuts, `dir` any direction, `hide` to hide parts; adds a close-up on its own when the last change was small; the result gives the scale), `measure` (between faces, edges, features and parts; gives coordinates) |
+| Checking and delivering | `check` (the same requirement check list as the web workbench: stored in the part and re-measured on every rebuild; the desktop app adds `position` coordinates, `gap` the distance between two things (`max: 0` = must touch), `clearance` and `interference`, the last two against reference bodies or parts), `export` (step / stl (several parts are zipped) / py / json / bom bill of materials, standard parts counted together by size) |
+| Working with you | `get_notes`, `resolve_note`, `request_pick` (asks you to click a face or an edge in the window and waits until you do), `show` (highlights something in the window for you) |
 
-每一步的结果会提示几种常见问题：新加的料没接上（写出距离）、只碰到边或点、极小的碎面、窄缝（对面的两个面不到 1 mm、中间是空的）、薄壁（不到 0.8 mm）、新零件和别的零件重叠。不写 `after` 加的特征会自动排在末尾的文字特征前面。
+The result of every step flags common problems: new material that doesn't connect (with the distance), material touching only at an edge or a point, tiny sliver faces, narrow gaps (two facing faces less than 1 mm apart with nothing between them), thin walls (under 0.8 mm), and a new part overlapping another. A feature added without `after` goes before any text features at the end.
 
-工具列表（MCP `tools/list`）里，选面、选边、基准面的写法每个工具只写一次（`$defs` + `$ref`），`set_tree` 只说明写法、由引擎校验：选择器里的 `not` 只写「字段和上面一样」，同一个工具里写了两遍的其他结构（路径和折线的点、距离的两端）也只写一次：整个列表约 6.8 万字符（最初约 24 万，0.5.1 是 8.7 万）。
+In the tool list (MCP `tools/list`), the schemas for selecting faces, edges and datum planes are written once per tool (`$defs` + `$ref`), and `set_tree` only describes its format and leaves validation to the engine. `not` in a selector only says “same fields as above”, and other structures that appear twice in one tool (the points of paths and polylines, the two ends of a distance) are also written once. The whole list is about 68,000 characters (about 240,000 at first, 87,000 in 0.5.1).
 
-装配的写法和规则见 `docs/specs/2026-11-07-turnery-agent-modeling.md`。
+How assemblies are written and the rules for them: `docs/specs/2026-11-07-arbor-agent-modeling.md` (in Chinese).
 
-完整的说明在 MCP 的 instructions 里（`guide` 也能读到），坐标约定和选择器写法和网页工作台的提示词是同一份。
+The full guide is in the MCP instructions (`guide` reads it too); the coordinate conventions and selector syntax are the same text as the web workbench's prompt.
 
-## 命令行
+## Command line
 
 ```bash
 turnery help
 turnery call open_part path=box create=true
 turnery call set_params '{"set":{"L":80,"W":50}}'
-turnery check box '{"size":[80,50,30],"solids":1}'     # 不需要窗口
+turnery check box '{"size":[80,50,30],"solids":1}'     # no window needed
 turnery export box out/box.step
-turnery look box -o shots/                             # 需要窗口，会自动打开 App
-turnery setup                                          # 打印接入各个 agent 的命令
+turnery look box -o shots/                             # needs the window; opens the app if it isn't running
+turnery setup                                          # prints the commands that connect each agent
 ```
 
-- `--headless`：App 没运行时在后台启动它，不显示窗口（见上面的无窗口模式）。
-- `--no-app`：不连 App，在自己的进程里算（适合 CI 和脚本，这时要用 `--part` 指定零件；没有 `look`）。MCP 用环境变量 `TURNERY_NO_APP=1`。以前的 `--headless` 就是这个意思，0.5.0 起改名。
+- `--headless`: starts the app in the background when it isn't running, without a window (see headless mode above).
+- `--no-app`: doesn't connect to the app and computes in its own process (for CI and scripts; name the part with `--part`; no `look`). For MCP, set the environment variable `TURNERY_NO_APP=1`. This is what `--headless` used to mean; it was renamed in 0.5.0.
 
-## 开发
+## Development
 
 ```bash
-cd app && npx vitest run src/tests/unit/desktop.test.ts   # 引擎的单元测试（真内核）
-cd desktop && npm run check                               # 主进程、引擎、MCP、CLI 的类型检查
-node scripts/smoke-mcp.mjs                                 # 用官方 MCP 客户端走一遍（无窗口）
-node scripts/smoke-mcp.mjs --app                           # 连正在运行的 App，含 look 和 show
-TURNERY_HOME=/tmp/turnery-dev npm start                         # 和装好的 Turnery 互不影响（单实例锁、~/.turnery 都换成这个目录）
-npm start -- --remote-debugging-port=9223                  # 然后：
-node scripts/cdp.mjs shot out.png                          #   给窗口截图（多个窗口：TURNERY_CDP_WINDOW=<序号>，cdp.mjs windows 列出）
-node scripts/cdp.mjs click 520 470                         #   在窗口里点（CSS 像素）
-../.venv/bin/python -I resources/logo/make-logo.py         # 重新生成标志（SVG、网页用的路径、favicon）
-python3 -I scripts/make-icons.py                           # 从标志生成 App 图标
+cd app && npx vitest run src/tests/unit/desktop.test.ts   # the engine's unit tests (real kernel)
+cd desktop && npm run check                               # type checks for the main process, engine, MCP and CLI
+node scripts/smoke-mcp.mjs                                 # a run through the official MCP client (no window)
+node scripts/smoke-mcp.mjs --app                           # against the running app, including look and show
+TURNERY_HOME=/tmp/turnery-dev npm start                    # kept apart from the installed Turnery (the single-instance lock and ~/.turnery both move to this folder)
+npm start -- --remote-debugging-port=9223                  # then:
+node scripts/cdp.mjs shot out.png                          #   screenshot the window (several windows: TURNERY_CDP_WINDOW=<n>, listed by cdp.mjs windows)
+node scripts/cdp.mjs click 520 470                         #   click in the window (CSS pixels)
+../.venv/bin/python -I resources/logo/make-logo.py         # regenerate the logo (SVG, the path for the website, favicon)
+python3 -I scripts/make-icons.py                           # make the app icons from the logo
 ```
 
-代码在哪：
+Where the code is:
 
-| 位置 | 内容 |
+| Where | What |
 | --- | --- |
-| `app/src/desktop/core/` | 引擎、命令表（MCP 和 CLI 从这里生成）、核对、备注、改动摘要、协议类型 |
-| `app/src/desktop/` | 窗口：复用网页工作台的视口、特征树、参数、测量和剖视组件 |
-| `app/vite.desktop.config.ts`、`app/desktop.html` | 窗口的构建入口 |
-| `desktop/src/main/` | Electron 主进程、preload、接入命令 |
-| `desktop/src/engine/` | 内核线程、文件、`~/.turnery`、本机 HTTP、连接 App 或无窗口引擎 |
-| `desktop/src/mcp/`、`desktop/src/cli/` | `turnery mcp` 和 `turnery` 命令行 |
+| `app/src/desktop/core/` | The engine, the command table (MCP and the CLI are generated from it), checks, notes, change summaries, protocol types |
+| `app/src/desktop/` | The window: reuses the web workbench's viewport, feature tree, parameter, measuring and section components |
+| `app/vite.desktop.config.ts`, `app/desktop.html` | The window's build entry |
+| `desktop/src/main/` | The Electron main process, preload, the connect commands |
+| `desktop/src/engine/` | The kernel thread, files, `~/.turnery`, the local HTTP server, connecting to the app or a windowless engine |
+| `desktop/src/mcp/`, `desktop/src/cli/` | `turnery mcp` and the `turnery` command line |
 
-## 已知局限
+## Known limitations
 
-- 只有 macOS 包（arm64 和 x64），没有 Apple 签名和公证，第一次打开要在系统设置里放行。
-- 没有「代码特征」：特征树表达不了的形状还做不了（规划见 `docs/specs/2026-11-07-turnery-desktop.md`）。
-- 贴合只用来摆放（按顺序算一次），不是约束求解，也没有运动；标准件只有公制粗牙 M2–M12，螺钉上的螺纹画成光杆。
-- 真实螺纹一个要几秒，面也多，放在最后；build123d 导出里省略螺纹（build123d 本身没有螺纹命令）。
-- 导入的 STEP 的面能选来测量、核对、贴草图和打孔（选择器里 `of` 写 import 的 id），但在窗口里还点不到，`extrude` 的 `until` 也还不能长到它的面；STEP 的面没有稳定的名字，只能按位置和朝向选。`mode: "cut"` 减去的是元件本身的外形，要留间隙得先在别处把它放大。
-- `request_pick` 一次最多等 280 秒；没等到就返回，agent 用同一句 prompt 再调用会接着等，期间你点的也不会丢。
+- macOS packages only (arm64 and x64), without Apple signing or notarization: the first launch has to be allowed in System Settings.
+- The window is in English and Chinese (the language menu in the title bar; the system language until you pick one). What the agent reads is still in Chinese: the guide, the tool descriptions and the kernel's messages. Tool names and fields are English.
+- No “code feature”: shapes the feature tree can't express can't be made yet (plans in `docs/specs/2026-11-07-arbor-desktop.md`, in Chinese).
+- Mates only place parts (computed once, in order). They are not a constraint solver, and there is no motion. Standard parts are metric coarse M2–M12 only, and screw threads are drawn as plain shanks.
+- A real thread takes a few seconds and adds many faces, so put it last. The build123d export leaves threads out (build123d has no thread command of its own).
+- Faces of an imported STEP can be selected to measure, check, sketch on and drill (put the import's id in `of` in the selector), but can't be clicked in the window yet, and `extrude`'s `until` can't grow up to them yet. STEP faces have no stable names, so they are selected by position and direction only. `mode: "cut"` subtracts the component's own shape; to leave a clearance, enlarge it somewhere else first.
+- `request_pick` waits at most 280 seconds per call. If nothing is clicked by then it returns; the agent calls it again with the same prompt to keep waiting, and a click in between is not lost.

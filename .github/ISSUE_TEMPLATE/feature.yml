@@ -1,0 +1,24 @@
+name: Feature request · 功能建议
+description: A tool, a check or a way of working you'd like · 想要的工具、核对项或用法
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do · 想做什么
+      description: The part or the job, and where Turnery gets in the way today. · 要做的零件或事情，现在卡在哪里。
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help · 怎样会好
+      description: A tool for the agent, something in the window, a check, an export… · 给 agent 的工具、窗口里的功能、核对项、导出格式……
+    validations:
+      required: true
+  - type: textarea
+    id: else
+    attributes:
+      label: How you do it now · 现在怎么绕过
+      description: Another CAD package, a script, by hand. Optional. · 用别的软件、脚本或手工。可选。

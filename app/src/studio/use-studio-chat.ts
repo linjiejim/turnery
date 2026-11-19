@@ -1,6 +1,7 @@
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type FileUIPart, type UIMessage } from "ai"
+import { locale, t } from "../lib/i18n"
 import { isDivider } from "./share"
 import { trimMessages } from "./trim"
 import type { Studio } from "./use-studio"
@@ -54,7 +55,7 @@ export function errorText(e: Error | undefined) {
   } catch {
     /* not JSON */
   }
-  return /fetch|network/i.test(e.message) ? "连不上服务器，检查网络后重试。" : e.message || "出错了"
+  return /fetch|network/i.test(e.message) ? t("连不上服务器，检查网络后重试。", "Can’t reach the server. Check your connection and try again.") : e.message || t("出错了", "Something went wrong")
 }
 
 /**
@@ -88,7 +89,7 @@ export function useStudioChat(studio: Studio) {
           const s = bridge.studio
           return {
             // Dividers are for the learner; each message already carries the tree it was sent with.
-            body: { messages: trimMessages(messages.filter((m) => !isDivider(m))), tree: s?.treeRef.current, summary: s?.summary ?? "", mode: bridge.mode },
+            body: { messages: trimMessages(messages.filter((m) => !isDivider(m))), tree: s?.treeRef.current, summary: s?.summary ?? "", mode: bridge.mode, lang: locale },
             headers: key ? { "x-deepseek-key": key } : undefined,
           }
         },
@@ -132,8 +133,8 @@ export function useStudioChat(studio: Studio) {
 
   const send = React.useCallback(
     (text: string, files?: FileUIPart[], notes?: Note[], shot?: string | null) => {
-      const t = text.trim()
-      if (!t && !files?.length && !notes?.length) return
+      const said = text.trim()
+      if (!said && !files?.length && !notes?.length) return
       setPaused(false)
       const s = bridge.studio
       s?.checkpoint()
@@ -141,7 +142,8 @@ export function useStudioChat(studio: Studio) {
       const annotations = notes?.length ? notes.map(({ hash: _hash, ...a }) => a) : undefined
       const metadata = s ? { tree: s.treeRef.current, summary: s.summary, annotations } : { annotations }
       const all = [...(files ?? []), ...(shot ? [{ type: "file" as const, mediaType: "image/png", filename: ANNOTATED_VIEW, url: shot }] : [])]
-      void chat.sendMessage({ text: t || (notes?.length ? "按标注修改" : "照着这张图建模"), files: all.length ? all : undefined, metadata })
+      // Nothing typed: a short message of the person's own, in their language.
+      void chat.sendMessage({ text: said || (notes?.length ? t("按标注修改", "Change it as noted") : t("照着这张图建模", "Model it from this picture")), files: all.length ? all : undefined, metadata })
     },
     [chat],
   )
@@ -174,8 +176,8 @@ export function useStudioChat(studio: Studio) {
   }
   React.useEffect(() => {
     if (!linger) return
-    const t = setTimeout(() => setLinger(0), BETWEEN_STEPS_MS)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setLinger(0), BETWEEN_STEPS_MS)
+    return () => clearTimeout(timer)
   }, [linger])
   const busy = requesting || (linger > 0 && chat.status === "ready" && !paused)
 

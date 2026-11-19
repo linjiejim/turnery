@@ -32,6 +32,7 @@ import { TreeOverlay } from "@/studio/ui/tree-overlay"
 import { useAnnotations } from "@/studio/use-annotations"
 import { useStudio } from "@/studio/use-studio"
 import { KEY_STORE, useStudioChat } from "@/studio/use-studio-chat"
+import { t } from "@/lib/i18n"
 
 type Status = { model: string; via?: "deepseek" | "openrouter" | "mock"; hostedKey: boolean; budgetExhausted: boolean }
 
@@ -111,10 +112,10 @@ export function StudioPage() {
     url.searchParams.delete("practice")
     window.history.replaceState(null, "", url)
     const p = practiceById(arriving)
-    if (!p) return void notify.error("没有找到这道练习")
+    if (!p) return void notify.error(t("没有找到这道练习", "Practice not found"))
     localStorage.setItem(PRACTICE_STORE, p.id)
     pinChecks(p.checks)
-    replaceModel({ ...(p.start ?? EMPTY_TREE), checks: p.checks }, `开始练习「${p.title}」`, "已换成练习的起始模型")
+    replaceModel({ ...(p.start ?? EMPTY_TREE), checks: p.checks }, t(`开始练习「${p.title}」`, `Started practice “${p.title}”`), t("已换成练习的起始模型", "Switched to the practice’s starting model"))
   }, [ready, arriving, pinChecks, replaceModel])
 
   // 「复制到我的工作台」 from a shared link: replace once the kernel is up, then drop the state so a reload doesn't do it again.
@@ -125,8 +126,8 @@ export function StudioPage() {
     took.current = true
     navigate(".", { replace: true, state: null })
     const checked = checkTree(incoming.tree)
-    if (!checked.ok) return void notify.error(`没能复制这个模型：${checked.message}`)
-    replaceModel(checked.tree, `换成了分享的模型「${incoming.title}」`, "已替换当前模型")
+    if (!checked.ok) return void notify.error(t(`没能复制这个模型：${checked.message}`, `Couldn’t copy this model: ${checked.message}`))
+    replaceModel(checked.tree, t(`换成了分享的模型「${incoming.title}」`, `Switched to the shared model “${incoming.title}”`), t("已替换当前模型", "Replaced the current model"))
   }, [ready, incoming, navigate, replaceModel])
 
   // Import: a file from the menu or dropped on the view. Errors stay over the view until closed.
@@ -135,21 +136,21 @@ export function StudioPage() {
   const [dragging, setDragging] = React.useState(false)
   const importFile = async (file: File) => {
     setImportError(null)
-    if (!ready) return setImportError({ file: file.name, message: "建模内核还没准备好，稍等再试" })
-    if (chat.busy) return setImportError({ file: file.name, message: "助教正在改模型，这一轮结束后再导入" })
+    if (!ready) return setImportError({ file: file.name, message: t("建模内核还没准备好，稍等再试", "The modeling kernel isn’t ready yet. Try again in a moment.") })
+    if (chat.busy) return setImportError({ file: file.name, message: t("助教正在改模型，这一轮结束后再导入", "The tutor is changing the model. Import once it’s done.") })
     const r = await readTreeFile(file)
     if (!r.ok) return setImportError({ file: file.name, message: r.message })
-    replaceModel(r.tree, `导入了特征树「${r.name}」`, `已导入「${r.name}」`)
+    replaceModel(r.tree, t(`导入了特征树「${r.name}」`, `Imported feature tree “${r.name}”`), t(`已导入「${r.name}」`, `Imported “${r.name}”`))
   }
 
   const download = async (format: "step" | "stl" | "json" | "py") => {
     if (format === "py") {
       const { code, problems } = buildCode(studio.tree)
-      if (problems.length) return notify.error(`有 ${problems.length} 处不能安全地写成代码，没有导出：${problems[0]}`)
+      if (problems.length) return notify.error(t(`有 ${problems.length} 处不能安全地写成代码，没有导出：${problems[0]}`, `Not exported: ${problems.length} ${problems.length === 1 ? "place" : "places"} can’t be written safely as code: ${problems[0]}`))
       return saveBlob(new Blob([code], { type: "text/x-python" }), "turnery-model.py")
     }
     const blob = format === "json" ? new Blob([JSON.stringify(studio.tree, null, 2)], { type: "application/json" }) : await studio.exportBody(format)
-    if (!blob) return notify("还没有实体可以导出")
+    if (!blob) return notify(t("还没有实体可以导出", "Nothing to export yet"))
     saveBlob(blob, `turnery-model.${format === "stl" && blob.type === "application/zip" ? "zip" : format}`)
   }
 
@@ -157,55 +158,55 @@ export function StudioPage() {
     <>
     <div className="flex h-dvh flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
-        <IconButton label="返回首页" onClick={() => navigate("/")}>
+        <IconButton label={t("返回首页", "Back to home")} onClick={() => navigate("/")}>
           <ArrowLeft />
         </IconButton>
-        <span className="truncate text-body font-semibold">工作台</span>
+        <span className="truncate text-body font-semibold">{t("工作台", "Workbench")}</span>
         {sheet ? (
           <Button size="sm" variant="secondary" className="mx-auto" onClick={() => setSheet(false)}>
-            回到 3D
+            {t("回到 3D", "Back to 3D")}
           </Button>
         ) : (
           <span className="flex-1" />
         )}
         <div className="flex items-center gap-1">
-          <IconButton label="撤销上一步" disabled={!studio.canUndo || chat.busy} onClick={studio.undo}>
+          <IconButton label={t("撤销上一步", "Undo last step")} disabled={!studio.canUndo || chat.busy} onClick={studio.undo}>
             <Undo2 />
           </IconButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconButton label="导出">
+              <IconButton label={t("导出", "Export")}>
                 <Download />
               </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem onSelect={() => void download("step")}>{partCount > 1 ? `导出 STEP（${partCount} 个零件）` : "导出 STEP"}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void download("stl")}>{partCount > 1 ? "导出 STL（zip，每个零件一个文件）" : "导出 STL"}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void download("py")}>导出 build123d 代码</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void download("json")}>导出特征树（JSON）</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void download("step")}>{partCount > 1 ? t(`导出 STEP（${partCount} 个零件）`, `Export STEP (${partCount} parts)`) : t("导出 STEP", "Export STEP")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void download("stl")}>{partCount > 1 ? t("导出 STL（zip，每个零件一个文件）", "Export STL (zip, one file per part)") : t("导出 STL", "Export STL")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void download("py")}>{t("导出 build123d 代码", "Export build123d code")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void download("json")}>{t("导出特征树（JSON）", "Export feature tree (JSON)")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <IconButton label="分享" disabled={!studio.tree.features.length || chat.busy} onClick={() => setSharing(true)}>
+          <IconButton label={t("分享", "Share")} disabled={!studio.tree.features.length || chat.busy} onClick={() => setSharing(true)}>
             <Share2 />
           </IconButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconButton label="更多">
+              <IconButton label={t("更多", "More")}>
                 <Ellipsis />
               </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setSheet(!sheet)}>{sheet ? "回到 3D" : "工程图"}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setCodeOpen(true)}>代码</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setSheet(!sheet)}>{sheet ? t("回到 3D", "Back to 3D") : t("工程图", "Drawing")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setCodeOpen(true)}>{t("代码", "Code")}</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!ready || chat.busy} onSelect={() => fileInput.current?.click()}>
-                导入特征树（JSON）…
+                {t("导入特征树（JSON）…", "Import feature tree (JSON)…")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setKeyOpen(true)}>使用自己的 key…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setKeyOpen(true)}>{t("使用自己的 key…", "Use your own key…")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="secondary" size="sm" disabled={chat.busy} onClick={() => setConfirmNew(true)}>
-            新建零件
+            {t("新建零件", "New part")}
           </Button>
         </div>
         <input
@@ -213,7 +214,7 @@ export function StudioPage() {
           type="file"
           accept=".json,application/json"
           className="hidden"
-          aria-label="选择特征树文件"
+          aria-label={t("选择特征树文件", "Choose a feature tree file")}
           onChange={(e) => {
             const f = e.currentTarget.files?.[0]
             e.currentTarget.value = ""
@@ -248,12 +249,12 @@ export function StudioPage() {
           <TreeOverlay studio={studio} onHover={setHover} reselect={reselect} annotations={annotations} busy={chat.busy} parts={partsView} onParts={setPartsView} detailsIn={stepSlot} />
           {sheet && (
             <div className="absolute inset-0 z-30 bg-background">
-              <DrawingSheet studio={studio} title={studio.tree.features.length ? "零件" : ""} />
+              <DrawingSheet studio={studio} title={studio.tree.features.length ? t("零件", "Part") : ""} />
             </div>
           )}
           {dragging && (
             <div className="pointer-events-none absolute inset-3 z-20 grid place-items-center rounded-lg border-2 border-dashed border-primary bg-background/80 text-body font-medium">
-              松开鼠标，导入这个特征树（JSON）
+              {t("松开鼠标，导入这个特征树（JSON）", "Drop to import this feature tree (JSON)")}
             </div>
           )}
           {importError && (
@@ -263,11 +264,11 @@ export function StudioPage() {
             >
               <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
               <div className="min-w-0 flex-1 break-words">
-                <div className="font-medium">没能导入「{importError.file}」</div>
+                <div className="font-medium">{t(`没能导入「${importError.file}」`, `Couldn’t import “${importError.file}”`)}</div>
                 <div className="mt-0.5 text-muted-foreground">{importError.message}</div>
-                <div className="mt-0.5 text-faint-foreground">当前模型没有改动。</div>
+                <div className="mt-0.5 text-faint-foreground">{t("当前模型没有改动。", "The current model is unchanged.")}</div>
               </div>
-              <IconButton label="关闭" size="icon-sm" tooltip={false} className="-mt-1 -mr-1 text-muted-foreground" onClick={() => setImportError(null)}>
+              <IconButton label={t("关闭", "Close")} size="icon-sm" tooltip={false} className="-mt-1 -mr-1 text-muted-foreground" onClick={() => setImportError(null)}>
                 <X />
               </IconButton>
             </div>
@@ -283,7 +284,7 @@ export function StudioPage() {
         >
           <ResizeHandle
             side="left"
-            label="调整面板宽度"
+            label={t("调整面板宽度", "Resize panel")}
             value={panel.width}
             min={PANEL_MIN}
             max={panel.max}
@@ -293,15 +294,15 @@ export function StudioPage() {
             className="max-lg:hidden"
           />
           <TabsList className="shrink-0 px-3">
-            <TabsTrigger value="chat">对话</TabsTrigger>
-            <TabsTrigger value="params">参数</TabsTrigger>
+            <TabsTrigger value="chat">{t("对话", "Chat")}</TabsTrigger>
+            <TabsTrigger value="params">{t("参数", "Parameters")}</TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden" forceMount>
             {status && !status.hostedKey && !hasOwnKey() && (
               <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-small text-muted-foreground">
-                这里没有公共额度，要用自己的 DeepSeek key
+                {t("这里没有公共额度，要用自己的 DeepSeek key", "No shared quota here. Use your own DeepSeek key.")}
                 <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setKeyOpen(true)}>
-                  填 key
+                  {t("填 key", "Add key")}
                 </Button>
               </div>
             )}
@@ -328,7 +329,7 @@ export function StudioPage() {
       <KeyDialog open={keyOpen} onOpenChange={setKeyOpen} status={status} />
       <Drawer open={codeOpen} onOpenChange={setCodeOpen}>
         <DrawerContent size="lg">
-          <DrawerHeader title="代码" description="和特征树等价的 build123d 代码" />
+          <DrawerHeader title={t("代码", "Code")} description={t("和特征树等价的 build123d 代码", "build123d code equivalent to the feature tree")} />
           <DrawerBody className="p-0">
             <CodePanel studio={studio} />
           </DrawerBody>
@@ -337,9 +338,9 @@ export function StudioPage() {
       <ConfirmDialog
         open={confirmNew}
         onOpenChange={setConfirmNew}
-        title="新建零件？"
-        description="会清空当前的特征树和对话。特征树可以用「撤销」找回，对话不能。"
-        confirmLabel="清空并新建"
+        title={t("新建零件？", "New part?")}
+        description={t("会清空当前的特征树和对话。特征树可以用「撤销」找回，对话不能。", "This clears the current feature tree and chat. Undo brings back the feature tree, not the chat.")}
+        confirmLabel={t("清空并新建", "Clear and start new")}
         tone="danger"
         onConfirm={() => {
           exitPractice()
@@ -363,25 +364,31 @@ function KeyDialog({ open, onOpenChange, status }: { open: boolean; onOpenChange
     const k = key.trim()
     if (k) localStorage.setItem(KEY_STORE, k)
     else localStorage.removeItem(KEY_STORE)
-    notify(k ? "已保存，之后的对话用你自己的 key" : "已清除，改用公共额度")
+    notify(k ? t("已保存，之后的对话用你自己的 key", "Saved. Chats from now on use your own key.") : t("已清除，改用公共额度", "Cleared. Using the shared quota."))
     onOpenChange(false)
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">
-        <DialogHeader title="使用自己的 DeepSeek key" />
+        <DialogHeader title={t("使用自己的 DeepSeek key", "Use your own DeepSeek key")} />
         <DialogBody>
         <p className="text-small text-muted-foreground">
           {status?.hostedKey
-            ? `不填就用本站的公共额度（${status.via === "openrouter" ? "经 OpenRouter 调用同一个模型，" : ""}每天有上限）。`
-            : "本站没有配置公共额度，需要填自己的 key。"}
-          key 只保存在这个浏览器里，随请求经本站服务器转发给 DeepSeek，服务器不保存。
+            ? t(
+                `不填就用本站的公共额度（${status.via === "openrouter" ? "经 OpenRouter 调用同一个模型，" : ""}每天有上限）。`,
+                `Leave it empty to use this site’s shared quota (${status.via === "openrouter" ? "the same model through OpenRouter, " : ""}with a daily limit). `,
+              )
+            : t("本站没有配置公共额度，需要填自己的 key。", "This site has no shared quota, so you need your own key. ")}
+          {t(
+            "key 只保存在这个浏览器里，随请求经本站服务器转发给 DeepSeek，服务器不保存。",
+            "The key stays in this browser. It goes through this site’s server to DeepSeek with each request and is never stored there.",
+          )}
         </p>
         <Input className="mt-3 font-mono" type="password" autoComplete="off" placeholder="sk-…" value={key} onChange={(e) => setKey(e.target.value)} aria-label="DeepSeek API key" />
         </DialogBody>
         <DialogFooter>
           <Button variant="primary" onClick={save}>
-            保存
+            {t("保存", "Save")}
           </Button>
         </DialogFooter>
       </DialogContent>

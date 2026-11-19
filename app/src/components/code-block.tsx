@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { CopyButton } from "@/components/ui/copy-button"
+import { t } from "@/lib/i18n"
 
 /**
  * A read-only Python snippet with light highlighting (keywords, strings,
@@ -45,7 +46,7 @@ export function CodeBlock({ code, className }: { code: string; className?: strin
     <div className={cn("group relative rounded-lg border bg-sunken", className)}>
       <CopyButton
         value={code}
-        label="复制代码"
+        label={t("复制代码", "Copy code")}
         iconOnly
         className="absolute right-1.5 top-1.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
       />

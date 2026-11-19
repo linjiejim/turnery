@@ -1,3 +1,4 @@
+import { t } from "../lib/i18n"
 import { z } from "zod"
 import { FASTENER_TYPES, SCREW_HEADS } from "./fasteners"
 import { SCREW_SIZES } from "./holes"
@@ -485,6 +486,33 @@ export const OP_NAMES: Record<FeatureOp, string> = {
   component: "零件",
   thread: "螺纹",
 }
+
+const OP_NAMES_EN: Record<FeatureOp, string> = {
+  sketch: "Sketch",
+  extrude: "Extrude",
+  revolve: "Revolve",
+  fillet: "Fillet",
+  chamfer: "Chamfer",
+  shell: "Shell",
+  hole: "Hole",
+  linear_pattern: "Linear pattern",
+  circular_pattern: "Circular pattern",
+  mirror: "Mirror",
+  sweep: "Sweep",
+  loft: "Loft",
+  draft: "Draft",
+  rib: "Rib",
+  split: "Split",
+  import: "Import",
+  component: "Part",
+  thread: "Thread",
+}
+
+/**
+ * A kind of feature, named in the interface's language. OP_NAMES stays Chinese: the kernel and the
+ * agent's messages use it, and names like 「拉伸2」 are made from it.
+ */
+export const opLabel = (op: FeatureOp) => t(OP_NAMES[op], OP_NAMES_EN[op])
 
 /** Display name: the model's own name, else 「拉伸2」 style numbering. */
 export function displayName(tree: Tree, f: Feature) {

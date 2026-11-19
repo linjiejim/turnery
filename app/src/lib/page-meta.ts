@@ -1,7 +1,10 @@
 import { LESSONS } from "@/content/lessons"
 import { CARDS } from "@/content/cards"
 import curriculum from "@/content/curriculum.json"
+import { CURRICULUM_EN } from "@/content/en/curriculum"
+import { LESSONS_EN } from "@/content/en/lessons"
 import type { ModelIndexEntry } from "@/three/baked"
+import { locale, type Locale } from "@/lib/i18n"
 
 /**
  * Title and description of every page. The browser uses the titles
@@ -9,6 +12,10 @@ import type { ModelIndexEntry } from "@/three/baked"
  * both into a static HTML copy per route, for crawlers and link previews
  * that never run JavaScript. Keep this module free of heavy imports: it is
  * loaded by Node at build time.
+ *
+ * Every function takes the language (default: the page's). The fixed pages exist in both, and the
+ * build writes an English copy of each under /en. Lessons, cards and teardowns have English titles
+ * (content/en/*) but their text is still Chinese, so only their Chinese pages are prerendered.
  */
 export type PageMeta = {
   /** Page name; null on the home page, which shows the site name alone. */
@@ -18,10 +25,11 @@ export type PageMeta = {
 }
 
 export const SITE_NAME = "Turnery"
-export const SITE_TAGLINE = "工业建模互动课"
+const TAGLINE: Record<Locale, string> = { zh: "工业建模互动课", en: "Parametric CAD your agent builds, and a course on how it's made" }
+export const SITE_TAGLINE = TAGLINE[locale]
 
 /** Pages with a fixed path, in sitemap order. */
-export const STATIC_PAGES: Record<string, PageMeta> = {
+const STATIC_ZH: Record<string, PageMeta> = {
   "/": {
     title: null,
     description: "中文、讲概念、不绑定软件的 3D 工业建模互动课。每个概念配一个能亲手操作的 3D 场景，真实零件按特征树一步步重建。",
@@ -52,25 +60,75 @@ export const STATIC_PAGES: Record<string, PageMeta> = {
   },
 }
 
+const STATIC_EN: Record<string, PageMeta> = {
+  "/": {
+    title: null,
+    description: "Parametric CAD that your coding agent builds and you can read, check and change, plus a hands-on course on how parts are modeled: interactive 3D lessons and real parts rebuilt feature by feature.",
+  },
+  "/learn": {
+    title: "Learning path",
+    description: "A shared foundation and five tracks: coordinates and views, parametric parts, assemblies, drawings, design for manufacturing, surfaces. Quizzes and spaced review along the way.",
+  },
+  "/teardown": {
+    title: "Teardowns",
+    description: "Real parts rebuilt feature by feature. The geometry comes from build123d and the OpenCascade kernel; every face says which step made or changed it.",
+  },
+  "/atlas": {
+    title: "Command atlas",
+    description: "One card per modeling command: what it does, what it needs, the usual pitfalls, and what it is called in SOLIDWORKS, Fusion, Onshape and others.",
+  },
+  "/glossary": {
+    title: "Glossary",
+    description: "What the same modeling command is called in 8 CAD packages, and concept cards for datums, design intent, topological naming and degrees of freedom.",
+  },
+  "/studio": {
+    title: "Workbench",
+    description: "Describe a part and the AI tutor builds it as a feature tree you can roll back, replay and change by its parameters. OpenCascade runs in your browser; export STEP, STL and build123d code.",
+  },
+  "/desktop": {
+    title: "Desktop app",
+    description: "Turnery for macOS: Claude Code, Codex or any MCP agent builds parametric parts and assemblies, imports STEP and checks dimensions and clearances on every rebuild.",
+  },
+}
+
+/** The fixed pages in a language. */
+export const staticPages = (lang: Locale = locale) => (lang === "en" ? STATIC_EN : STATIC_ZH)
+
+/** The fixed pages in the page's language. */
+export const STATIC_PAGES = staticPages()
+
 /** A registered lesson's page, or undefined for an unknown id. */
-export function lessonPageMeta(id: string): PageMeta | undefined {
+export function lessonPageMeta(id: string, lang: Locale = locale): PageMeta | undefined {
   const l = LESSONS.find((x) => x.id === id)
-  return l && { title: l.title, description: `互动课，约 ${l.minutes} 分钟。${l.gist}` }
+  if (!l) return undefined
+  const en = LESSONS_EN[l.id]
+  return lang === "en"
+    ? { title: en?.title ?? l.title, description: `Interactive lesson, about ${l.minutes} min (in Chinese). ${en?.gist ?? l.gist}` }
+    : { title: l.title, description: `互动课，约 ${l.minutes} 分钟。${l.gist}` }
 }
 
 /** A 图文卡 page: title and goal come from the curriculum. */
-export function cardPageMeta(code: string): PageMeta | undefined {
+export function cardPageMeta(code: string, lang: Locale = locale): PageMeta | undefined {
   if (!CARDS.some((c) => c.code === code)) return undefined
   for (const t of curriculum.tracks)
     for (const m of t.modules)
-      for (const l of m.lessons) if (l.id === code) return { title: `${l.title} · 图文卡`, description: `图文卡 ${l.id}：${l.goal}。` }
+      for (const l of m.lessons) {
+        if (l.id !== code) continue
+        const en = CURRICULUM_EN.lessons[l.id]
+        return lang === "en" ? { title: `${en?.title ?? l.title} · Card`, description: `Card ${l.id} (in Chinese): ${en?.goal ?? l.goal}.` } : { title: `${l.title} · 图文卡`, description: `图文卡 ${l.id}：${l.goal}。` }
+      }
   return undefined
 }
 
 /** Every card path that gets its own HTML copy. */
 export const cardPaths = () => CARDS.map((c) => `/card/${c.code}`)
 
-export function teardownPageMeta(m: Pick<ModelIndexEntry, "kind" | "title" | "subtitle" | "teaches">): PageMeta {
+export function teardownPageMeta(m: Pick<ModelIndexEntry, "kind" | "title" | "subtitle" | "teaches">, lang: Locale = locale): PageMeta {
+  if (lang === "en")
+    return {
+      title: `${m.title} · Teardown`,
+      description: `${m.title}, ${m.kind === "assembly" ? "an assembly taken apart" : "rebuilt feature by feature"} (in Chinese): ${m.subtitle}.`,
+    }
   const what = m.kind === "assembly" ? "装配拆解" : "按特征树重建"
   return {
     title: `${m.title} · 案例拆解`,
@@ -79,7 +137,7 @@ export function teardownPageMeta(m: Pick<ModelIndexEntry, "kind" | "title" | "su
 }
 
 /** What goes in <title>. */
-export const documentTitle = (title: string | null | undefined) => (title ? `${title} · ${SITE_NAME}` : `${SITE_NAME} · ${SITE_TAGLINE}`)
+export const documentTitle = (title: string | null | undefined, lang: Locale = locale) => (title ? `${title} · ${SITE_NAME}` : `${SITE_NAME} · ${TAGLINE[lang]}`)
 
 /** Every lesson path that gets its own HTML copy. */
 export const lessonPaths = () => LESSONS.map((l) => `/lesson/${l.id}`)

@@ -1,4 +1,5 @@
 import { loadIndex } from "@/three/baked"
+import { t } from "@/lib/i18n"
 import { cardPageMeta, documentTitle, lessonPageMeta, STATIC_PAGES, teardownPageMeta } from "@/lib/page-meta"
 
 let shown: string | null = null
@@ -8,7 +9,8 @@ let shown: string | null = null
  * prerendered HTML (page-meta.ts); teardown titles wait for the model index.
  */
 export function syncDocumentTitle(pathname: string) {
-  const path = pathname.replace(/\/+$/, "") || "/"
+  // The same page in either language: the /en prefix doesn't change which page it is.
+  const path = pathname.replace(/^\/en(?=\/|$)/, "").replace(/\/+$/, "") || "/"
   if (path === shown) return
   shown = path
   const set = (title: string | null | undefined) => {
@@ -18,7 +20,7 @@ export function syncDocumentTitle(pathname: string) {
   const teardown = path.match(/^\/teardown\/([^/]+)$/)
   const card = path.match(/^\/card\/([^/]+)$/)
   // A shared link names its model once the snapshot arrives (routes/studio-share.tsx).
-  if (path.startsWith("/studio/s/")) set("分享的模型")
+  if (path.startsWith("/studio/s/")) set(t("分享的模型", "Shared model"))
   else if (lesson) set(lessonPageMeta(decodeURIComponent(lesson[1]))?.title)
   else if (card) set(cardPageMeta(decodeURIComponent(card[1]))?.title)
   else if (teardown) {

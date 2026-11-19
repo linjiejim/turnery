@@ -4,18 +4,20 @@ import { cn } from "@/lib/utils"
 import { Button, IconButton } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { AppearanceMenu } from "@/components/appearance-menu"
+import { LanguageMenu } from "@/components/language-menu"
 import { GithubMark } from "@/components/github-mark"
 import { Brand } from "@/components/brand"
 import { useContinue } from "@/lib/progress"
 import { REPO_URL } from "@/lib/site"
+import { t } from "@/lib/i18n"
 
 const NAV = [
-  { to: "/learn", label: "学习路径" },
-  { to: "/teardown", label: "案例拆解" },
-  { to: "/atlas", label: "工具图鉴" },
-  { to: "/glossary", label: "术语表" },
-  { to: "/studio", label: "工作台" },
-  { to: "/desktop", label: "桌面版" },
+  { to: "/learn", label: t("学习路径", "Learning path") },
+  { to: "/teardown", label: t("案例拆解", "Teardowns") },
+  { to: "/atlas", label: t("工具图鉴", "Command atlas") },
+  { to: "/glossary", label: t("术语表", "Glossary") },
+  { to: "/studio", label: t("工作台", "Workbench") },
+  { to: "/desktop", label: t("桌面版", "Desktop app") },
 ]
 
 /**
@@ -27,7 +29,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur-sm">
       <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-2 px-6 max-sm:px-4">
-        <Link to="/" className="mr-4 rounded-sm" aria-label="Turnery 首页">
+        <Link to="/" className="mr-4 rounded-sm" aria-label={t("Turnery 首页", "Turnery home")}>
           <Brand />
         </Link>
         <nav className="flex items-center gap-0.5 max-md:hidden">
@@ -48,19 +50,20 @@ export function SiteHeader() {
         </nav>
         <div className="ml-auto flex items-center gap-1">
           {REPO_URL && (
-            <IconButton label="GitHub 源码" asChild>
+            <IconButton label={t("GitHub 源码", "Source on GitHub")} asChild>
               <a href={REPO_URL} target="_blank" rel="noreferrer">
                 <GithubMark className="size-4" />
               </a>
             </IconButton>
           )}
+          <LanguageMenu />
           <AppearanceMenu />
           <Button asChild variant="primary" className="max-sm:hidden">
             <Link to={next.to}>{next.label}</Link>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconButton label="导航" className="md:hidden">
+              <IconButton label={t("导航", "Navigation")} className="md:hidden">
                 <Menu />
               </IconButton>
             </DropdownMenuTrigger>

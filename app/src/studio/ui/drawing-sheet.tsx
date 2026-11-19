@@ -3,6 +3,7 @@ import { Download, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
+import { t } from "@/lib/i18n"
 import type { DrawingData, SheetDim, SheetView, ViewName } from "../kernel/drawing"
 import type { Studio } from "../use-studio"
 
@@ -18,7 +19,7 @@ const MARGIN = 10
 /** Room around each view for its dimensions, in paper mm. */
 const GAP = 24
 const TITLE = { w: 180, h: 28 }
-const LABEL: Record<ViewName, string> = { front: "主视图", top: "俯视图", left: "左视图", iso: "轴测图" }
+const LABEL: Record<ViewName, string> = { front: t("主视图", "Front view"), top: t("俯视图", "Top view"), left: t("左视图", "Left view"), iso: t("轴测图", "Isometric") }
 
 const w = (v: SheetView) => v.bbox[1][0] - v.bbox[0][0]
 const h = (v: SheetView) => v.bbox[1][1] - v.bbox[0][1]
@@ -27,11 +28,11 @@ const scaleText = (s: number) => (s >= 1 ? `${s}:1` : `1:${Math.round(1 / s)}`)
 /** Paper size and scale: the biggest preferred scale that fits on A4, else A3. */
 function layout(d: DrawingData) {
   const v = (n: ViewName) => d.views.find((x) => x.name === n)!
-  const [f, t, l] = [v("front"), v("top"), v("left")]
+  const [f, tp, l] = [v("front"), v("top"), v("left")]
   for (const sheet of SHEETS)
     for (const s of SCALES) {
       const width = MARGIN * 2 + GAP * 3 + (w(f) + w(l)) * s
-      const height = MARGIN * 2 + GAP * 3 + (h(f) + h(t)) * s + TITLE.h
+      const height = MARGIN * 2 + GAP * 3 + (h(f) + h(tp)) * s + TITLE.h
       if (width <= sheet.w && height <= sheet.h) return { sheet, s }
     }
   return { sheet: SHEETS[1], s: SCALES[SCALES.length - 1] }
@@ -52,10 +53,10 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
   const { report, drawing } = studio
   React.useEffect(() => {
     let live = true
-    const t = window.setTimeout(() => void drawing(iso).then((d) => live && setData(d)), 150)
+    const timer = window.setTimeout(() => void drawing(iso).then((d) => live && setData(d)), 150)
     return () => {
       live = false
-      window.clearTimeout(t)
+      window.clearTimeout(timer)
     }
   }, [drawing, report, iso])
 
@@ -65,7 +66,7 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
         <Spinner className="size-5" />
       </div>
     )
-  if (data === null) return <p className="grid h-full place-items-center text-body text-muted-foreground">还没有实体，建出零件后这里会出三视图。</p>
+  if (data === null) return <p className="grid h-full place-items-center text-body text-muted-foreground">{t("还没有实体，建出零件后这里会出三视图。", "Nothing solid yet. Build a part and its three views show here.")}</p>
 
   const { sheet, s } = layout(data)
   const view = (n: ViewName) => data.views.find((x) => x.name === n)
@@ -92,7 +93,7 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
     const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg.current.outerHTML}`], { type: "image/svg+xml" })
     const a = document.createElement("a")
     a.href = URL.createObjectURL(blob)
-    a.download = `${title || "turnery"}-工程图.svg`
+    a.download = t(`${title || "turnery"}-工程图.svg`, `${title || "turnery"}-drawing.svg`)
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
@@ -101,7 +102,7 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
     const win = window.open("", "_blank")
     if (!win) return
     win.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)} 工程图</title><style>@page{size:${sheet.name} landscape;margin:0}html,body{margin:0}svg{width:${sheet.w}mm;height:${sheet.h}mm;display:block}</style></head><body>${svg.current.outerHTML}</body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(t(`${title} 工程图`, `${title} drawing`))}</title><style>@page{size:${sheet.name} landscape;margin:0}html,body{margin:0}svg{width:${sheet.w}mm;height:${sheet.h}mm;display:block}</style></head><body>${svg.current.outerHTML}</body></html>`,
     )
     win.document.close()
     win.focus()
@@ -112,21 +113,21 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-background px-3 py-2 text-small">
         <span className="text-muted-foreground">
-          {sheet.name} 横版 · 比例 {scaleText(s)} · 第一角投影
+          {t(`${sheet.name} 横版 · 比例 ${scaleText(s)} · 第一角投影`, `${sheet.name} landscape · Scale ${scaleText(s)} · First-angle projection`)}
         </span>
         <label className="ml-auto flex items-center gap-1.5">
-          <Switch checked={names} onCheckedChange={setNames} aria-label="显示参数名" />
-          显示参数名
+          <Switch checked={names} onCheckedChange={setNames} aria-label={t("显示参数名", "Show parameter names")} />
+          {t("显示参数名", "Show parameter names")}
         </label>
         <label className="flex items-center gap-1.5">
-          <Switch checked={iso} onCheckedChange={setIso} aria-label="轴测图" />
-          轴测图
+          <Switch checked={iso} onCheckedChange={setIso} aria-label={t("轴测图", "Isometric")} />
+          {t("轴测图", "Isometric")}
         </label>
         <Button size="sm" variant="secondary" onClick={exportSvg}>
-          <Download /> 导出 SVG
+          <Download /> {t("导出 SVG", "Export SVG")}
         </Button>
         <Button size="sm" variant="secondary" onClick={print}>
-          <Printer /> 打印 / 存 PDF
+          <Printer /> {t("打印 / 存 PDF", "Print / save PDF")}
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-muted p-4">
@@ -137,7 +138,7 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
           width={`${sheet.w}mm`}
           height={`${sheet.h}mm`}
           role="img"
-          aria-label={`${title} 工程图`}
+          aria-label={t(`${title} 工程图`, `${title} drawing`)}
           className="mx-auto h-auto max-h-full w-full max-w-[1200px] shadow-popover"
           fontFamily="'Noto Sans SC', 'PingFang SC', sans-serif"
         >
@@ -153,7 +154,8 @@ export function DrawingSheet({ studio, title }: { studio: Studio; title: string 
           })}
           {data.note && (
             <text x={sheet.w - MARGIN - TITLE.w} y={sheet.h - MARGIN - TITLE.h - 3} fontSize={3}>
-              注：{data.note}
+              {t("注：", "Note: ")}
+              {data.note}
             </text>
           )}
           <TitleBlock x={sheet.w - MARGIN - TITLE.w} y={sheet.h - MARGIN - TITLE.h} title={title} scale={scaleText(s)} date={date} no={no} />
@@ -272,14 +274,14 @@ function TitleBlock({ x, y, title, scale, date, no }: { x: number; y: number; ti
   return (
     <g>
       <rect x={x} y={y} width={TITLE.w} height={TITLE.h} fill="white" stroke="black" strokeWidth={0.7} />
-      {cell(0, 0, 80, 18, "名称", title, true)}
-      {cell(0, 18, 40, 10, "日期", date)}
-      {cell(40, 18, 40, 10, "设计", "")}
-      {cell(80, 0, 30, 9, "比例", scale)}
-      {cell(80, 9, 30, 9, "材料", "未注")}
-      {cell(80, 18, 30, 10, "单位", "mm")}
-      {cell(110, 0, 70, 18, "图号", no)}
-      <g transform={`translate(${x + 118} ${y + 19.5})`} stroke="black" strokeWidth={0.3} fill="none" aria-label="第一角投影">
+      {cell(0, 0, 80, 18, t("名称", "Name"), title, true)}
+      {cell(0, 18, 40, 10, t("日期", "Date"), date)}
+      {cell(40, 18, 40, 10, t("设计", "Drawn by"), "")}
+      {cell(80, 0, 30, 9, t("比例", "Scale"), scale)}
+      {cell(80, 9, 30, 9, t("材料", "Material"), t("未注", "Not specified"))}
+      {cell(80, 18, 30, 10, t("单位", "Unit"), "mm")}
+      {cell(110, 0, 70, 18, t("图号", "Drawing no."), no)}
+      <g transform={`translate(${x + 118} ${y + 19.5})`} stroke="black" strokeWidth={0.3} fill="none" aria-label={t("第一角投影", "First-angle projection")}>
         {/* First angle: the cone's end view sits to the right of its side view. */}
         <path d="M0 1L10 0L10 7L0 6Z" />
         <path d="M-1 3.5H11" strokeDasharray="2 0.6 0.4 0.6" strokeWidth={0.18} />
@@ -287,7 +289,7 @@ function TitleBlock({ x, y, title, scale, date, no }: { x: number; y: number; ti
         <circle cx={18} cy={3.5} r={2.5} />
       </g>
       <text x={x + 157} y={y + 25} fontSize={2.6} textAnchor="middle">
-        第一角投影
+        {t("第一角投影", "First-angle projection")}
       </text>
     </g>
   )

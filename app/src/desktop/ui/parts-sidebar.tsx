@@ -4,6 +4,7 @@ import { Boxes, ChevronDown, ChevronRight, CircleAlert, Ellipsis, Eye, EyeOff, F
 import { TurneryWordmark } from "@/components/turnery-mark"
 import { WORD_VIEWBOX } from "@/components/turnery-mark-paths"
 import { cn } from "@/lib/utils"
+import { t } from "@/lib/i18n"
 import { Hint } from "@/components/hint"
 import { Button, IconButton } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -117,10 +118,10 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
   const structureFolded = panels.structureFolded
   const both = instances.length > 0 && !filesFolded && !structureFolded
   return (
-    <aside ref={box} className="relative flex shrink-0 flex-col border-r bg-sunken" style={{ width }} aria-label={project ? `项目 ${project.name}` : "零件"}>
+    <aside ref={box} className="relative flex shrink-0 flex-col border-r bg-sunken" style={{ width }} aria-label={project ? t(`项目 ${project.name}`, `Project ${project.name}`) : t("零件", "Parts")}>
       <ResizeHandle
         side="right"
-        label="调整左栏宽度"
+        label={t("调整左栏宽度", "Resize left panel")}
         value={width}
         min={LEFT.min}
         max={LEFT.max}
@@ -132,75 +133,79 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
       <div className={cn("flex h-12 shrink-0 items-center gap-1 pr-1.5 select-none [-webkit-app-region:drag]", mac ? "pl-22" : "pl-2.5")}>
         <button
           type="button"
-          title="回到首页（⇧⌘H）"
-          aria-label="回到首页（⇧⌘H）"
+          title={t("回到首页（⇧⌘H）", "Back to start (⇧⌘H)")}
+          aria-label={t("回到首页（⇧⌘H）", "Back to start (⇧⌘H)")}
           className="flex min-w-0 items-center rounded-md px-1.5 py-1 text-foreground outline-none [-webkit-app-region:no-drag] hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => void turnery.call("close_project", {})}
         >
           {/* Just the name, no mark (its "t" would stand beside the name's own). Smaller when the panel is narrow. */}
           <TurneryWordmark className="w-auto shrink-0" style={{ height: wordmarkHeight(width - (mac ? 88 : 10) - 50) }} />
         </button>
-        <IconButton label="收起左栏（⌘B）" size="icon-sm" className="ml-auto text-muted-foreground [-webkit-app-region:no-drag]" onClick={onCollapse}>
+        <IconButton label={t("收起左栏（⌘B）", "Hide left panel (⌘B)")} size="icon-sm" className="ml-auto text-muted-foreground [-webkit-app-region:no-drag]" onClick={onCollapse}>
           <PanelLeft />
         </IconButton>
       </div>
       <div className="mx-2 mb-2 flex items-center gap-0.5">
         <div className="relative min-w-0 flex-1">
-          <Input type="search" aria-label="搜索零件" placeholder="搜索零件、文件、步骤" value={query} className="pr-8 [&::-webkit-search-cancel-button]:hidden"
+          <Input type="search" aria-label={t("搜索零件", "Search parts")} placeholder={t("搜索零件、文件、步骤", "Search")} value={query} className="pr-8 [&::-webkit-search-cancel-button]:hidden"
             onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setQuery("") } }} />
-          {query && <IconButton label="清空搜索" size="icon-sm" className="absolute top-1 right-1" onClick={() => setQuery("")}><X /></IconButton>}
+          {query && <IconButton label={t("清空搜索", "Clear search")} size="icon-sm" className="absolute top-1 right-1" onClick={() => setQuery("")}><X /></IconButton>}
         </div>
-        <IconButton label="新建零件（⌘N）" size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.newPart()}>
+        <IconButton label={t("新建零件（⌘N）", "New part (⌘N)")} size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.newPart()}>
           <Plus />
         </IconButton>
-        <IconButton label="打开（⌘O）" size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.openPart()}>
+        <IconButton label={t("打开（⌘O）", "Open (⌘O)")} size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.openPart()}>
           <FolderOpen />
         </IconButton>
       </div>
       <SectionTitle
-        title="文件"
+        title={t("文件", "Files")}
         folded={filesFolded}
         onFold={() => onPanels((p) => ({ ...p, filesFolded: !p.filesFolded }))}
-        hint={["项目就是一个文件夹：里面的装配和零件都列在这里。", "多个零件的东西：文件 → 新建项目，再在装配里加零件。", "点一个文件就打开它，agent 之后的命令也作用在它上面；双击改名。"]}
+        hint={[
+          t("项目就是一个文件夹：里面的装配和零件都列在这里。", "A project is a folder: its assemblies and parts are listed here."),
+          t("多个零件的东西：文件 → 新建项目，再在装配里加零件。", "For something with several parts: File → New Project, then add parts in the assembly."),
+          t("点一个文件就打开它，agent 之后的命令也作用在它上面；双击改名。", "Click a file to open it; the agent’s next commands work on it too. Double-click to rename."),
+        ]}
       />
-      <nav aria-label="文件" className={cn("min-h-0 overflow-y-auto px-1.5 pb-2", filesFolded ? "hidden" : "flex-1")}>
-        {query.trim() && !assemblies.length && !files.length && !others.length && <p className="px-2 py-2 text-small text-faint-foreground">没有匹配的项目文件</p>}
-        {!project && parts.length === 0 && <p className="px-1.5 py-2 text-small text-faint-foreground">还没有打开的零件</p>}
-        {project && project.files.length === 0 && <p className="px-1.5 py-2 text-small text-faint-foreground">这个文件夹里还没有零件</p>}
+      <nav aria-label={t("文件", "Files")} className={cn("min-h-0 overflow-y-auto px-1.5 pb-2", filesFolded ? "hidden" : "flex-1")}>
+        {query.trim() && !assemblies.length && !files.length && !others.length && <p className="px-2 py-2 text-small text-faint-foreground">{t("没有匹配的项目文件", "No matching project files")}</p>}
+        {!project && parts.length === 0 && <p className="px-1.5 py-2 text-small text-faint-foreground">{t("还没有打开的零件", "No parts open yet")}</p>}
+        {project && project.files.length === 0 && <p className="px-1.5 py-2 text-small text-faint-foreground">{t("这个文件夹里还没有零件", "No parts in this folder yet")}</p>}
         {assemblies.length > 0 && (
-          <Group title="装配">
+          <Group title={t("装配", "Assemblies")}>
             {assemblies.map((f) => (
               <FileRow key={f.path} file={f} active={f.path === active} onRename={onRenameFile} />
             ))}
           </Group>
         )}
         {files.length > 0 && (
-          <Group title={assemblies.length ? "零件" : undefined}>
+          <Group title={assemblies.length ? t("零件", "Parts") : undefined}>
             {files.map((f) => (
               <FileRow key={f.path} file={f} active={f.path === active} onRename={onRenameFile} />
             ))}
           </Group>
         )}
         {others.length > 0 && (
-          <Group title={project ? "其他" : undefined}>
+          <Group title={project ? t("其他", "Other") : undefined}>
             {others.map((p) => (
               <OpenRow key={p.path} part={p} active={p.path === active} onRename={onRenameFile} />
             ))}
           </Group>
         )}
-        {project?.truncated && <p className="px-1.5 py-2 text-caption text-faint-foreground">文件太多，只列出了一部分</p>}
+        {project?.truncated && <p className="px-1.5 py-2 text-caption text-faint-foreground">{t("文件太多，只列出了一部分", "Too many files; only some are listed")}</p>}
       </nav>
       {/* An empty assembly keeps its section: its ＋ is how the first part goes in. */}
       {structure && (instances.length > 0 || structure.kind === "assembly") && (
         <section
-          aria-label={structure.kind === "assembly" ? "装配零件" : "零件里的各部分"}
+          aria-label={structure.kind === "assembly" ? t("装配零件", "Assembly parts") : t("零件里的各部分", "Pieces of the part")}
           className={cn("relative flex min-h-0 flex-col border-t", structureFolded ? "shrink-0" : filesFolded ? "flex-1" : "shrink-0")}
           style={both ? { height: panels.structureH, maxHeight: "calc(100% - 8rem)" } : undefined}
         >
           {both && (
             <ResizeHandle
               side="top"
-              label="调整文件和结构的高度"
+              label={t("调整文件和结构的高度", "Resize files and structure")}
               value={panels.structureH}
               min={STRUCTURE.min}
               max={Math.max(STRUCTURE.min, room - 128)}
@@ -210,20 +215,25 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
             />
           )}
           <SectionTitle
-            title="结构"
+            title={t("结构", "Structure")}
             count={query.trim() ? `${found.length} / ${instances.length}` : `${instances.length}`}
             folded={structureFolded}
             onFold={() => onPanels((p) => ({ ...p, structureFolded: !p.structureFolded }))}
             hint={
               structure.kind === "assembly"
-                ? ["点一行选中它，Shift 点击多选；拆成几块的零件每块一行，在 3D 视图里点一下选中整个零件。", "鼠标停在一行上，右边弹出它的文件、步骤和颜色。", "点圆点改颜色，选中的一起改；带外圈的只在这个装配里改过。", "双击改名；⋯ 里可以单独打开零件、在装配里改、隔离。"]
-                : ["这个零件拆成了几个部分：点圆点改颜色，眼睛隐藏或显示。"]
+                ? [
+                    t("点一行选中它，Shift 点击多选；拆成几块的零件每块一行，在 3D 视图里点一下选中整个零件。", "Click a row to select it, Shift-click to select several. A split part has a row per piece; clicking it in the 3D view selects the whole part."),
+                    t("鼠标停在一行上，右边弹出它的文件、步骤和颜色。", "Rest the pointer on a row to see its file, step and color on the right."),
+                    t("点圆点改颜色，选中的一起改；带外圈的只在这个装配里改过。", "Click a dot to change the color; selected parts change together. A ringed dot was changed only in this assembly."),
+                    t("双击改名；⋯ 里可以单独打开零件、在装配里改、隔离。", "Double-click to rename. ⋯ opens the part on its own, edits it in the assembly, or isolates it."),
+                  ]
+                : [t("这个零件拆成了几个部分：点圆点改颜色，眼睛隐藏或显示。", "This part is split into pieces: click a dot to change its color, the eye to hide or show it.")]
             }
             action={structure.add}
           />
           {!structureFolded && (
             <>
-              <ul aria-label={structure.kind === "assembly" ? "装配零件搜索结果" : "零件里的各部分"} className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+              <ul aria-label={structure.kind === "assembly" ? t("装配零件搜索结果", "Assembly parts found") : t("零件里的各部分", "Pieces of the part")} className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
                 {found.map((p) => (
                   <StructureRow
                     key={p.name}
@@ -233,7 +243,7 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
                     hidden={structure.hidden.has(p.index)}
                     isolated={structure.isolated.has(p.index)}
                     together={picked.has(p.name) ? together : null}
-                    open={structure.canOpen?.(p) ?? "没有零件文件"}
+                    open={structure.canOpen?.(p) ?? t("没有零件文件", "No part file")}
                     looks={Boolean(onLook)}
                     renames={Boolean(structure.onRename) && !p.body}
                     edits={Boolean(structure.onEditInPlace)}
@@ -245,7 +255,7 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
               </ul>
               {!found.length && (
                 <p className="px-3 py-2 text-small text-faint-foreground" role="status">
-                  {instances.length ? "没有匹配的零件" : "还没有零件：点上面的 ＋ 加一个"}
+                  {instances.length ? t("没有匹配的零件", "No matching parts") : t("还没有零件：点上面的 ＋ 加一个", "No parts yet: click ＋ above to add one")}
                 </p>
               )}
             </>
@@ -272,10 +282,10 @@ function InstanceLook({ part, group, onLook }: { part: Instance; group: Instance
   return (
     <LookPicker
       look={part.look}
-      label={single ? `「${part.name}」的颜色` : `${group.length} 个零件的颜色`}
+      label={single ? t(`「${part.name}」的颜色`, `Color of “${part.name}”`) : t(`${group.length} 个零件的颜色`, `Color of ${group.length} parts`)}
       className="ml-1.5"
       mark={part.layered && isSet(part.here)}
-      note={part.layered && isSet(part.here) ? "只在这个装配里" : undefined}
+      note={part.layered && isSet(part.here) ? t("只在这个装配里", "Only in this assembly") : undefined}
       // Already set in this assembly: keep changing it here, or the part file's change wouldn't show.
       onOpen={() => setHere(set.length > 0)}
       onChange={(change) => onLook(group.map((p) => p.name), change, here)}
@@ -285,23 +295,23 @@ function InstanceLook({ part, group, onLook }: { part: Instance; group: Instance
             {set.length > 0 && (
               <div className="space-y-1 rounded-md bg-muted px-2 py-1.5">
                 <p className="text-caption text-muted-foreground">
-                  {single ? `只在这个装配里设的；零件文件里${fileText(part.under)}` : `其中 ${set.length} 个只在这个装配里设了颜色`}
+                  {single ? t(`只在这个装配里设的；零件文件里${fileText(part.under)}`, `Set only in this assembly; in the part file it ${fileText(part.under)}.`) : t(`其中 ${set.length} 个只在这个装配里设了颜色`, `${set.length} of them have a color set only in this assembly`)}
                 </p>
                 <Button size="sm" variant="link" onClick={() => onLook(set.map((p) => p.name), { color: null, finish: null }, true)}>
-                  改回跟零件文件一致
+                  {t("改回跟零件文件一致", "Match the part file again")}
                 </Button>
               </div>
             )}
             <label htmlFor={id} className="flex items-center gap-2 text-small">
               <Checkbox id={id} checked={here} onCheckedChange={(v) => setHere(v === true)} />
-              只改这个装配里的
+              {t("只改这个装配里的", "Change only in this assembly")}
             </label>
             <p className="pl-6 text-caption text-faint-foreground">
-              {here ? "写在装配上，零件文件不变" : set.length ? "写进零件文件；这里单独设的仍然优先，这个装配里看不到变化" : "写进零件文件，用到它的地方都跟着变"}
+              {here ? t("写在装配上，零件文件不变", "Saved in the assembly; the part file stays as it is") : set.length ? t("写进零件文件；这里单独设的仍然优先，这个装配里看不到变化", "Saved in the part file. What’s set here still wins, so this assembly won’t change") : t("写进零件文件，用到它的地方都跟着变", "Saved in the part file; everywhere it’s used follows")}
             </p>
           </div>
         ) : (
-          <p className="text-caption text-faint-foreground">标准件、外购件和子装配没有自己的零件文件，颜色写在这个装配里。</p>
+          <p className="text-caption text-faint-foreground">{t("标准件、外购件和子装配没有自己的零件文件，颜色写在这个装配里。", "Standard parts, bought-in parts and subassemblies have no part file of their own; their color is saved in this assembly.")}</p>
         )
       }
     />
@@ -309,7 +319,7 @@ function InstanceLook({ part, group, onLook }: { part: Instance; group: Instance
 }
 
 /** A part file's look, after 「零件文件里」: 「是蓝」「没设颜色（白模）」. */
-const fileText = (l: Look | undefined) => (l && isSet(l) ? `是${lookText(l)}` : "没设颜色（白模）")
+const fileText = (l: Look | undefined) => (l && isSet(l) ? t(`是${lookText(l)}`, `is ${lookText(l, undefined, true)}`) : t("没设颜色（白模）", "has no color (clay)"))
 
 /** A section of the left panel: its title folds it; `action` sits on the right. */
 function SectionTitle({ title, count, folded, onFold, hint, action }: { title: string; count?: string; folded: boolean; onFold: () => void; hint?: string[]; action?: ReactNode }) {
@@ -320,7 +330,7 @@ function SectionTitle({ title, count, folded, onFold, hint, action }: { title: s
         <span className="truncate">{title}</span>
         {count && <span className="ml-1 text-faint-foreground tabular">{count}</span>}
       </button>
-      {hint && <Hint label={`${title}怎么用`} tips={hint} />}
+      {hint && <Hint label={t(`${title}怎么用`, `About ${title.toLowerCase()}`)} tips={hint} />}
       <span className="ml-auto flex items-center">{action}</span>
     </div>
   )
@@ -371,11 +381,11 @@ const StructureRow = memo(function StructureRow({ part: p, kind, selected, hidde
     <TooltipPrimitive.Root delayDuration={350} disableHoverableContent>
       <TooltipPrimitive.Trigger asChild>
         <li className={rowClass(selected)} onMouseEnter={() => a.point(p)} onMouseLeave={() => a.point(null)}>
-          {looks && (p.body ? <LookPicker look={p.look} label={`「${p.name}」的颜色`} className="ml-1.5" onChange={(change) => a.look(group.map((x) => x.name), change, false)} /> : <InstanceLook part={p} group={group} onLook={a.look} />)}
+          {looks && (p.body ? <LookPicker look={p.look} label={t(`「${p.name}」的颜色`, `Color of “${p.name}”`)} className="ml-1.5" onChange={(change) => a.look(group.map((x) => x.name), change, false)} /> : <InstanceLook part={p} group={group} onLook={a.look} />)}
           {renaming && renames ? (
             <InlineName
               value={base}
-              label="零件名"
+              label={t("零件名", "Part name")}
               onDone={async (name) => {
                 const ok = name === base || (await a.rename(p, name))
                 if (ok) setRenaming(false)
@@ -386,7 +396,7 @@ const StructureRow = memo(function StructureRow({ part: p, kind, selected, hidde
           ) : (
             <button
               type="button"
-              aria-label={`选择零件：${p.name}`}
+              aria-label={t(`选择零件：${p.name}`, `Select part: ${p.name}`)}
               aria-pressed={selected}
               className="flex h-7 min-w-0 flex-1 items-center px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onFocus={() => a.point(p)}
@@ -416,12 +426,12 @@ const StructureRow = memo(function StructureRow({ part: p, kind, selected, hidde
           {!renaming && (
             // Over the end of the name, not beside it: the name keeps the whole row until the pointer comes.
             <span className={cn("flex shrink-0 items-center pr-0.5", !hidden && cn("absolute inset-y-0 right-0 rounded-r-md pl-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100", selected ? "bg-selected" : "bg-sunken bg-[image:linear-gradient(var(--accent),var(--accent))]"))}>
-              <IconButton label={hidden ? `显示「${p.name}」` : `隐藏「${p.name}」`} tooltip={false} size="icon-sm" className={cn("size-6 text-muted-foreground", !hidden && reveal)} onClick={() => a.toggleHidden(p)}>
+              <IconButton label={hidden ? t(`显示「${p.name}」`, `Show “${p.name}”`) : t(`隐藏「${p.name}」`, `Hide “${p.name}”`)} tooltip={false} size="icon-sm" className={cn("size-6 text-muted-foreground", !hidden && reveal)} onClick={() => a.toggleHidden(p)}>
                 {hidden ? <EyeOff /> : <Eye />}
               </IconButton>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <IconButton label={`「${p.name}」的更多操作`} tooltip={false} size="icon-sm" className={cn("size-6 text-muted-foreground", reveal)}>
+                  <IconButton label={t(`「${p.name}」的更多操作`, `More for “${p.name}”`)} tooltip={false} size="icon-sm" className={cn("size-6 text-muted-foreground", reveal)}>
                     <Ellipsis />
                   </IconButton>
                 </DropdownMenuTrigger>
@@ -429,31 +439,31 @@ const StructureRow = memo(function StructureRow({ part: p, kind, selected, hidde
                   {kind === "assembly" && (
                     <>
                       <DropdownMenuItem disabled={open !== true} onSelect={() => a.open(p)}>
-                        {open === true ? "打开零件" : `打开零件（${open}）`}
+                        {open === true ? t("打开零件", "Open part") : t(`打开零件（${open}）`, `Open part (${open})`)}
                         <DropdownMenuShortcut>↵</DropdownMenuShortcut>
                       </DropdownMenuItem>
                       {edits && open === true && (
                         <DropdownMenuItem onSelect={() => a.editInPlace(p)}>
-                          在装配里改
+                          {t("在装配里改", "Edit in assembly")}
                           <DropdownMenuShortcut>⇧↵</DropdownMenuShortcut>
                         </DropdownMenuItem>
                       )}
                     </>
                   )}
                   <DropdownMenuItem onSelect={() => a.isolate(p)}>
-                    {isolated ? "恢复显示" : "隔离"}
+                    {isolated ? t("恢复显示", "Show all") : t("隔离", "Isolate")}
                     <DropdownMenuShortcut>I</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   {notes && (
                     <DropdownMenuItem onSelect={() => a.note(p)}>
-                      写备注
+                      {t("写备注", "Write note")}
                       <DropdownMenuShortcut>C</DropdownMenuShortcut>
                     </DropdownMenuItem>
                   )}
                   {renames && (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => setRenaming(true)}>改名…</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setRenaming(true)}>{t("改名…", "Rename…")}</DropdownMenuItem>
                     </>
                   )}
                 </DropdownMenuContent>
@@ -476,15 +486,15 @@ const StructureRow = memo(function StructureRow({ part: p, kind, selected, hidde
 /** What a row of 「结构」 has no room for. */
 function PartCard({ part: p, hidden, isolated, kind, open }: { part: Instance; hidden: boolean; isolated: boolean; kind: Structure["kind"]; open: true | string }) {
   const piece = p.whole ? p.name.slice(p.whole.length + 1) : ""
-  const state = [hidden ? "已隐藏" : "", isolated ? "已隔离" : ""].filter(Boolean).join(" · ")
-  const from = p.body ? "" : !p.file ? "标准件" : /\.(step|stp)$/i.test(p.file) ? "STEP 参考件" : /-asm\.json$/i.test(p.file) ? "子装配" : "零件文件"
+  const state = [hidden ? t("已隐藏", "Hidden") : "", isolated ? t("已隔离", "Isolated") : ""].filter(Boolean).join(" · ")
+  const from = p.body ? "" : !p.file ? t("标准件", "Standard part") : /\.(step|stp)$/i.test(p.file) ? t("STEP 参考件", "STEP reference") : /-asm\.json$/i.test(p.file) ? t("子装配", "Subassembly") : t("零件文件", "Part file")
   const rows: [string, ReactNode][] = [
-    ...(p.whole ? [["属于", p.whole] as [string, ReactNode]] : []),
-    ...(from ? [["来源", from] as [string, ReactNode]] : []),
-    ...(p.file ? [["文件", <span key="f" className="font-mono text-caption break-all">{p.file}</span>] as [string, ReactNode]] : []),
-    ...(p.id ? [["步骤", <span key="i" className="font-mono text-caption break-all">{p.id}</span>] as [string, ReactNode]] : []),
-    ["颜色", `${lookText(p.look, "没设（白模）")}${p.layered && isSet(p.here) ? "，只在这个装配里" : ""}`],
-    ...(state ? [["状态", state] as [string, ReactNode]] : []),
+    ...(p.whole ? [[t("属于", "Part of"), p.whole] as [string, ReactNode]] : []),
+    ...(from ? [[t("来源", "Source"), from] as [string, ReactNode]] : []),
+    ...(p.file ? [[t("文件", "File"), <span key="f" className="font-mono text-caption break-all">{p.file}</span>] as [string, ReactNode]] : []),
+    ...(p.id ? [[t("步骤", "Step"), <span key="i" className="font-mono text-caption break-all">{p.id}</span>] as [string, ReactNode]] : []),
+    [t("颜色", "Color"), `${lookText(p.look, t("没设（白模）", "None (clay)"), true)}${p.layered && isSet(p.here) ? t("，只在这个装配里", ", only in this assembly") : ""}`],
+    ...(state ? [[t("状态", "State"), state] as [string, ReactNode]] : []),
   ]
   return (
     <div className="space-y-2">
@@ -498,7 +508,7 @@ function PartCard({ part: p, hidden, isolated, kind, open }: { part: Instance; h
         ))}
       </dl>
       <p className="text-caption text-faint-foreground">
-        {kind === "assembly" ? `单击选中，Shift 多选${p.body ? "" : " · 双击改名"}${open === true ? " · ↵ 打开零件" : ""}` : "单击选中 · 圆点改颜色"}
+        {kind === "assembly" ? t(`单击选中，Shift 多选${p.body ? "" : " · 双击改名"}${open === true ? " · ↵ 打开零件" : ""}`, `Click to select, Shift for several${p.body ? "" : " · double-click to rename"}${open === true ? " · ↵ opens the part" : ""}`) : t("单击选中 · 圆点改颜色", "Click to select · dot changes the color")}
       </p>
     </div>
   )
@@ -575,7 +585,7 @@ function Renamable({ path, onRename, children }: { path: string; onRename?: (pat
       <div className={rowClass(false)}>
         <InlineName
           value={stem}
-          label="文件名"
+          label={t("文件名", "File name")}
           onDone={async (name) => {
             const ok = name === stem || (await onRename(path, name))
             if (ok) setRenaming(false)
@@ -590,19 +600,19 @@ function Renamable({ path, onRename, children }: { path: string; onRename?: (pat
 
 /** A file of the project: open or not. */
 function FileRow({ file: f, active, onRename }: { file: ProjectFile; active: boolean; onRename?: (path: string, name: string) => Promise<boolean> }) {
-  const unit = f.kind === "assembly" ? "个零件" : "个特征"
+  const unit = f.kind === "assembly" ? t("个零件", "parts") : t("个特征", "features")
   return (
     <Renamable path={f.path} onRename={onRename}>
       {(rename) => (
     <div className={rowClass(active)}>
-      <button type="button" className={buttonClass} title={`${f.path}\n双击改名`} aria-current={active ? "page" : undefined} onClick={(e) => e.detail < 2 && void turnery.call("open_part", { path: f.path })} {...rename}>
+      <button type="button" className={buttonClass} title={t(`${f.path}\n双击改名`, `${f.path}\nDouble-click to rename`)} aria-current={active ? "page" : undefined} onClick={(e) => e.detail < 2 && void turnery.call("open_part", { path: f.path })} {...rename}>
         <span className={cn("flex min-w-0 flex-1 items-center gap-1.5 truncate text-body", active && "font-medium", !f.open && !active && "text-muted-foreground")}>
           {f.kind === "assembly" && <Boxes className="size-3.5 shrink-0 text-faint-foreground" />}
           <span className="truncate">{f.name}</span>
         </span>
         <span className={cn("ml-auto shrink-0 text-caption text-faint-foreground", f.open && "group-hover:invisible group-focus-within:invisible")}>
-          {f.features === null ? "读不了" : `${f.features} ${unit}`}
-          {f.openNotes > 0 && <span className="ml-1 text-warning">{f.openNotes} 条备注</span>}
+          {f.features === null ? t("读不了", "Unreadable") : `${f.features} ${unit}`}
+          {f.openNotes > 0 && <span className="ml-1 text-warning">{t(`${f.openNotes} 条备注`, f.openNotes === 1 ? "1 note" : `${f.openNotes} notes`)}</span>}
         </span>
       </button>
       {f.open && <CloseButton path={f.path} />}
@@ -618,15 +628,15 @@ function OpenRow({ part: p, active, onRename }: { part: PartSummary; active: boo
     <Renamable path={p.path} onRename={onRename}>
       {(rename) => (
     <div className={rowClass(active)}>
-      <button type="button" className={buttonClass} title={`${p.path}\n双击改名`} aria-current={active ? "page" : undefined} onClick={(e) => e.detail < 2 && void turnery.call("open_part", { path: p.path })} {...rename}>
+      <button type="button" className={buttonClass} title={t(`${p.path}\n双击改名`, `${p.path}\nDouble-click to rename`)} aria-current={active ? "page" : undefined} onClick={(e) => e.detail < 2 && void turnery.call("open_part", { path: p.path })} {...rename}>
         <span className={cn("flex min-w-0 flex-1 items-center gap-1.5 truncate text-body", active && "font-medium")}>
-          {p.error && <CircleAlert className="size-3.5 shrink-0 text-destructive" aria-label="文件有错" />}
+          {p.error && <CircleAlert className="size-3.5 shrink-0 text-destructive" aria-label={t("文件有错", "File has errors")} />}
           {p.kind === "assembly" && <Boxes className="size-3.5 shrink-0 text-faint-foreground" />}
           <span className="truncate">{p.name}</span>
         </span>
         <span className="ml-auto shrink-0 text-caption text-faint-foreground group-hover:invisible group-focus-within:invisible">
-          {p.features} 个{p.kind === "assembly" ? "零件" : "特征"}
-          {p.openNotes > 0 && <span className="ml-1 text-warning">{p.openNotes} 条备注</span>}
+          {t(`${p.features} 个${p.kind === "assembly" ? "零件" : "特征"}`, `${p.features} ${p.kind === "assembly" ? "parts" : "features"}`)}
+          {p.openNotes > 0 && <span className="ml-1 text-warning">{t(`${p.openNotes} 条备注`, p.openNotes === 1 ? "1 note" : `${p.openNotes} notes`)}</span>}
         </span>
       </button>
       <CloseButton path={p.path} />
@@ -639,7 +649,7 @@ function OpenRow({ part: p, active, onRename }: { part: PartSummary; active: boo
 function CloseButton({ path }: { path: string }) {
   return (
     <IconButton
-      label="关闭（文件不动）"
+      label={t("关闭（文件不动）", "Close (the file stays)")}
       size="icon-sm"
       className="absolute right-1 bg-sunken opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
       onClick={() => void turnery.call("close_part", { path })}

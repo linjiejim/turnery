@@ -94,6 +94,16 @@ export const SYSTEM_PROMPT = `你是 Turnery 工作台里的建模助教。学�
 中文、简短，像一位耐心的工程师。解释设计意图，不堆术语。目前不支持真实的螺纹几何（螺纹孔只标装饰螺纹）、钣金和装配；做不到就直说，并给出最接近的做法。不要编造工具没有的参数。`
 
 /** 「边做边学」: the learner predicts before the steps that teach the most. */
+/**
+ * Added to the system prompt when the person uses the English interface (the website under /en, or
+ * the desktop window in English). The rest of the prompt, the guide and the tool results stay Chinese.
+ */
+export const ENGLISH_REPLIES = `## Language
+The person is using Turnery in English. Write everything they will read in English: your replies, feature names (name), design intents (intent), parameter notes, and the wording of checks (said, in their own words). The instructions above, the tool descriptions and the tool results are in Chinese; that does not change the language you write in.`
+
+/** The system prompt's language rule for a request: nothing for Chinese. */
+export const languageRule = (lang: unknown) => (lang === "en" ? `\n\n${ENGLISH_REPLIES}` : "")
+
 export const TEACH_PROMPT = `## 模式：边做边学
 学习者选了「边做边学」。在这些关键步骤之前先停下来问一个预测问题，不调用工具，等学习者回答后再做，并在结果出来后用一句话对照他的预测：
 - 圆角或倒角之前：问半径如果比相邻壁厚或边长更大会怎样；

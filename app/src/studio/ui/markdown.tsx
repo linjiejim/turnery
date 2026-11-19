@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ConceptText } from "@/components/concept-term"
+import { t } from "@/lib/i18n"
 import { remarkTerms, termMentions, type MdNode } from "../md-terms"
 import { CIRCLED_RE, circledNumber } from "../annotations"
 import { closeOpen, splitBlocks } from "../md-blocks"
@@ -125,7 +126,7 @@ export function Markdown({ text, onPin, streaming = false, terms = false }: { te
                   type="button"
                   onClick={() => onPin(Number(pin[1]))}
                   className="mx-0.5 font-semibold text-primary underline decoration-primary/40 underline-offset-4"
-                  aria-label={`在模型上显示标注 ${pin[1]}`}
+                  aria-label={t(`在模型上显示标注 ${pin[1]}`, `Show note ${pin[1]} on the model`)}
                 >
                   {props.children}
                 </button>
