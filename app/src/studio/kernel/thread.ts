@@ -13,6 +13,7 @@
 //    on faces that coincide exactly.
 import { cast, draw, getOC, makeCompound, makeCylinder, measureShapeVolumeProperties, twistExtrude, type Shape3D } from "replicad"
 import { InputError } from "./errors"
+import { ta } from "../../lib/agent-lang"
 
 type V3 = [number, number, number]
 
@@ -83,7 +84,7 @@ function bop(kind: "cut" | "fuse", a: Shape3D, b: Shape3D, glue = false): Shape3
     op.SetTools(tools)
     if (glue) op.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueShift)
     op.Build(progress)
-    if (!op.IsDone()) throw new InputError("螺纹没能并进实体（内核的布尔运算失败）")
+    if (!op.IsDone()) throw new InputError(ta("螺纹没能并进实体（内核的布尔运算失败）", "Couldn't merge the thread into the solid (the kernel's boolean failed)"))
     return cast(op.Shape()) as Shape3D
   } finally {
     for (const x of [op, progress, args, tools]) x.delete()
@@ -122,7 +123,7 @@ function ring(job: ThreadJob, L: number): { ring: Shape3D; inner: number; outer:
   if (!job.internal) {
     const Rt = R - job.clearance
     const core = Rt - depth - 0.25 * P
-    if (core <= 0.05 * R) throw new InputError(`螺距 ${P} 对 ⌀${job.major} 太粗了：螺纹会切到轴心`)
+    if (core <= 0.05 * R) throw new InputError(ta(`螺距 ${P} 对 ⌀${job.major} 太粗了：螺纹会切到轴心`, `Pitch ${P} is too coarse for ⌀${job.major}: the thread would cut into the core`))
     const r = rod(Rt, P, L, job.left)
     const c = cyl(core, -1, L + 1)
     const out = bop("cut", r, c)
@@ -170,8 +171,14 @@ function checkRoom(body: Shape3D, job: ThreadJob, inner: number, outer: number) 
     if (gone > 1e-3 * vol(needed) + 1e-6) {
       throw new InputError(
         job.internal
-          ? `内螺纹要用到孔外 ⌀${fmt(2 * job.faceR)}–⌀${fmt(2 * outer)} 这一圈，这里的料不完整（孔壁太薄或有缺口，缺 ${fmt(gone)} mm³）：孔周围至少要留 ${fmt(outer - job.faceR)} mm 实心`
-          : `外螺纹要用到 ⌀${fmt(2 * inner)}–⌀${fmt(2 * job.faceR)} 这一圈，这里的料不完整（轴是空心的、太薄，或有槽，缺 ${fmt(gone)} mm³）`,
+          ? ta(
+              `内螺纹要用到孔外 ⌀${fmt(2 * job.faceR)}–⌀${fmt(2 * outer)} 这一圈，这里的料不完整（孔壁太薄或有缺口，缺 ${fmt(gone)} mm³）：孔周围至少要留 ${fmt(outer - job.faceR)} mm 实心`,
+              `The internal thread needs the ring ⌀${fmt(2 * job.faceR)}–⌀${fmt(2 * outer)} around the hole, and the material there is incomplete (the hole wall is too thin or has a gap; ${fmt(gone)} mm³ missing): leave at least ${fmt(outer - job.faceR)} mm solid around the hole`,
+            )
+          : ta(
+              `外螺纹要用到 ⌀${fmt(2 * inner)}–⌀${fmt(2 * job.faceR)} 这一圈，这里的料不完整（轴是空心的、太薄，或有槽，缺 ${fmt(gone)} mm³）`,
+              `The external thread needs the ring ⌀${fmt(2 * inner)}–⌀${fmt(2 * job.faceR)}, and the material there is incomplete (the shaft is hollow, too thin, or slotted; ${fmt(gone)} mm³ missing)`,
+            ),
       )
     }
   } finally {
@@ -184,7 +191,13 @@ function checkRoom(body: Shape3D, job: ThreadJob, inner: number, outer: number) 
     const hit = bop("cut", around, body)
     const extra = vol(around) - vol(hit)
     hit.delete()
-    if (extra > 1e-6 + 1e-3 * vol(around)) throw new InputError(`外螺纹外面 ${fmt(outer - job.faceR)} mm 以内还有别的料（台阶、凸台，${fmt(extra)} mm³）：用 length + from 只做没挡着的那一段`)
+    if (extra > 1e-6 + 1e-3 * vol(around))
+      throw new InputError(
+        ta(
+          `外螺纹外面 ${fmt(outer - job.faceR)} mm 以内还有别的料（台阶、凸台，${fmt(extra)} mm³）：用 length + from 只做没挡着的那一段`,
+          `There is other material within ${fmt(outer - job.faceR)} mm outside the external thread (a step or a boss, ${fmt(extra)} mm³): use length + from to thread only the unobstructed stretch`,
+        ),
+      )
   } finally {
     around.delete()
   }
@@ -216,7 +229,7 @@ export function cutThreads(body: Shape3D, jobs: ThreadJob[]): Shape3D {
     if (tool !== rings[0]) tool.delete()
     if (!valid(out)) {
       out.delete()
-      throw new InputError("螺纹并进实体后形状不完整（内核的布尔运算没算对）：换一个长度、螺距或间隙试试")
+      throw new InputError(ta("螺纹并进实体后形状不完整（内核的布尔运算没算对）：换一个长度、螺距或间隙试试", "The shape is incomplete after merging the thread (the kernel's boolean went wrong): try another length, pitch or clearance"))
     }
     return out
   } finally {

@@ -1,9 +1,10 @@
 // A face / edge selector in plain words, for the feature card:
 // { parallel: "Z", of: "ext1", expect: 4 } → 「平行于 Z 的边 · 来自 拉伸1 · 4 条」
 // { not: { extreme: "+Z" } }               → 「除了最上面一圈以外的边」
-// Also written into messages to the assistant, so Chinese unless the caller says it is for the screen
-// (`shown`), where it follows the page's language.
+// Also written into messages to the assistant, so in the agent's language unless the caller says it is
+// for the screen (`shown`), where it follows the page's language.
 import { isEn } from "../lib/i18n"
+import { agentLang } from "../lib/agent-lang"
 import { displayName, type Tree } from "./dsl"
 
 type Sel = Record<string, unknown>
@@ -14,7 +15,7 @@ const SURFACE: Record<string, string> = { plane: "平面", cylinder: "圆柱面"
 const CURVE: Record<string, string> = { line: "直线", circle: "圆弧", freeform: "曲线" }
 
 export function selectorWords(sel: unknown, kind: "face" | "edge", tree: Tree, shown = false): string {
-  if (shown && isEn) return selectorWordsEn(sel, kind, tree)
+  if (shown ? isEn : agentLang() === "en") return selectorWordsEn(sel, kind, tree)
   if (!sel || typeof sel !== "object") return kind === "face" ? "（没有条件）" : "（没有条件）"
   const s = sel as Sel
   const name = (id: string) => {
@@ -38,10 +39,10 @@ export function selectorWords(sel: unknown, kind: "face" | "edge", tree: Tree, s
   const lead = side && adj.length ? `${side}${kind === "edge" ? "、" : ""}${adj.join("、")}` : side || adj.join("、")
   // A space before 的 after a letter or digit: 「平行于 Z 的边」.
   let phrase = lead ? `${lead}${/[A-Za-z0-9]$/.test(lead) ? " " : ""}的${kindWord}` : kindWord
-  if (s.faces && typeof s.faces === "object") phrase = `${selectorWords(s.faces, "face", tree).split(" · ")[0]}的边`
+  if (s.faces && typeof s.faces === "object") phrase = `${selectorWords(s.faces, "face", tree, shown).split(" · ")[0]}的边`
   if (s.not && typeof s.not === "object") {
     const not = s.not as Sel
-    const what = typeof not.extreme === "string" ? (kind === "edge" ? `${SIDE[not.extreme]}一圈` : `${SIDE[not.extreme]}那个面`) : selectorWords(not, kind, tree).split(" · ")[0]
+    const what = typeof not.extreme === "string" ? (kind === "edge" ? `${SIDE[not.extreme]}一圈` : `${SIDE[not.extreme]}那个面`) : selectorWords(not, kind, tree, shown).split(" · ")[0]
     phrase = lead || s.kind ? `${phrase}，除了${what}` : `除了${what}以外的${noun}`
   }
 
@@ -52,7 +53,7 @@ export function selectorWords(sel: unknown, kind: "face" | "edge", tree: Tree, s
   return parts.join(" · ")
 }
 
-// English, for the screen only: 「edges parallel to Z · from Extrude1 · 4 edges」「edges except the top loop」.
+// English, for the screen and the agent: 「edges parallel to Z · from Extrude1 · 4 edges」「edges except the top loop」.
 const SIDE_EN: Record<string, string> = { "+Z": "top", "-Z": "bottom", "+X": "rightmost (+X)", "-X": "leftmost (-X)", "+Y": "back (+Y)", "-Y": "front (-Y)" }
 const FACING_EN: Record<string, string> = { "+Z": "facing up", "-Z": "facing down", "+X": "facing right (+X)", "-X": "facing left (-X)", "+Y": "facing back (+Y)", "-Y": "facing front (-Y)" }
 const SURFACE_EN: Record<string, string> = { plane: "plane", cylinder: "cylindrical face", cone: "conical face", sphere: "spherical face", torus: "toroidal face", freeform: "freeform surface" }

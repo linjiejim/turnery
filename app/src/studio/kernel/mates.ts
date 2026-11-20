@@ -4,6 +4,8 @@
 // and turning about its normal; a coaxial leaves sliding along and turning about the axis), so a
 // screw goes "into that hole, head down on that face" the way a person would put it there.
 
+import { ta } from "../../lib/agent-lang"
+
 export type V3 = [number, number, number]
 
 /** A plane (outward normal, a point on it) or an axis (a point, a direction): what a mate lines up. */
@@ -135,7 +137,7 @@ export type MateStep = { kind: MateKind; mine: MateGeo; target: MateGeo; offset?
 export function applyMate(T: Rigid, free: Freedom, m: MateStep): { T: Rigid; free: Freedom; miss?: string } {
   const offset = m.offset ?? 0
   if (m.kind === "coaxial") {
-    if (m.mine.kind !== "axis" || m.target.kind !== "axis") throw new Error("同轴（coaxial）要两边都选圆柱面或圆锥面")
+    if (m.mine.kind !== "axis" || m.target.kind !== "axis") throw new Error(ta("同轴（coaxial）要两边都选圆柱面或圆锥面", "Coaxial (coaxial) needs a cylinder or cone face on both sides"))
     const d = applyR(T.R, m.mine.d)
     const a = applyRigid(T, m.mine.a)
     const want = dot(d, m.target.d) >= 0 !== !!m.flip ? m.target.d : mul(m.target.d, -1)
@@ -152,10 +154,10 @@ export function applyMate(T: Rigid, free: Freedom, m: MateStep): { T: Rigid; fre
       turn: free.turn === "none" ? "none" : free.turn === "any" || Math.abs(dot(free.turn.axis, m.target.d)) > 1 - 1e-6 ? { axis: unit(m.target.d), through: m.target.a } : "none",
       slide: alongDir(free.slide, m.target.d),
     }
-    const miss = turned.off > 0.05 ? `方向差 ${round(turned.off)}°` : left > 1e-3 ? `轴线还差 ${round(left)} mm` : undefined
+    const miss = turned.off > 0.05 ? ta(`方向差 ${round(turned.off)}°`, `direction off by ${round(turned.off)}°`) : left > 1e-3 ? ta(`轴线还差 ${round(left)} mm`, `axes still ${round(left)} mm apart`) : undefined
     return { T, free: next, miss }
   }
-  if (m.mine.kind !== "plane" || m.target.kind !== "plane") throw new Error(`${m.kind === "contact" ? "贴合（contact）" : "平齐（flush）"}要两边都选平面`)
+  if (m.mine.kind !== "plane" || m.target.kind !== "plane") throw new Error(ta(`${m.kind === "contact" ? "贴合（contact）" : "平齐（flush）"}要两边都选平面`, `${m.kind === "contact" ? "Contact (contact)" : "Flush (flush)"} needs a plane on both sides`))
   const n = applyR(T.R, m.mine.n)
   const p = applyRigid(T, m.mine.p)
   const want = m.kind === "contact" ? mul(m.target.n, -1) : m.target.n
@@ -173,7 +175,12 @@ export function applyMate(T: Rigid, free: Freedom, m: MateStep): { T: Rigid; fre
     turn: free.turn === "none" ? "none" : free.turn === "any" ? { axis: unit(m.target.n), through: p2 } : Math.abs(dot(free.turn.axis, m.target.n)) > 1 - 1e-6 ? free.turn : "none",
     slide: withoutDir(free.slide, m.target.n),
   }
-  const miss = turned.off > 0.05 ? `方向差 ${round(turned.off)}°（前面的贴合不让它这样转）` : left > 1e-3 ? `还差 ${round(left)} mm（前面的贴合不让它这样移）` : undefined
+  const miss =
+    turned.off > 0.05
+      ? ta(`方向差 ${round(turned.off)}°（前面的贴合不让它这样转）`, `direction off by ${round(turned.off)}° (the earlier mates don't let it turn that way)`)
+      : left > 1e-3
+        ? ta(`还差 ${round(left)} mm（前面的贴合不让它这样移）`, `still ${round(left)} mm off (the earlier mates don't let it move that way)`)
+        : undefined
   return { T, free: next, miss }
 }
 

@@ -5,6 +5,7 @@ import { realpathSync, watch, type FSWatcher } from "node:fs"
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { Files } from "../../../app/src/desktop/core/engine"
+import { ta } from "../../../app/src/lib/agent-lang"
 
 /** Two paths name one file or folder on disk. */
 async function sameEntry(a: string, b: string) {
@@ -68,7 +69,7 @@ export const nodeFiles: Files = {
         throw e
       },
     )
-    if (there && !(from.toLowerCase() === to.toLowerCase() && (await sameEntry(from, to)))) throw new Error(`${path.basename(to)} 已经存在`)
+    if (there && !(from.toLowerCase() === to.toLowerCase() && (await sameEntry(from, to)))) throw new Error(ta(`${path.basename(to)} 已经存在`, `${path.basename(to)} already exists`))
     await rename(from, to)
   },
   same: sameEntry,

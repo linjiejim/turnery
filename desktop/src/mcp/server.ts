@@ -5,6 +5,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { AGENT_GUIDE, agentCommands, inputJsonSchema } from "../../../app/src/desktop/core/catalog"
+import { ta } from "../../../app/src/lib/agent-lang"
 import { Link } from "../engine/backend"
 
 declare const __TURNERY_VERSION__: string
@@ -24,7 +25,7 @@ export async function runMcp(distDir: URL) {
       const res = await link.call(name, args ?? {}, { cwd: process.cwd() })
       const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [{ type: "text", text: res.text }]
       for (const img of res.images ?? []) content.push({ type: "image", data: img.replace(/^data:image\/png;base64,/, ""), mimeType: "image/png" })
-      if ((await link.kind) === "local" && (name === "look" || name === "request_pick")) content.push({ type: "text", text: "（Turnery App 没有运行：现在是无窗口模式。）" })
+      if ((await link.kind) === "local" && (name === "look" || name === "request_pick")) content.push({ type: "text", text: ta("（Turnery App 没有运行：现在是无窗口模式。）", "(The Turnery app isn't running: this is windowless mode.)") })
       return { content, isError: !res.ok }
     } catch (e) {
       return { content: [{ type: "text", text: `✗ ${(e as Error).message}` }], isError: true }

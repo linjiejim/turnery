@@ -4,6 +4,7 @@ import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type
 import { locale, t } from "../lib/i18n"
 import { isDivider } from "./share"
 import { trimMessages } from "./trim"
+import { ta } from "../lib/agent-lang"
 import type { Studio } from "./use-studio"
 import type { Note } from "./use-annotations"
 
@@ -33,7 +34,7 @@ function forStorage(messages: UIMessage[]): UIMessage[] {
   return messages.map((m) => ({
     ...m,
     parts: m.parts.flatMap((p): UIMessage["parts"] => {
-      if (p.type === "file") return p.filename === ANNOTATED_VIEW ? [] : [{ type: "text" as const, text: "（参考图未保存）" }]
+      if (p.type === "file") return p.filename === ANNOTATED_VIEW ? [] : [{ type: "text" as const, text: ta("（参考图未保存）", "(reference image not saved)") }]
       if (p.type === "tool-look" && "output" in p && p.output) return [{ ...p, output: { ...(p.output as object), images: undefined } } as UIMessage["parts"][number]]
       return [p]
     }),

@@ -2,6 +2,7 @@
 // there, and the message carries exactly which geometry they meant — as a
 // selector the kernel has already checked picks only that one.
 import { z } from "zod"
+import { agentLang, type AgentLang } from "../lib/agent-lang"
 
 type V3 = [number, number, number]
 
@@ -71,8 +72,9 @@ export const CIRCLED_RE = /[①-⑳]/g
 const r = (x: number) => Math.round(x * 100) / 100
 const xyz = (p: number[]) => `(${p.map(r).join(", ")})`
 
-/** The block appended to a user message for the model. */
-export function annotationText(list: Annotation[]): string {
+/** The block appended to a user message for the model, in its language (the web server passes the request's). */
+export function annotationText(list: Annotation[], lang: AgentLang = agentLang()): string {
+  if (lang === "en") return annotationTextEn(list)
   const blocks = list.map((a) => {
     const what = a.kind === "face" ? "面" : "边"
     const ids = a.origins.length ? `（特征 id：${a.origins.join("、")}）` : ""
@@ -102,4 +104,35 @@ export function annotationText(list: Annotation[]): string {
     return lines.join("\n")
   })
   return `## 标注（学习者在模型上点选的位置；附图里的编号和这里一致）\n${blocks.join("\n\n")}`
+}
+
+function annotationTextEn(list: Annotation[]): string {
+  const blocks = list.map((a) => {
+    const ids = a.origins.length ? ` (feature ids: ${a.origins.join(", ")})` : ""
+    const lines = [
+      `[Annotation ${circled(a.n)}] The learner's note: ${a.note.trim() || "(no note written: read it with the message text)"}`,
+      `- Selected: ${a.kind} · ${a.what} · ${a.where}${ids} · ${a.facts}`,
+      `- Click position: ${xyz(a.point)}`,
+    ]
+    if (a.smooth) lines.push("- This is the tangent line between a fillet and its neighboring face: the two sides blend smoothly with no sharp edge, so it can't be filleted or chamfered on its own")
+    if (a.selector) {
+      const use = a.kind === "edge" && !a.smooth ? " (use it as is for the edges of a fillet or chamfer)" : ""
+      lines.push(`- Selector verified to select only this${use}: ${JSON.stringify(a.selector)}`)
+    } else lines.push("- No selector could be found that selects only this: confirm with inspect and the click position (near)")
+    if (a.sketch?.face && a.selector) {
+      const { expect: _expect, ...face } = a.selector
+      const f = a.sketch.face
+      lines.push(
+        `- To sketch on this inclined face: on = ${JSON.stringify({ plane: "XY", face })}; the click in the inclined face's sketch coordinates: (${a.sketch.uv.map(r).join(", ")})`,
+        `  (the origin is this face's center ${xyz(f.origin)}, x runs level along ${xyz(f.x)}, y up along ${xyz(f.y)}, normal ${xyz(f.normal)})`,
+      )
+    } else if (a.sketch && a.selector) {
+      const { expect: _expect, ...face } = a.selector
+      lines.push(
+        `- To sketch on this face: on = ${JSON.stringify({ plane: a.sketch.plane, face })}; the click in sketch coordinates: (${a.sketch.uv.map(r).join(", ")}) (this face is on the ${a.sketch.plane} datum plane at offset ${r(a.sketch.offset)})`,
+      )
+    }
+    return lines.join("\n")
+  })
+  return `## Annotations (places the learner picked on the model; the numbers in the attached picture match these)\n${blocks.join("\n\n")}`
 }

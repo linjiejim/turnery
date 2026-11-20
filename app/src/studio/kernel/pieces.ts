@@ -20,6 +20,7 @@
 // which callers report instead of hanging the kernel.
 import { getOC, measureShapeVolumeProperties, type AnyShape, type Shape3D } from "replicad"
 import { closest, TOUCH } from "./proximity"
+import { ta } from "../../lib/agent-lang"
 import { compoundOf, solidsOf } from "./topo"
 
 type V3 = [number, number, number]
@@ -242,12 +243,12 @@ class Budget {
   private readonly until = performance.now() + MAX_MS
   /** Before each piece of exact work. */
   tick() {
-    if (performance.now() > this.until) throw new TooComplex(`算了 ${MAX_MS / 1000} 秒还没算完`)
+    if (performance.now() > this.until) throw new TooComplex(ta(`算了 ${MAX_MS / 1000} 秒还没算完`, `still not done after ${MAX_MS / 1000} s`))
   }
   /** `n` booleans are about to run: refused up front when that is too many. */
   plan(n: number) {
     this.booleans += n
-    if (this.booleans > MAX_BOOLEANS) throw new TooComplex(`贴得很近、要逐对精确求交的实体有 ${this.booleans} 对（上限 ${MAX_BOOLEANS}）`)
+    if (this.booleans > MAX_BOOLEANS) throw new TooComplex(ta(`贴得很近、要逐对精确求交的实体有 ${this.booleans} 对（上限 ${MAX_BOOLEANS}）`, `${this.booleans} pairs of solids sit close enough to need an exact intersection each (limit ${MAX_BOOLEANS})`))
   }
 }
 

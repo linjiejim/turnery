@@ -3,6 +3,7 @@
 // standards named below (heat-set inserts: the common Ruthex / CNC Kitchen standard size); real
 // parts vary within the standard's tolerances, so check the supplier's sheet for a tight fit.
 import { INSERT_HOLE, METRIC, SCREW_SIZES, type ScrewSize } from "./holes"
+import { ta } from "../lib/agent-lang"
 
 export const FASTENER_TYPES = ["screw", "nut", "washer", "insert"] as const
 export type FastenerType = (typeof FASTENER_TYPES)[number]
@@ -56,12 +57,14 @@ const PAN: Partial<Record<ScrewSize, Head>> = {
   M6: { dk: 12, k: 4.6 },
   M8: { dk: 16, k: 6 },
 }
-export const HEADS: Record<ScrewHead, { table: Partial<Record<ScrewSize, Head>>; iso: string; name: string }> = {
-  socket: { table: SOCKET, iso: "ISO 4762", name: "内六角圆柱头螺钉" },
-  button: { table: BUTTON, iso: "ISO 7380", name: "内六角半圆头螺钉" },
-  flat: { table: FLAT, iso: "ISO 10642", name: "内六角沉头螺钉" },
-  pan: { table: PAN, iso: "ISO 7045", name: "十字盘头螺钉" },
+/** `name` in Chinese, `en` in English: what the BOM and the agent's messages call it (`headName`). */
+export const HEADS: Record<ScrewHead, { table: Partial<Record<ScrewSize, Head>>; iso: string; name: string; en: string }> = {
+  socket: { table: SOCKET, iso: "ISO 4762", name: "内六角圆柱头螺钉", en: "socket head cap screw" },
+  button: { table: BUTTON, iso: "ISO 7380", name: "内六角半圆头螺钉", en: "button head socket screw" },
+  flat: { table: FLAT, iso: "ISO 10642", name: "内六角沉头螺钉", en: "flat head socket screw" },
+  pan: { table: PAN, iso: "ISO 7045", name: "十字盘头螺钉", en: "Phillips pan head screw" },
 }
+const headName = (h: (typeof HEADS)[ScrewHead]) => ta(h.name, h.en)
 
 /** ISO 4032 hex nuts: width across flats s, height m. */
 export const NUT: Record<ScrewSize, { s: number; m: number }> = {
@@ -113,17 +116,20 @@ export function designation(s: FastenerSpec): { name: string; note?: string } {
   const d = s.size
   if (s.type === "screw") {
     const head = HEADS[s.head ?? "socket"]
-    if (!head.table[d]) throw new Error(`${head.name}（${head.iso}）没有 ${d}：有 ${SCREW_SIZES.filter((x) => head.table[x]).join("、")}`)
-    if (s.length === undefined) throw new Error("螺钉要写 length（长度，mm）")
-    if (!(s.length > 0)) throw new Error("螺钉长度必须大于 0")
-    const note = SCREW_LENGTHS.includes(s.length) ? undefined : `${s.length} mm 不是常见的螺钉长度（常见：${SCREW_LENGTHS.filter((l) => l <= 60).join("、")}…）`
-    return { name: `${head.iso} ${d}×${s.length} ${head.name}`, note }
+    const sizes = SCREW_SIZES.filter((x) => head.table[x])
+    if (!head.table[d]) throw new Error(ta(`${head.name}（${head.iso}）没有 ${d}：有 ${sizes.join("、")}`, `The ${head.en} (${head.iso}) doesn't come in ${d}: there are ${sizes.join(", ")}`))
+    if (s.length === undefined) throw new Error(ta("螺钉要写 length（长度，mm）", "A screw needs length (in mm)"))
+    if (!(s.length > 0)) throw new Error(ta("螺钉长度必须大于 0", "The screw length must be greater than 0"))
+    const common = SCREW_LENGTHS.filter((l) => l <= 60)
+    const note = SCREW_LENGTHS.includes(s.length) ? undefined : ta(`${s.length} mm 不是常见的螺钉长度（常见：${common.join("、")}…）`, `${s.length} mm isn't a common screw length (common: ${common.join(", ")}…)`)
+    return { name: `${head.iso} ${d}×${s.length} ${headName(head)}`, note }
   }
-  if (s.type === "nut") return { name: `ISO 4032 ${d} 六角螺母` }
-  if (s.type === "washer") return { name: `ISO 7089 ${d} 平垫圈` }
+  if (s.type === "nut") return { name: ta(`ISO 4032 ${d} 六角螺母`, `ISO 4032 ${d} hex nut`) }
+  if (s.type === "washer") return { name: ta(`ISO 7089 ${d} 平垫圈`, `ISO 7089 ${d} plain washer`) }
   const ins = INSERT[d]
-  if (!ins) throw new Error(`热熔螺母只有 ${SCREW_SIZES.filter((x) => INSERT[x]).join("、")}`)
-  return { name: `热熔螺母 ${d}×${ins.L}（开孔 ⌀${ins.hole}）` }
+  const sizes = SCREW_SIZES.filter((x) => INSERT[x])
+  if (!ins) throw new Error(ta(`热熔螺母只有 ${sizes.join("、")}`, `Heat-set inserts come only in ${sizes.join(", ")}`))
+  return { name: ta(`热熔螺母 ${d}×${ins.L}（开孔 ⌀${ins.hole}）`, `Heat-set insert ${d}×${ins.L} (hole ⌀${ins.hole})`) }
 }
 
 /**

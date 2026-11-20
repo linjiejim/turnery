@@ -2,6 +2,7 @@
 // mates, checks and notes refer to them by those names, so a new name has to reach all of them.
 import { componentName, type Check, type Feature, type Tree } from "../../studio/dsl"
 import type { PartNote } from "./protocol"
+import { ta } from "../../lib/agent-lang"
 
 type Component = Extract<Feature, { op: "component" }>
 
@@ -14,18 +15,18 @@ export function renamedPart(name: string, from: string, to: string) {
 
 /** What a new part name may not be: empty, too long, or with the characters part names are built from. */
 export function badPartName(name: string) {
-  if (!name) return "名字不能为空"
-  if (name.length > 40) return "名字太长了（最多 40 个字）"
-  if (/[#/\\]/.test(name)) return "名字里不能有 #、/ 或 \\（它们用来写第几个和拆开后的零件）"
+  if (!name) return ta("名字不能为空", "The name can’t be empty")
+  if (name.length > 40) return ta("名字太长了（最多 40 个字）", "The name is too long (at most 40 characters)")
+  if (/[#/\\]/.test(name)) return ta("名字里不能有 #、/ 或 \\（它们用来写第几个和拆开后的零件）", "The name can’t contain #, / or \\ (they mark which copy it is and the parts of a split)")
   return null
 }
 
 /** What a file name may not be (without its ending). */
 export function badFileName(name: string) {
-  if (!name) return "文件名不能为空"
-  if (name.length > 80) return "文件名太长了（最多 80 个字）"
-  if (/[\\/:*?"<>|]/.test(name) || [...name].some((c) => c.charCodeAt(0) < 32)) return "文件名里不能有 \\ / : * ? \" < > |"
-  if (name.startsWith(".")) return "文件名不能以 . 开头"
+  if (!name) return ta("文件名不能为空", "The file name can’t be empty")
+  if (name.length > 80) return ta("文件名太长了（最多 80 个字）", "The file name is too long (at most 80 characters)")
+  if (/[\\/:*?"<>|]/.test(name) || [...name].some((c) => c.charCodeAt(0) < 32)) return ta("文件名里不能有 \\ / : * ? \" < > |", "The file name can’t contain \\ / : * ? \" < > |")
+  if (name.startsWith(".")) return ta("文件名不能以 . 开头", "The file name can’t start with .")
   return null
 }
 

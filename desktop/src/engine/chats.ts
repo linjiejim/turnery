@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import path from "node:path"
 import { CHAT_ID, MAX_CHATS, newChatId, summaryOf, type ChatRecord, type ChatSummary } from "../../../app/src/desktop/core/chats"
 import { HOME } from "./home"
+import { ta } from "../../../app/src/lib/agent-lang"
 
 const DIR = () => path.join(HOME, "chats")
 const fileOf = (id: string) => path.join(DIR(), `${id}.json`)
@@ -47,10 +48,10 @@ export function readChat(id: string): ChatRecord | null {
  * Returns the id it was saved under.
  */
 export function saveChat(record: ChatRecord, base?: number): string {
-  if (!CHAT_ID.test(record.id)) throw new Error("对话的编号不对")
+  if (!CHAT_ID.test(record.id)) throw new Error(ta("对话的编号不对", "The chat’s id is invalid"))
   const existing = base === undefined ? null : readChat(record.id)
   if (existing && existing.messages.length > base!) {
-    record = { ...record, id: newChatId(), title: `${record.title}（副本）`, createdAt: Date.now() }
+    record = { ...record, id: newChatId(), title: ta(`${record.title}（副本）`, `${record.title} (copy)`), createdAt: Date.now() }
   }
   writeAtomic(fileOf(record.id), JSON.stringify(record))
   const index = [summaryOf(record), ...readIndex().filter((c) => c.id !== record.id)].sort((a, b) => b.updatedAt - a.updatedAt)

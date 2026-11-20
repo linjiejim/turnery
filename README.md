@@ -170,12 +170,11 @@ Full reference, the CLI and the internals: [`desktop/README.md`](desktop/README.
 
 ## Where it stands
 
-Turnery is young (0.11) and moving fast. What works today: single parts and multi-part assemblies with shared parameters, standard fasteners, real thread geometry, STEP import for building around a board, engineering drawings, the check list described above, and a timeline that replays the model feature by feature.
+Turnery is young (0.11) and moving fast. What works today: single parts and multi-part assemblies with shared parameters, standard fasteners, real thread geometry, STEP import for building around a board, engineering drawings, the check list described above, a timeline that replays the model feature by feature, and English and Chinese throughout: the window, the website and course, and what the agent reads.
 
 What does not, yet:
 
 - **macOS only**, and unsigned. Windows and Linux builds are planned.
-- **English, but not everywhere yet.** The window and the website come in English and Chinese. What the agent reads (the guide, tool descriptions, kernel messages) is still Chinese, which agents read fine; tool names and JSON schemas are English. See [`docs/i18n.md`](docs/i18n.md).
 - **No sketch constraint solver in the modeling tools.** Sketches are written with parameters and expressions.
 - **No free-form "code feature"** for shapes the tree cannot express.
 - **Mates place parts once, in order.** They are not a constraint system and there is no motion.

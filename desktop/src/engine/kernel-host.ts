@@ -12,6 +12,7 @@ import type { DrawingData } from "../../../app/src/studio/kernel/drawing"
 import type { MeasureResult, MeasureSpec } from "../../../app/src/studio/kernel/measure"
 import type { PickInfo } from "../../../app/src/studio/annotations"
 import type { KernelReply, KernelRequest } from "./kernel-thread"
+import { agentLang, ta } from "../../../app/src/lib/agent-lang"
 import { ComponentPool } from "./component-pool"
 import path from "node:path"
 import { ProjectPreview } from "./project-preview"
@@ -102,7 +103,7 @@ export class ThreadKernel implements KernelHost {
         if (this.worker !== worker) return
         this.worker = null
         this.started = null
-        for (const p of this.pending.values()) p.reject(new Error(`建模内核意外退出（${why}），下一次调用会自动重启`))
+        for (const p of this.pending.values()) p.reject(new Error(ta(`建模内核意外退出（${why}），下一次调用会自动重启`, `The modeling kernel quit unexpectedly (${why}); the next call restarts it`)))
         this.pending.clear()
         reject(new Error(why))
       }
@@ -117,13 +118,13 @@ export class ThreadKernel implements KernelHost {
   }
 
   private async call<T>(op: KernelRequest["op"], args: unknown[]): Promise<T> {
-    if (this.closed) throw new Error("建模内核已关闭")
+    if (this.closed) throw new Error(ta("建模内核已关闭", "The modeling kernel is closed"))
     if (this.stale || !this.worker) await this.restart()
     else await this.start()
     const id = ++this.seq
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
-      this.worker!.postMessage({ id, op, args } satisfies KernelRequest)
+      this.worker!.postMessage({ id, op, args, lang: agentLang() } satisfies KernelRequest)
     })
   }
 
@@ -142,7 +143,7 @@ export class ThreadKernel implements KernelHost {
       new Promise((resolve, reject) => {
         const id = ++this.seq
         this.pending.set(id, { resolve, reject })
-        this.worker!.postMessage({ id, op, args } satisfies KernelRequest)
+        this.worker!.postMessage({ id, op, args, lang: agentLang() } satisfies KernelRequest)
       })
     // The other parts' kernels are gone with the old thread: the next `use` of each says it's empty.
     const cur = this.slots.get(this.slot) ?? newSlot()
@@ -255,7 +256,7 @@ export class ThreadKernel implements KernelHost {
     let checkedDisplay: DisplayData | null = null
     const send = () => {
       const [op, args] = requests[index]
-      worker.postMessage({ id: ++index, op, args } satisfies KernelRequest)
+      worker.postMessage({ id: ++index, op, args, lang: agentLang() } satisfies KernelRequest)
     }
     const finish = () => { if (this.diagnosticWorkers.get(slot) === worker) this.diagnosticWorkers.delete(slot); void worker.terminate() }
     const fail = (message: string) => {
@@ -263,7 +264,7 @@ export class ThreadKernel implements KernelHost {
       finish()
     }
     worker.on("error", (e) => fail(e.message))
-    worker.on("exit", (code) => { if (this.diagnosticWorkers.get(slot) === worker) fail(`检查线程退出：${code}`) })
+    worker.on("exit", (code) => { if (this.diagnosticWorkers.get(slot) === worker) fail(ta(`检查线程退出：${code}`, `The check thread exited: ${code}`)) })
     worker.on("message", async (m: KernelReply) => {
       if ("type" in m) {
         if (m.type === "ready") send()

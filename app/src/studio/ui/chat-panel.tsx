@@ -547,7 +547,8 @@ function ToolCard({ part, onSelectFeature }: { part: ToolPart; onSelectFeature: 
               ) : (
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-label={t("不满足", "Not met")} />
               )}
-              <span className="min-w-0 text-muted-foreground">{l.slice(2).replace(/^\S+「/, "「")}</span>
+              {/* The row without its id: size「…」 (Chinese) or size “…” (English) starts at the quote. */}
+              <span className="min-w-0 text-muted-foreground">{l.slice(2).replace(/^\S+「/, "「").replace(/^\S+ (?=“)/, "")}</span>
             </li>
           ))}
         </ul>

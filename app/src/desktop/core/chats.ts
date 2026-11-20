@@ -1,6 +1,7 @@
 // Conversations with the built-in assistant, as they are kept on disk (~/.turnery/chats/<id>.json):
 // what a saved chat holds, how it is named, and what is left out to keep the file small.
 import type { UIMessage } from "ai"
+import { t } from "../../lib/i18n"
 
 /** One saved conversation. `project` and `part` say where it was held, to list it there again. */
 export type ChatRecord = {
@@ -38,7 +39,7 @@ export function chatTitle(messages: UIMessage[]): string {
       .trim()
     if (text) return text.length > 40 ? `${text.slice(0, 40)}…` : text
   }
-  return "新对话"
+  return t("新对话", "New chat")
 }
 
 /**

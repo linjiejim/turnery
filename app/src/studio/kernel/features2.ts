@@ -5,6 +5,7 @@ import { draw, makeBox, makeCompound, Plane, type Drawing, type Shape3D } from "
 import type { FaceSelector } from "../dsl"
 import type { Scope } from "../expr"
 import { InputError } from "./errors"
+import { ta } from "../../lib/agent-lang"
 import { disposeInfos, faceInfos, selectFaces } from "./select"
 import { solidsOf } from "./topo"
 
@@ -156,21 +157,21 @@ function polygon(pts: V2[]): Drawing {
  * bends towards).
  */
 export function thinProfile(region: Drawing | null, paths: V2[][], t: number, side: "center" | "inside" | "outside"): Drawing {
-  if (!(t > 0)) throw new InputError("壁厚必须大于 0")
+  if (!(t > 0)) throw new InputError(ta("壁厚必须大于 0", "The wall thickness must be greater than 0"))
   if (paths.length) {
-    if (paths.length > 1 || region) throw new InputError("薄壁拉伸的草图只能有一条开放的线，或者只有封闭的图形")
+    if (paths.length > 1 || region) throw new InputError(ta("薄壁拉伸的草图只能有一条开放的线，或者只有封闭的图形", "A thin extrude's sketch can have only one open line, or only closed shapes"))
     const pts = paths[0]
     const turn = turning(pts) || 1
     const [l, r] = side === "center" ? [t / 2, t / 2] : (side === "inside") === turn > 0 ? [t, 0] : [0, t]
     return polygon([...offsetPolyline(pts, l), ...offsetPolyline(pts, -r).reverse()])
   }
-  if (!region) throw new InputError("草图里没有图形")
+  if (!region) throw new InputError(ta("草图里没有图形", "The sketch has no shapes"))
   const out = side === "inside" ? region.clone() : region.offset(side === "outside" ? t : t / 2)
   const inn = side === "outside" ? region.clone() : region.offset(-(side === "inside" ? t : t / 2))
   try {
     return out.cut(inn)
   } catch {
-    throw new InputError("轮廓偏移后自相交了：壁厚太大，或者轮廓上有太窄的地方")
+    throw new InputError(ta("轮廓偏移后自相交了：壁厚太大，或者轮廓上有太窄的地方", "The offset outline intersects itself: the wall is too thick, or the outline has places that are too narrow"))
   }
 }
 
@@ -194,7 +195,11 @@ export function untilNext(long: Shape3D, body: Shape3D, start: V3, dir: V3, mode
   const kept = solids.filter((s) => Math.abs(lowAlong(s, dir) - s0) < 1e-4)
   if (!kept.length) {
     solids.forEach((s) => s.delete())
-    throw new InputError(mode === "add" ? "沿拉伸方向没有碰到实体：成形到下一面要有面挡着" : "草图平面上没有材料可切：成形到下一面要从实体表面开始")
+    throw new InputError(
+      mode === "add"
+        ? ta("沿拉伸方向没有碰到实体：成形到下一面要有面挡着", "Nothing solid in the extrude direction: up to next needs a face in the way")
+        : ta("草图平面上没有材料可切：成形到下一面要从实体表面开始", "No material to cut at the sketch plane: up to next must start at the solid's surface"),
+    )
   }
   const length = Math.max(...kept.map((s) => -lowAlong(s, mul(dir, -1)))) - s0
   return { tool: kept.length === 1 ? kept[0] : (makeCompound(kept) as unknown as Shape3D), length }
@@ -205,8 +210,8 @@ export function planeFace(body: Shape3D, origins: string[], sel: FaceSelector, s
   const faces = faceInfos(body, origins)
   try {
     const got = selectFaces(sel, faces, scope)
-    if (got.length !== 1) throw new InputError(`${what}要正好选中一个面，现在选中了 ${got.length} 个`)
-    if (got[0].kind !== "plane" || !got[0].normal) throw new InputError(`${what}要是平面`)
+    if (got.length !== 1) throw new InputError(ta(`${what}要正好选中一个面，现在选中了 ${got.length} 个`, `${what} must select exactly one face; it selects ${got.length}`))
+    if (got[0].kind !== "plane" || !got[0].normal) throw new InputError(ta(`${what}要是平面`, `${what} must be planar`))
     return { center: got[0].center, normal: got[0].normal }
   } finally {
     disposeInfos(faces)
@@ -215,7 +220,7 @@ export function planeFace(body: Shape3D, origins: string[], sel: FaceSelector, s
 
 /** A tapered tool: the straight extrusion's side walls drafted about the sketch plane; a ruled loft to an inset outline if that fails. */
 export function tapered(straight: () => Shape3D, loft: () => Shape3D, start: V3, x: V3, dir: V3, angle: number): Shape3D {
-  if (!(Math.abs(angle) < 45)) throw new InputError("拔模角要在 -45°–45° 之间（常用 1–3°）")
+  if (!(Math.abs(angle) < 45)) throw new InputError(ta("拔模角要在 -45°–45° 之间（常用 1–3°）", "The draft angle must be between -45° and 45° (1–3° is common)"))
   const tool = straight()
   const neutral = new Plane(start, x, dir)
   try {
@@ -236,8 +241,8 @@ export function tapered(straight: () => Shape3D, loft: () => Shape3D, start: V3,
  * body's centre (or the other one with `flip`).
  */
 export function ribTool(body: Shape3D, path: V2[], plane: Frame, t: number, far: number, flip: boolean): Shape3D {
-  if (!(t > 0)) throw new InputError("筋厚必须大于 0")
-  if (path.length < 2) throw new InputError("筋的线至少要两个点")
+  if (!(t > 0)) throw new InputError(ta("筋厚必须大于 0", "The rib thickness must be greater than 0"))
+  if (path.length < 2) throw new InputError(ta("筋的线至少要两个点", "A rib's line needs at least two points"))
   const d0 = unit2([path[1][0] - path[0][0], path[1][1] - path[0][1]])
   const n = path.length - 1
   const d1 = unit2([path[n][0] - path[n - 1][0], path[n][1] - path[n - 1][1]])
@@ -267,7 +272,7 @@ export function ribTool(body: Shape3D, path: V2[], plane: Frame, t: number, far:
   })
   box.delete()
   const usable = sides.filter((x) => x.kept.length)
-  if (!usable.length) throw new InputError("筋碰不到实体：线的两侧都没有被实体围住的地方")
+  if (!usable.length) throw new InputError(ta("筋碰不到实体：线的两侧都没有被实体围住的地方", "The rib doesn't reach the solid: on neither side of the line is there a region enclosed by the solid"))
   const pick = usable.length === 1 ? usable[0] : [...usable].sort((a, b) => (a.near - b.near) * (flip ? -1 : 1))[0]
   const parts = pick.kept
   return parts.length === 1 ? parts[0] : (makeCompound(parts) as unknown as Shape3D)

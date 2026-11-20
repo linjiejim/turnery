@@ -11,6 +11,7 @@ import path from "node:path"
 import { gzip, gunzip } from "node:zlib"
 import { promisify } from "node:util"
 import type { DisplayData } from "../../../app/src/studio/kernel/build"
+import { ta } from "../../../app/src/lib/agent-lang"
 
 const compress = promisify(gzip), decompress = promisify(gunzip)
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -74,7 +75,7 @@ export async function tidyPreviews(dir: string, root?: string | null) {
 async function prepare(file: string, base: string) {
   await mkdir(path.dirname(file), { recursive: true })
   const ignore = path.join(base, CACHE_DIR, ".gitignore")
-  if (!(await exists(ignore))) await writeFile(ignore, "# Turnery 的缓存：打开装配时的预览，可以随时删掉\n*\n").catch(() => {})
+  if (!(await exists(ignore))) await writeFile(ignore, ta("# Turnery 的缓存：打开装配时的预览，可以随时删掉\n*\n", "# Turnery’s cache: previews for opening assemblies; safe to delete at any time\n*\n")).catch(() => {})
 }
 
 export class ProjectPreview {

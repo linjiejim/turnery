@@ -2,6 +2,7 @@
 // ISO 273, tap drills for coarse threads, counterbores for ISO 4762 socket head
 // cap screws and countersinks for ISO 10642 flat heads. Reference values, as
 // in common design handbooks; check the screw supplier's sheet for real parts.
+import { agentLang, ta } from "../lib/agent-lang"
 
 export const SCREW_SIZES = ["M2", "M2.5", "M3", "M4", "M5", "M6", "M8", "M10", "M12"] as const
 export type ScrewSize = (typeof SCREW_SIZES)[number]
@@ -53,18 +54,25 @@ export function standardHole(s: HoleStandard): { d: number; cbore?: { d: number;
   const row = METRIC[s.size]
   const fit = s.fit ?? "clearance"
   if (fit === "insert") {
-    if (s.head) throw new Error("热熔螺母孔不带沉头")
+    if (s.head) throw new Error(ta("热熔螺母孔不带沉头", "A heat-set insert hole takes no head (cbore or csink)"))
     const ins = INSERT_HOLE[s.size]
-    if (!ins) throw new Error(`热熔螺母孔只有 ${SCREW_SIZES.filter((x) => INSERT_HOLE[x]).join("、")}`)
+    const sizes = SCREW_SIZES.filter((x) => INSERT_HOLE[x])
+    if (!ins) throw new Error(ta(`热熔螺母孔只有 ${sizes.join("、")}`, `Heat-set insert holes come only in ${sizes.join(", ")}`))
     const depth = Math.round((ins.L + 1) * 10) / 10
-    return { d: ins.d, depth, label: `${s.size} 热熔螺母孔（⌀${ins.d}，螺母长 ${ins.L}）` }
+    return { d: ins.d, depth, label: ta(`${s.size} 热熔螺母孔（⌀${ins.d}，螺母长 ${ins.L}）`, `${s.size} heat-set insert hole (⌀${ins.d}, insert length ${ins.L})`) }
   }
   if (fit === "tap") {
-    if (s.head) throw new Error(`螺纹孔不带沉头：沉头孔、埋头孔用在过孔上（fit 用 clearance 或 close）`)
+    if (s.head) throw new Error(ta(`螺纹孔不带沉头：沉头孔、埋头孔用在过孔上（fit 用 clearance 或 close）`, "A tapped hole takes no head: counterbores and countersinks go on clearance holes (fit: clearance or close)"))
     const major = Number(s.size.slice(1))
-    return { d: row.tap, thread: { major, pitch: row.pitch }, label: `${s.size} 螺纹孔（底孔 ⌀${row.tap}）` }
+    return { d: row.tap, thread: { major, pitch: row.pitch }, label: ta(`${s.size} 螺纹孔（底孔 ⌀${row.tap}）`, `${s.size} tapped hole (tap drill ⌀${row.tap})`) }
   }
   const d = fit === "close" ? row.close : row.normal
+  if (agentLang() === "en") {
+    const name = fit === "close" ? "close-fit clearance hole" : "clearance hole"
+    if (s.head === "cbore") return { d, cbore: { d: row.cbore[0], depth: row.cbore[1] }, label: `${s.size} counterbored ${name} (⌀${d}, counterbore ⌀${row.cbore[0]} depth ${row.cbore[1]})` }
+    if (s.head === "csink") return { d, csink: { d: row.csink }, label: `${s.size} countersunk ${name} (⌀${d}, countersink ⌀${row.csink})` }
+    return { d, label: `${s.size} ${name} (⌀${d})` }
+  }
   const name = fit === "close" ? "精配过孔" : "过孔"
   if (s.head === "cbore") return { d, cbore: { d: row.cbore[0], depth: row.cbore[1] }, label: `${s.size} 沉头${name}（⌀${d}，沉孔 ⌀${row.cbore[0]} 深 ${row.cbore[1]}）` }
   if (s.head === "csink") return { d, csink: { d: row.csink }, label: `${s.size} 埋头${name}（⌀${d}，锥口 ⌀${row.csink}）` }

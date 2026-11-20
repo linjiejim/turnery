@@ -3,11 +3,14 @@
 // the same in light and dark mode, unlike the scene palette (turnery-theme.css).
 import { z } from "zod"
 import { t } from "../lib/i18n"
+import { agentLang, ta } from "../lib/agent-lang"
 
 export const FINISHES = ["matte", "metal", "clear"] as const
 export type Finish = (typeof FINISHES)[number]
-/** Finish names in Chinese: what files, the agent's results and the engine's messages say. */
+/** Finish names in Chinese: what files, the agent's results and the engine's messages say (in English: the ids). */
 const FINISH_ZH: Record<Finish, string> = { matte: "哑光", metal: "金属", clear: "透明" }
+/** A finish as the agent reads it. */
+const finishWord = (f: Finish) => ta(FINISH_ZH[f], f)
 /** Finish names as the window shows them (the page's language). */
 export const FINISH_NAMES: Record<Finish, string> = { matte: t("哑光", "Matte"), metal: t("金属", "Metal"), clear: t("透明", "Clear") }
 
@@ -58,9 +61,10 @@ export function paletteOf(color: string | undefined | null) {
   return hex ? PALETTE.find((c) => c.hex === hex) ?? null : null
 }
 
-/** How people read a colour: 「橙」, or the value for one outside the palette. Chinese, for files and messages. */
+/** How people read a colour: 「橙」, or the value for one outside the palette. In the agent's language (English: the palette id), for files and messages. */
 export function colorName(color: string | undefined | null) {
-  return paletteOf(color)?.zh ?? hexOf(color) ?? "未设置"
+  const p = paletteOf(color)
+  return (p && (agentLang() === "en" ? p.id : p.zh)) ?? hexOf(color) ?? ta("未设置", "not set")
 }
 
 /** A colour as the window shows it, in the page's language: 「橙」 / "Orange", or the value. */
@@ -68,8 +72,13 @@ export function colorLabel(color: string | undefined | null) {
   return paletteOf(color)?.name ?? hexOf(color) ?? t("未设置", "not set")
 }
 
-/** A colour inside a Chinese sentence: 「主要是绿」, 「主要是 #1f6e3a」 (a value gets a space before it). */
+/** A colour inside a Chinese sentence: 「主要是绿」, 「主要是 #1f6e3a」 (a value gets a space before it); in English every word does (" green"). */
 export function colorWord(color: string | undefined | null) {
+  if (agentLang() === "en") return ` ${paletteOf(color)?.id ?? hexOf(color) ?? "not set"}`
+  return colorWordZh(color)
+}
+
+function colorWordZh(color: string | undefined | null) {
   const p = paletteOf(color)
   return p ? p.zh : ` ${hexOf(color) ?? "未设置"}`
 }
@@ -79,11 +88,22 @@ export function normalColor(color: string): string {
   return paletteOf(color)?.id ?? hexOf(color) ?? color
 }
 
+// Schema text for the agent, in its language as it stands when this module loads (as in dsl.ts).
 export const Color = z
   .string()
-  .refine(isColor, { message: "颜色写色板名（white、silver、gray、black、red、orange、yellow、green、teal、blue、purple、pink）或 #RRGGBB" })
-  .describe("颜色：色板名 white 白、silver 银灰、gray 灰、black 黑、red 红、orange 橙、yellow 黄、green 绿、teal 青、blue 蓝、purple 紫、pink 粉；或 #RRGGBB（还原具体的耗材、喷漆颜色时用）")
-export const Finish = z.enum(FINISHES).describe("质感：matte 哑光（缺省）、metal 金属、clear 透明")
+  .refine(isColor, {
+    message: ta(
+      "颜色写色板名（white、silver、gray、black、red、orange、yellow、green、teal、blue、purple、pink）或 #RRGGBB",
+      "Write a color as a palette name (white, silver, gray, black, red, orange, yellow, green, teal, blue, purple, pink) or #RRGGBB",
+    ),
+  })
+  .describe(
+    ta(
+      "颜色：色板名 white 白、silver 银灰、gray 灰、black 黑、red 红、orange 橙、yellow 黄、green 绿、teal 青、blue 蓝、purple 紫、pink 粉；或 #RRGGBB（还原具体的耗材、喷漆颜色时用）",
+      "Color: a palette name white, silver, gray, black, red, orange, yellow, green, teal, blue, purple, pink; or #RRGGBB (to match a specific filament or paint color)",
+    ),
+  )
+export const Finish = z.enum(FINISHES).describe(ta("质感：matte 哑光（缺省）、metal 金属、clear 透明", "Finish: matte (the default), metal, clear"))
 
 /** A colour and a finish, each optional (left out: from the part file, or by where the part comes from). */
 export const Appearance = z.object({ color: Color.optional(), finish: Finish.optional() })
@@ -91,7 +111,10 @@ export type Appearance = z.infer<typeof Appearance>
 
 /** A part file's look: the whole part, and per part after a split (those win). */
 export const PartAppearance = Appearance.extend({
-  parts: z.record(z.string(), Appearance).optional().describe("拆件或多个零件时，按零件名分别设置；比整体的优先"),
+  parts: z
+    .record(z.string(), Appearance)
+    .optional()
+    .describe(ta("拆件或多个零件时，按零件名分别设置；比整体的优先", "After a split or with several parts: set each part by its name; this takes precedence over the whole part")),
 })
 export type PartAppearance = z.infer<typeof PartAppearance>
 
@@ -129,27 +152,39 @@ export function plainOnly(looks: (Look | undefined)[]) {
 }
 
 /**
- * 「橙 · 金属」. Chinese (it goes into the agent's results and the engine's messages) unless `shown`:
- * then in the page's language, for the window.
+ * 「橙 · 金属」. In the agent's language (it goes into the agent's results and the engine's messages; English:
+ * "orange · metal") unless `shown`: then in the page's language, for the window.
  */
 export function lookText(l: Appearance | undefined, unset?: string, shown = false) {
-  if (!l || !isSet(l)) return unset ?? (shown ? t("未设置", "Not set") : "未设置")
+  if (!l || !isSet(l)) return unset ?? (shown ? t("未设置", "Not set") : ta("未设置", "not set"))
   // Matte is the default: named only when it is all that was set.
-  const finish = l.finish && (l.finish !== "matte" || !l.color) ? (shown ? FINISH_NAMES : FINISH_ZH)[l.finish] : null
+  const finish = l.finish && (l.finish !== "matte" || !l.color) ? (shown ? FINISH_NAMES[l.finish] : finishWord(l.finish)) : null
   return [l.color ? (shown ? colorLabel : colorName)(l.color) : null, finish].filter(Boolean).join(" · ")
 }
 
-/** What drawing it means when nothing is set. */
-export const SOURCE_DEFAULT: Record<LookSource, string> = { part: "白模", standard: "标准件按金属色显示", step: "外购件按深灰显示" }
+const SOURCE_ZH: Record<LookSource, string> = { part: "白模", standard: "标准件按金属色显示", step: "外购件按深灰显示" }
+const SOURCE_AGENT_EN: Record<LookSource, string> = { part: "clay (plain white)", standard: "standard parts show in metal color", step: "purchased parts show in dark gray" }
+/** What drawing it means when nothing is set, in the agent's language (looked up when read). */
+export const SOURCE_DEFAULT: Record<LookSource, string> = {
+  get part() {
+    return ta(SOURCE_ZH.part, SOURCE_AGENT_EN.part)
+  },
+  get standard() {
+    return ta(SOURCE_ZH.standard, SOURCE_AGENT_EN.standard)
+  },
+  get step() {
+    return ta(SOURCE_ZH.step, SOURCE_AGENT_EN.step)
+  },
+}
 const SOURCE_DEFAULT_EN: Record<LookSource, string> = { part: "clay", standard: "standard parts show as metal", step: "bought-in parts show as dark gray" }
 
 /** What a colour dot says when pointed at: 「橙 · 金属」, or that nothing is set and how it shows then. For the window. */
 export function lookTip(look: Look | Appearance | undefined) {
   if (look && isSet(look)) return lookText(look, undefined, true)
   if (look && "fileColor" in look && look.fileColor)
-    return t(`未设置颜色（按 STEP 文件自带的颜色，主要是${colorWord(look.fileColor)}）`, `No color set (the STEP file’s own colors, mostly ${colorLabel(look.fileColor)})`)
+    return t(`未设置颜色（按 STEP 文件自带的颜色，主要是${colorWordZh(look.fileColor)}）`, `No color set (the STEP file’s own colors, mostly ${colorLabel(look.fileColor)})`)
   const source = look && "source" in look ? look.source : "part"
-  return t(`未设置颜色（${SOURCE_DEFAULT[source]}）`, `No color set (${SOURCE_DEFAULT_EN[source]})`)
+  return t(`未设置颜色（${SOURCE_ZH[source]}）`, `No color set (${SOURCE_DEFAULT_EN[source]})`)
 }
 
 /** Without what a part looks like: the geometry, for keys that decide when to rebuild. */
@@ -189,8 +224,16 @@ export function applyLook(cur: Appearance | undefined, change: LookChange): Appe
   return isSet(next) ? next : undefined
 }
 
-/** 「颜色 橙、质感 金属」「清除颜色」: what a change does, for the activity list. */
+/** 「颜色 橙、质感 金属」「清除颜色」: what a change does, for the activity list (in the agent's language). */
 export function changeText(change: LookChange) {
+  if (agentLang() === "en") {
+    const en: string[] = []
+    if (change.color === null) en.push("clear the color")
+    else if (change.color !== undefined) en.push(`color ${colorName(change.color)}`)
+    if (change.finish === null) en.push("clear the finish")
+    else if (change.finish !== undefined) en.push(`finish ${change.finish}`)
+    return en.join(", ")
+  }
   const bits: string[] = []
   if (change.color === null) bits.push("清除颜色")
   else if (change.color !== undefined) bits.push(`颜色 ${colorName(change.color)}`)

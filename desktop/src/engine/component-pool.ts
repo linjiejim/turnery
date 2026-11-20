@@ -11,6 +11,7 @@ import { withoutLooks } from "../../../app/src/studio/appearance"
 import type { KernelReply, KernelRequest } from "./kernel-thread"
 import { contentKey } from "./content-key"
 import { HOME } from "./home"
+import { agentLang, ta } from "../../../app/src/lib/agent-lang"
 
 const hash = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex")
 /** What a worker builds from a source: its colours and finishes never change the shapes. */
@@ -74,7 +75,7 @@ export class ComponentPool {
   }
 
   private runner(index: number): Runner {
-    if (this.closed) throw new Error("零件工作线程已关闭")
+    if (this.closed) throw new Error(ta("零件工作线程已关闭", "The part worker threads are closed"))
     if (this.runners[index]) return this.runners[index]
     const worker = new Worker(this.file, { stdout: true, stderr: true })
     worker.stdout.on("data", (b: Buffer) => process.stderr.write(b))
@@ -93,13 +94,13 @@ export class ComponentPool {
     })
     const crashed = (e: Error) => { failure = e; pending?.reject(e); pending = null }
     worker.on("error", crashed)
-    worker.on("exit", (code) => crashed(new Error(`零件工作线程退出：${code}`)))
+    worker.on("exit", (code) => crashed(new Error(ta(`零件工作线程退出：${code}`, `A part worker thread exited: ${code}`))))
     const runner: Runner = {
       worker,
       call: (source) => new Promise((resolve, reject) => {
         if (failure) return reject(failure)
         pending = { resolve, reject }
-        worker.postMessage({ id: ++seq, op: "compileComponent", args: [source] } satisfies KernelRequest)
+        worker.postMessage({ id: ++seq, op: "compileComponent", args: [source], lang: agentLang() } satisfies KernelRequest)
       }),
     }
     this.runners[index] = runner

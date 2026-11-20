@@ -7,6 +7,7 @@ import type { ComponentSource } from "../../studio/kernel/build"
 import { z } from "zod"
 import { Num } from "../../studio/dsl"
 import type { Files } from "./engine"
+import { ta } from "../../lib/agent-lang"
 
 export const ASM_EXT = ".turnery-asm.json"
 /** Assemblies written before the rename from Arbor. */
@@ -52,13 +53,13 @@ export function normalizePath(p: string) {
 export async function loadShared(files: Files, partPath: string, uses: string): Promise<Shared> {
   const path = besides(partPath, uses)
   const text = await files.read(path)
-  if (text === null) return { path, file: uses, params: {}, notes: {}, error: `共享参数文件 ${uses} 读不到（${path}）`, text }
+  if (text === null) return { path, file: uses, params: {}, notes: {}, error: ta(`共享参数文件 ${uses} 读不到（${path}）`, `Can’t read the shared parameter file ${uses} (${path})`), text }
   try {
     const parsed = SharedFile.safeParse(JSON.parse(text))
-    if (!parsed.success) return { path, file: uses, params: {}, notes: {}, error: `共享参数文件 ${uses} 格式不对：要写成 { "params": { … }, "paramNotes": { … } }`, text }
+    if (!parsed.success) return { path, file: uses, params: {}, notes: {}, error: ta(`共享参数文件 ${uses} 格式不对：要写成 { "params": { … }, "paramNotes": { … } }`, `The shared parameter file ${uses} has the wrong format: write it as { "params": { … }, "paramNotes": { … } }`), text }
     return { path, file: uses, params: parsed.data.params, notes: parsed.data.paramNotes ?? {}, text }
   } catch (e) {
-    return { path, file: uses, params: {}, notes: {}, error: `共享参数文件 ${uses} 不是合法的 JSON：${(e as Error).message}`, text }
+    return { path, file: uses, params: {}, notes: {}, error: ta(`共享参数文件 ${uses} 不是合法的 JSON：${(e as Error).message}`, `The shared parameter file ${uses} is not valid JSON: ${(e as Error).message}`), text }
   }
 }
 
@@ -107,7 +108,7 @@ export async function gather(files: Files, path: string, tree: Tree, stack: stri
       const abs = besides(path, name)
       const st = await stamp(abs)
       const bytes = st && read ? ((await files.readBytes?.(abs)) ?? null) : null
-      return { name, bytes, error: bytes ? undefined : `找不到 ${abs}（路径相对零件文件所在的文件夹）` }
+      return { name, bytes, error: bytes ? undefined : ta(`找不到 ${abs}（路径相对零件文件所在的文件夹）`, `Can’t find ${abs} (paths are relative to the folder the part file is in)`) }
     }),
   )
 
@@ -117,7 +118,7 @@ export async function gather(files: Files, path: string, tree: Tree, stack: stri
     const abs = besides(path, name)
     const st = await stamp(abs)
     if (!st) {
-      components.push({ file: name, error: `找不到 ${abs}（路径相对装配文件所在的文件夹）` })
+      components.push({ file: name, error: ta(`找不到 ${abs}（路径相对装配文件所在的文件夹）`, `Can’t find ${abs} (paths are relative to the folder the assembly file is in)`) })
       continue
     }
     if (isStep(name)) {
@@ -125,21 +126,22 @@ export async function gather(files: Files, path: string, tree: Tree, stack: stri
       continue
     }
     if (stack.includes(abs) || abs === path) {
-      components.push({ file: name, error: `循环引用：${[...stack, path, abs].map((p) => p.split(/[\\/]/).pop()).join(" → ")}` })
+      const chain = [...stack, path, abs].map((p) => p.split(/[\\/]/).pop()).join(" → ")
+      components.push({ file: name, error: ta(`循环引用：${chain}`, `Circular reference: ${chain}`) })
       continue
     }
     if (stack.length + 1 > MAX_DEPTH) {
-      components.push({ file: name, error: `装配最多套 ${MAX_DEPTH} 层` })
+      components.push({ file: name, error: ta(`装配最多套 ${MAX_DEPTH} 层`, `Assemblies nest at most ${MAX_DEPTH} levels deep`) })
       continue
     }
     const text = await files.read(abs)
     let parsed: Tree
     try {
       const t = Tree.safeParse(JSON.parse(text ?? ""))
-      if (!t.success) throw new Error(t.error.issues.map((i) => `${i.path.join(".") || "（根）"} ${i.message}`).join("；"))
+      if (!t.success) throw new Error(t.error.issues.map((i) => `${i.path.join(".") || ta("（根）", "(root)")} ${i.message}`).join(ta("；", "; ")))
       parsed = t.data
     } catch (e) {
-      components.push({ file: name, error: `${name} 不是合法的特征树：${(e as Error).message}` })
+      components.push({ file: name, error: ta(`${name} 不是合法的特征树：${(e as Error).message}`, `${name} is not a valid feature tree: ${(e as Error).message}`) })
       continue
     }
     let shared: Shared | null = null

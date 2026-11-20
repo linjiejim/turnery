@@ -7,6 +7,7 @@ import { num, type Scope } from "../expr"
 import { dimSource, dimText, type DimKind, type DimSource } from "../dim-source"
 import { fieldLabel } from "../param-uses"
 import { standardHole } from "../holes"
+import { ta } from "../../lib/agent-lang"
 
 type V3 = [number, number, number]
 type V2 = [number, number]
@@ -110,7 +111,7 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
       const key = `${axis}:${typeof raw === "string" ? raw.trim() : v}`
       if (seen.has(key)) return
       seen.add(key)
-      const label = `${path.includes("center") ? "中心" : path[0] === "at" ? "孔位" : "轮廓点"} ${axis}`
+      const label = `${path.includes("center") ? ta("中心", "Center") : path[0] === "at" ? ta("孔位", "Hole position") : ta("轮廓点", "Outline point")} ${axis}`
       if (axis === "x") push(path, "linear", raw, line(P(0, p[1]), P(p[0], p[1]), mul(y, 0.4 * off * Math.sign(p[1] || 1))), { label })
       else push(path, "linear", raw, line(P(p[0], 0), P(p[0], p[1]), mul(x, 0.4 * off * Math.sign(p[0] || 1))), { label })
     }
@@ -140,7 +141,7 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
         case "polygon": {
           const r = n(s.d) / 2
           push([...base, "d"], "diameter", s.d, leader(P(c[0] + r * Math.SQRT1_2, c[1] + r * Math.SQRT1_2), add(x, y)), {
-            words: s.type === "polygon" ? `${n(s.sides)} 边 ` : undefined,
+            words: s.type === "polygon" ? ta(`${n(s.sides)} 边 `, `${n(s.sides)} sides `) : undefined,
           })
           center()
           break
@@ -153,13 +154,13 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
           const wid = n(s.width)
           const end = (k: number, side: number): V2 => [c[0] + (u[0] * len * k) / 2 + (v[0] * wid * side) / 2, c[1] + (u[1] * len * k) / 2 + (v[1] * wid * side) / 2]
           const dir3 = (d: V2): V3 => add(mul(x, d[0]), mul(y, d[1]))
-          push([...base, "length"], "linear", s.length, line(P(...end(-1, -1)), P(...end(1, -1)), mul(dir3(v), -off)), { words: "长 " })
-          push([...base, "width"], "linear", s.width, line(P(...end(1, -1)), P(...end(1, 1)), mul(dir3(u), off)), { words: "宽 " })
+          push([...base, "length"], "linear", s.length, line(P(...end(-1, -1)), P(...end(1, -1)), mul(dir3(v), -off)), { words: ta("长 ", "Length ") })
+          push([...base, "width"], "linear", s.width, line(P(...end(1, -1)), P(...end(1, 1)), mul(dir3(u), off)), { words: ta("宽 ", "Width ") })
           center()
           break
         }
         case "text":
-          push([...base, "size"], "callout", s.size, leader(P(c[0], c[1]), y), { words: "字号 " })
+          push([...base, "size"], "callout", s.size, leader(P(c[0], c[1]), y), { words: ta("字号 ", "Size ") })
           center()
           break
         case "polyline":
@@ -184,13 +185,13 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
     const a = add(g.start, add(mul(x, hi[0]), mul(y, lo[1])))
     if (f.distance !== undefined) push(["distance"], "linear", f.distance, line(a, add(a, mul(g.dir, n(f.distance))), mul(unit(sub(x, y)), off)))
     const corner = add(g.start, add(mul(x, lo[0]), mul(y, hi[1])))
-    if (f.thin) push(["thin", "t"], "callout", f.thin.t, leader(corner, sub(y, x)), { words: "壁厚 " })
-    if (f.draft !== undefined) push(["draft"], "angle", f.draft, leader(add(corner, mul(g.dir, 0.5 * off)), sub(y, x)), { words: "拔模 " })
+    if (f.thin) push(["thin", "t"], "callout", f.thin.t, leader(corner, sub(y, x)), { words: ta("壁厚 ", "Wall ") })
+    if (f.draft !== undefined) push(["draft"], "angle", f.draft, leader(add(corner, mul(g.dir, 0.5 * off)), sub(y, x)), { words: ta("拔模 ", "Draft ") })
     return out
   }
 
   if (f.op === "rib" && g.op === "faces") {
-    push(["t"], "callout", f.t, leader(g.at, g.out), { words: "筋厚 " })
+    push(["t"], "callout", f.t, leader(g.at, g.out), { words: ta("筋厚 ", "Rib ") })
     return out
   }
 
@@ -206,7 +207,7 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
   }
 
   if (f.op === "shell" && g.op === "shell") {
-    push(["t"], "linear", f.t, line(g.at, add(g.at, mul(g.inward, n(f.t))), mul(g.out, 0.6 * off)), { words: "壁厚 " })
+    push(["t"], "linear", f.t, line(g.at, add(g.at, mul(g.inward, n(f.t))), mul(g.out, 0.6 * off)), { words: ta("壁厚 ", "Wall ") })
     return out
   }
 
@@ -218,7 +219,8 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
     if (f.standard) {
       const std = standardHole(f.standard)
       push(["standard"], "callout", 0, leader(rim, add(x, y)), { value: std.d, source: { type: "literal" }, editable: false })
-      out[out.length - 1].text = `${count > 1 ? `${count}×` : ""}${std.label.replace(/（.*）/, "")}`
+      // Without the numbers in brackets (holes.ts, either language).
+      out[out.length - 1].text = `${count > 1 ? `${count}×` : ""}${std.label.replace(/（.*）| \(.*\)/, "")}`
     } else if (f.d !== undefined) {
       push(["d"], "diameter", f.d, leader(rim, add(x, y)), { count })
       if (f.depth !== undefined) out[out.length - 1].text += ` ↧${n(f.depth)}`
@@ -259,11 +261,12 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
         // Editable through its parameter only: the field holds a radius, the label a diameter.
         push(["pcd"], "diameter", 0, { type: "circle", center: foot, normal: axis, r }, { value, source, editable: source.type === "param" || source.type === "factor" })
         const last = out[out.length - 1]
-        last.label = source.type === "param" ? (ctx.tree.paramNotes?.[source.name] ?? "节圆直径") : "节圆直径"
+        const pcd = ta("节圆直径", "Pitch circle diameter")
+        last.label = source.type === "param" ? (ctx.tree.paramNotes?.[source.name] ?? pcd) : pcd
       }
       push(["count"], "count", f.count, leader(foot, axis), { words: "", count: 1 })
       const cnt = out[out.length - 1]
-      cnt.text = `${n(f.count)}× 均布${cnt.source.type === "param" ? `（${(cnt.source as { name: string }).name}）` : ""}`
+      cnt.text = `${n(f.count)}× ${ta("均布", "equally spaced")}${cnt.source.type === "param" ? `（${(cnt.source as { name: string }).name}）` : ""}`
     }
     return out
   }
@@ -271,12 +274,12 @@ function featureDims(f: Feature, g: StepGeom, ctx: Ctx, pitched: Set<string>): D
   if (f.op === "linear_pattern" && g.op === "pattern" && g.seed) {
     const step = mul(DIRS[f.dir], n(f.spacing))
     const side = Math.abs(DIRS[f.dir][2]) > 0.9 ? ([1, 0, 0] as V3) : ([0, 0, 1] as V3)
-    push(["spacing"], "linear", f.spacing, line(g.seed, add(g.seed, step), mul(side, 0.6 * off)), { words: `${n(f.count)}× 间距 ` })
+    push(["spacing"], "linear", f.spacing, line(g.seed, add(g.seed, step), mul(side, 0.6 * off)), { words: ta(`${n(f.count)}× 间距 `, `${n(f.count)}× spacing `) })
     return out
   }
 
   if (f.op === "draft" && g.op === "faces") {
-    push(["angle"], "angle", f.angle, leader(g.at, g.out), { words: "拔模 " })
+    push(["angle"], "angle", f.angle, leader(g.at, g.out), { words: ta("拔模 ", "Draft ") })
     return out
   }
   return out
@@ -300,5 +303,5 @@ function planeOffset(
   if (!on || on.offset === undefined || on.face) return
   const d = n(on.offset)
   if (Math.abs(d) < 1e-9) return
-  push(path, "linear", on.offset, line(sub(plane.origin, mul(plane.normal, d)), plane.origin, mul(plane.x, -off)), { words: "偏移 " })
+  push(path, "linear", on.offset, line(sub(plane.origin, mul(plane.normal, d)), plane.origin, mul(plane.x, -off)), { words: ta("偏移 ", "Offset ") })
 }

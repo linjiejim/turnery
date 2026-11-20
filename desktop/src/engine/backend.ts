@@ -8,6 +8,7 @@ import type { CallContext, CommandResult } from "../../../app/src/desktop/core/p
 import { readAppInfo, readEngineInfo, type EngineInfo } from "./home"
 import { startEngine } from "./host"
 import type { CallBody } from "./rpc"
+import { ta } from "../../../app/src/lib/agent-lang"
 
 export type Ctx = Omit<CallContext, "actor"> & { actor?: "agent" | "assistant" }
 
@@ -53,7 +54,7 @@ class AppBackend implements Backend {
       headers: { "content-type": "application/json", authorization: `Bearer ${this.info.token}` },
       body: JSON.stringify({ command, input, ctx } satisfies CallBody),
     })
-    if (!res.ok) throw new Error(`Turnery 返回 HTTP ${res.status}`)
+    if (!res.ok) throw new Error(ta(`Turnery 返回 HTTP ${res.status}`, `Turnery returned HTTP ${res.status}`))
     return (await res.json()) as CommandResult
   }
   async close() {}
@@ -106,13 +107,13 @@ export async function connect(opts: ConnectOptions): Promise<Backend> {
   const running = await runningApp()
   if (running) return new AppBackend(running)
   if (opts.launch && launchApp(opts.hidden)) {
-    opts.log?.("正在启动 Turnery App…")
+    opts.log?.(ta("正在启动 Turnery App…", "Starting the Turnery app…"))
     const info = await waitForApp(30_000)
     if (info) return new AppBackend(info)
-    opts.log?.("Turnery App 没有在 30 秒内启动")
+    opts.log?.(ta("Turnery App 没有在 30 秒内启动", "The Turnery app didn’t start within 30 seconds"))
   }
   if (opts.fallback) return new LocalBackend(opts.distDir)
-  throw new Error("Turnery App 没在运行。先打开 Turnery（或运行 turnery open），再试一次。")
+  throw new Error(ta("Turnery App 没在运行。先打开 Turnery（或运行 turnery open），再试一次。", "The Turnery app isn’t running. Open Turnery (or run turnery open), then try again."))
 }
 
 /**

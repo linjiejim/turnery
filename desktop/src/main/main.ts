@@ -1,6 +1,7 @@
 // Turnery's main process: one workspace per window (an engine with its own kernel
 // thread, so projects in different windows never wait on each other), the local
 // endpoint the MCP server and CLI talk to, and the windows that show it all.
+import "../lang-boot"
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type OpenDialogOptions, type SaveDialogOptions } from "electron"
 import { copyFileSync, existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs"
 import os from "node:os"
@@ -12,6 +13,7 @@ import { PART_EXT, PRODUCT, type CallContext, type ExportFormat, type KernelCall
 import { addRecentProject, adoptLegacyHome, clearEngineInfo, HOME, PROJECTS_DIR, projectStamp, readRecent, readRecentProjects, readSettings, writeAppInfo, writeEngineInfo, writeSettings } from "../engine/home"
 import { startEngine } from "../engine/host"
 import { setLang, tm } from "./lang"
+import { agentLang, setAgentLang } from "../../../app/src/lib/agent-lang"
 import { serveEngine } from "../engine/rpc"
 import { agentSetup } from "./setup"
 import { wireAssistant } from "./assistant"
@@ -659,7 +661,16 @@ function wireIpc() {
   // A change (switched in one window, which reloaded itself) reloads the other windows too: they share
   // the stored choice but each read it when it loaded.
   ipcMain.handle("turnery:set-language", (e, lang: unknown) => {
-    if (!setLang(lang)) return
+    const l = lang === "en" ? "en" : lang === "zh" ? "zh" : null
+    if (!l) return
+    // What agents read follows the window: live here, and for the next `turnery mcp` and CLI through
+    // the settings (lang-boot.ts).
+    if (agentLang() !== l) {
+      setAgentLang(l)
+      process.env.TURNERY_LANG = l
+    }
+    if (readSettings().lang !== l) writeSettings({ ...readSettings(), lang: l })
+    if (!setLang(l)) return
     refreshMenu()
     for (const w of BrowserWindow.getAllWindows()) if (w.webContents !== e.sender && !w.webContents.isLoading()) w.webContents.reload()
   })

@@ -96,6 +96,13 @@ export function projectStamp(d = new Date()) {
 }
 
 /** The app's own preferences (checkboxes in the app menu; the window zoom). */
-export type AppSettings = { autoUpdate: boolean; zoom?: number; /** The example was opened once on the first start. */ exampleShown?: boolean }
+export type AppSettings = {
+  autoUpdate: boolean
+  zoom?: number
+  /** The example was opened once on the first start. */
+  exampleShown?: boolean
+  /** The window's language, last it said: what the agent reads follows it (lang-boot.ts). */
+  lang?: "zh" | "en"
+}
 export const readSettings = (): AppSettings => ({ autoUpdate: true, ...readJson<Partial<AppSettings>>("settings.json") })
 export const writeSettings = (s: AppSettings) => writeJson("settings.json", s, 0o644)
