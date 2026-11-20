@@ -305,7 +305,7 @@ cd app && npm run bake
 - **随网站发布**：
   - three.js、React、React Router、Radix UI、Tailwind CSS：MIT。
   - Lucide：ISC。
-  - Inter、JetBrains Mono：OFL 1.1。
+  - IBM Plex Sans、IBM Plex Sans SC（子集，改名 Turnery Sans SC）、IBM Plex Mono：OFL 1.1。
   - @salusoft89/planegcs：LGPL-2.1。它是独立的 wasm 文件，只在约束课按需加载；源码见 <https://github.com/Salusoft89/planegcs>。
 - **只在离线烘焙时用，不随网站发布**：
   - build123d：Apache-2.0。

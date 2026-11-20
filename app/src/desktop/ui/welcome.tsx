@@ -69,7 +69,7 @@ export function Welcome({ onSetup }: { onSetup: () => void }) {
         </div>
         {recent.length > 0 && (
           <section aria-label={t("最近的项目", "Recent projects")} className="mt-10 w-full text-left">
-            <h2 className="px-2.5 pb-1.5 text-caption text-faint-foreground">{t("最近的项目", "Recent projects")}</h2>
+            <h2 className="font-sans px-2.5 pb-1.5 text-caption text-faint-foreground">{t("最近的项目", "Recent projects")}</h2>
             <ul className="flex flex-col">
               {recent.map((p) => (
                 <li key={p.root}>
