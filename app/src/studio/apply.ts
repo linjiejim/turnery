@@ -4,7 +4,7 @@
 import { ta } from "../lib/agent-lang"
 import { Check, Feature, OP_NAMES, Tree, displayName, opAgentName, type FeatureOp } from "./dsl"
 import { changeText, isSet, lookText, ownLook, setPartLook, type Finish } from "./appearance"
-import { resolveParams } from "./expr"
+import { reservedParamName, resolveParams } from "./expr"
 import type { BuildReport } from "./kernel/build"
 import { InputError } from "./kernel/errors"
 import type { ToolOutput } from "./tools"
@@ -77,6 +77,8 @@ export function setFieldAt(tree: Tree, id: string, path: (string | number)[], va
 export function promoteToParam(tree: Tree, id: string, path: (string | number)[], name: string, note: string, value: number): Tree {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
     throw new InputError(ta("参数名只能用字母、数字和下划线，不能以数字开头", "A parameter name can only use letters, digits and underscores, and can't start with a digit"))
+  const reserved = reservedParamName(name)
+  if (reserved) throw new InputError(reserved)
   if (name in tree.params) throw new InputError(ta(`已经有参数「${name}」了`, `There is already a parameter “${name}”`))
   const withParam: Tree = { ...tree, params: { ...tree.params, [name]: value }, paramNotes: { ...tree.paramNotes, [name]: note } }
   return setFieldAt(withParam, id, path, name)
@@ -115,6 +117,8 @@ export function applyEdit(tree: Tree, name: string, input: Record<string, unknow
             `The parameter name “${k}” isn't valid: use letters, digits, underscores or Chinese characters, not starting with a digit`,
           ),
         )
+      const reserved = reservedParamName(k)
+      if (reserved) throw new InputError(reserved)
       params[k] = v
     }
     for (const [k, v] of Object.entries((input.notes as Record<string, string>) ?? {})) if (k in params && typeof v === "string") notes[k] = v.trim().slice(0, 60)
@@ -343,9 +347,11 @@ export function bodyLine(report: BuildReport) {
   return ta(`实体：${b.size.join(" × ")} mm，体积 ${r1(b.volume / 1000)} cm³${solids}。`, `Solid: ${b.size.join(" × ")} mm, volume ${r1(b.volume / 1000)} cm³${solids}.`)
 }
 
+const paramErrorLine = (message: string) => ta(`✗ 参数有错：${message}`, `✗ Parameter error: ${message}`)
+
 function resultText(name: string, report: BuildReport, target?: string) {
   const lines: string[] = []
-  if (report.paramError) lines.push(ta(`✗ 参数有错：${report.paramError}`, `✗ Parameter error: ${report.paramError}`))
+  if (report.paramError) lines.push(paramErrorLine(report.paramError))
   if (name === "set_params") {
     const values = Object.entries(report.params).map(([k, v]) => `${k}=${r1(v)}`)
     lines.push(ta(`参数：${values.join("，")}`, `Parameters: ${values.join(", ")}`))
@@ -399,6 +405,8 @@ export function treeText(tree: Tree, report: BuildReport) {
   })
   return [
     ta(`参数：${params || "无"}`, `Parameters: ${params || "none"}`),
+    // Nothing builds while the table doesn't resolve (a file edited by hand): say why.
+    ...(report.paramError ? [paramErrorLine(report.paramError)] : []),
     ...(rows.length ? rows : [ta("（特征树是空的）", "(The feature tree is empty)")]),
     bodyLine(report),
     ...(report.checksPending ? [ta("精确检查正在后台进行，可以继续查看和编辑。", "The exact checks are running in the background; you can keep inspecting and editing.")] : []),

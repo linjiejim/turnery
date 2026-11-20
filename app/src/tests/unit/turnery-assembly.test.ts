@@ -388,6 +388,42 @@ describe("shared parameters and assemblies", () => {
     expect(JSON.parse(disk.get("/work/pen.params.json") as string).params).toEqual({ D: 10, L: "D*6" })
   })
 
+  it("refuses a part's own parameter named floor through set_params, and leaves the part as it was", async () => {
+    const mem = memFiles()
+    const engine = new Engine({ kernel: new DirectKernel(), files: mem.files })
+    const run = (name: string, input: unknown) => engine.run(name, input, AGENT)
+    expect((await run("open_part", { path: "cup.turnery.json", create: true })).ok).toBe(true)
+    const bad = await run("set_params", { set: { floor: 2.4 } })
+    expect(bad.ok).toBe(false)
+    expect(bad.text).toMatch(/✗ 参数名「floor」和表达式函数 floor\(\) 重名，换个名字（如 fl）/)
+    expect(JSON.parse(mem.disk.get("/work/cup.turnery.json") as string).params).toEqual({})
+    const ok = await run("set_params", { set: { bt: 2.4 } })
+    expect(ok.ok, ok.text).toBe(true)
+    const sk = await run("sketch", { id: "s", on: { plane: "XY", offset: "bt" }, shapes: [{ type: "rect", w: 10, h: 10 }] })
+    expect(sk.ok, sk.text).toBe(true)
+  })
+
+  it("names a shared parameter that clashes with an expression function, and lets set_params rename it", async () => {
+    const { run, touch, disk } = await penWorkspace()
+    // Someone adds `floor` to the shared file by hand.
+    await touch("/work/pen.params.json", JSON.stringify({ params: { D: 10, L: 60, floor: 2 } }))
+    const clash = /⚠ 共享参数文件 pen\.params\.json 里：参数名「floor」和表达式函数 floor\(\) 重名，换个名字（如 fl）/
+    const st = await run("get_state", {})
+    expect(st.text).toMatch(clash)
+    expect(st.text).toMatch(/✗ 参数有错：参数名「floor」/)
+    // Setting it is refused with the same words; nothing is written.
+    const bad = await run("set_params", { set: { floor: 3 } })
+    expect(bad.ok).toBe(false)
+    expect(bad.text).toMatch(/参数名「floor」和表达式函数 floor\(\) 重名/)
+    expect(JSON.parse(disk.get("/work/pen.params.json") as string).params.floor).toBe(2)
+    // Removing it and adding a name that works fixes the file.
+    const fix = await run("set_params", { remove: ["floor"], set: { fl: 2 }, shared: true })
+    expect(fix.ok, fix.text).toBe(true)
+    expect(fix.text).not.toMatch(/重名/)
+    expect(JSON.parse(disk.get("/work/pen.params.json") as string).params).toEqual({ D: 10, L: 60, fl: 2 })
+    expect((await run("get_state", {})).text).not.toMatch(/重名/)
+  })
+
   it("keeps a single component a named part: measured by name, hidden when asked", async () => {
     const mem = memFiles()
     const engine = new Engine({ kernel: new DirectKernel(), files: mem.files })

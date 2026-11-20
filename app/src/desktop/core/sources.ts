@@ -8,6 +8,7 @@ import { z } from "zod"
 import { Num } from "../../studio/dsl"
 import type { Files } from "./engine"
 import { ta } from "../../lib/agent-lang"
+import { reservedParamName } from "../../studio/expr"
 
 export const ASM_EXT = ".turnery-asm.json"
 /** Assemblies written before the rename from Arbor. */
@@ -72,6 +73,19 @@ export function effectiveTree(tree: Tree, shared: Shared | null): Tree {
 /** Own parameters a shared file overrides (named in a warning). */
 export function shadowed(tree: Tree, shared: Shared | null) {
   return shared && !shared.error ? Object.keys(tree.params).filter((k) => k in shared.params) : []
+}
+
+/**
+ * A name in the shared file that an expression reserves (floor, pi…): the same hint set_params gives,
+ * naming the file. The parts using it fail to rebuild until it's renamed.
+ */
+export function sharedNameClash(shared: Shared | null) {
+  if (!shared || shared.error) return undefined
+  for (const k of Object.keys(shared.params)) {
+    const why = reservedParamName(k)
+    if (why) return ta(`共享参数文件 ${shared.file} 里：${why}`, `In the shared parameter file ${shared.file}: ${why}`)
+  }
+  return undefined
 }
 
 export function sharedText(s: Pick<Shared, "params" | "notes">) {
