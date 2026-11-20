@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest"
 import { getOC } from "replicad"
 import type { UIMessage } from "ai"
-import { applyEdit, executeTool, moveFeature, promoteToParam, replaceFeature, setFieldAt, type KernelPort } from "@/studio/apply"
+import { applyEdit, executeTool, moveFeature, promoteToParam, replaceFeature, setFieldAt, treeText, type KernelPort } from "@/studio/apply"
 import { toBuild123d } from "@/studio/codegen"
 import { EMPTY_TREE, type Tree } from "@/studio/dsl"
-import { evaluate, resolveParams } from "@/studio/expr"
+import { CONST_NAMES, FUNC_NAMES, evaluate, reservedParamName, resolveParams } from "@/studio/expr"
+import { setAgentLang } from "@/lib/agent-lang"
 import { Kernel } from "@/studio/kernel/build"
 import { initNodeKernel } from "@/studio/kernel/node"
 import { trimMessages } from "@/studio/trim"
@@ -34,6 +35,37 @@ describe("parameter expressions", () => {
     expect(resolveParams({ inner: "outer - 2*t", outer: 50, t: 2 })).toEqual({ inner: 46, outer: 50, t: 2 })
     expect(() => resolveParams({ a: "b", b: "a" })).toThrow(/循环/)
     expect(() => resolveParams({ a: "nope + 1" })).toThrow(/nope/)
+  })
+
+  it("refuses parameters named like an expression function or constant, and says why", () => {
+    const clash = /参数名「floor」和表达式函数 floor\(\) 重名，换个名字（如 fl）/
+    expect(() => applyEdit(EMPTY_TREE, "set_params", { set: { floor: 2.4 } })).toThrow(clash)
+    expect(() => applyEdit(EMPTY_TREE, "set_params", { set: { pi: 3 } })).toThrow(/参数名「pi」和表达式常数 pi 重名，换个名字（如 pi_）/)
+    // A file edited by hand never gets that far: resolving its table fails with the same words.
+    expect(() => resolveParams({ floor: 2.4, H: "floor + 1" })).toThrow(clash)
+    for (const name of [...FUNC_NAMES, ...CONST_NAMES]) {
+      expect(reservedParamName(name), name).toBeDefined()
+      expect(() => applyEdit(EMPTY_TREE, "set_params", { set: { [name]: 1 } }), name).toThrow(/重名/)
+    }
+    // Names that only look alike are fine.
+    const ok = { fl: 2.4, floor_t: 1, Floor: 2, pie: 3, sqrt2: "sqrt(2)", 底厚: "floor(fl)" }
+    expect(applyEdit(EMPTY_TREE, "set_params", { set: ok }).tree.params).toEqual(ok)
+    expect(evaluate("floor(fl) + sqrt2", resolveParams(ok))).toBeCloseTo(2 + Math.SQRT2)
+    // A bare function name in an expression is the function, missing its parentheses.
+    expect(() => evaluate("floor", { fl: 2.4 })).toThrow(/「floor」是表达式函数，要带括号，如 floor\(x\)/)
+    expect(() => promoteToParam(EMPTY_TREE, "x", ["d"], "min", "", 1)).toThrow(/参数名「min」和表达式函数 min\(\) 重名/)
+  })
+
+  it("says the same in English", () => {
+    setAgentLang("en")
+    try {
+      expect(() => applyEdit(EMPTY_TREE, "set_params", { set: { floor: 2.4 } })).toThrow(
+        "The parameter name “floor” clashes with the expression function floor(): pick another name (e.g. fl)",
+      )
+      expect(() => evaluate("floor", {})).toThrow(/“floor” is an expression function and needs parentheses/)
+    } finally {
+      setAgentLang("zh")
+    }
   })
 })
 
@@ -92,6 +124,22 @@ describe("kernel", () => {
     const rep = k.rebuild({ ...box, params: { ...box.params, r: 30 } })
     expect(rep.features.map((f) => f.state)).toEqual(["ok", "ok", "error", "skipped", "skipped"])
     expect(rep.features[2].hint).toMatch(/半径/)
+  })
+
+  it("names a parameter that clashes with an expression function when the file was edited by hand", () => {
+    // The repro: a floor thickness called `floor`, used as a sketch plane's offset.
+    const tree: Tree = {
+      params: { floor: 2.4 },
+      features: [{ id: "sk", op: "sketch", on: { plane: "XY", offset: "floor" }, shapes: [{ type: "rect", w: 10, h: 10 }] }],
+    }
+    const rep = k.rebuild(tree)
+    expect(rep.paramError).toMatch(/参数名「floor」和表达式函数 floor\(\) 重名，换个名字（如 fl）/)
+    expect(rep.features[0].state).toBe("skipped")
+    // What get_state prints says why nothing built.
+    expect(treeText(tree, rep)).toMatch(/\n✗ 参数有错：参数名「floor」和表达式函数 floor\(\) 重名/)
+    const fixed = k.rebuild({ params: { fl: 2.4 }, features: [{ ...tree.features[0], on: { plane: "XY", offset: "fl" } } as Tree["features"][number]] })
+    expect(fixed.paramError).toBeUndefined()
+    expect(fixed.features[0].state).toBe("ok")
   })
 
   it("lists candidates when a selector picks the wrong number of edges", async () => {

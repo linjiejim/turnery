@@ -69,6 +69,19 @@ const isConst = (name: string) => Object.hasOwn(CONSTS, name)
 export const FUNC_NAMES = Object.keys(FUNCS)
 export const CONST_NAMES = Object.keys(CONSTS)
 
+/**
+ * Why a parameter can't be called `name` (undefined: it can). An expression reads `floor` as the
+ * function and `pi` as the constant, so a parameter by that name could never be referenced.
+ */
+export function reservedParamName(name: string): string | undefined {
+  if (!isFunc(name) && !isConst(name)) return undefined
+  const short = name.slice(0, 2)
+  const alt = isFunc(short) || isConst(short) ? `${name}_` : short
+  return isFunc(name)
+    ? ta(`参数名「${name}」和表达式函数 ${name}() 重名，换个名字（如 ${alt}）`, `The parameter name “${name}” clashes with the expression function ${name}(): pick another name (e.g. ${alt})`)
+    : ta(`参数名「${name}」和表达式常数 ${name} 重名，换个名字（如 ${alt}）`, `The parameter name “${name}” clashes with the expression constant ${name}: pick another name (e.g. ${alt})`)
+}
+
 /** Names referenced by an expression (for dependency order and "unknown parameter" errors). */
 export function namesIn(src: string): string[] {
   return lex(unquote(src))
@@ -140,6 +153,8 @@ export function parse(raw: string): ExprNode {
     }
     if (t.t === "id") {
       if (!isFunc(t.v)) return { k: "name", v: t.v }
+      // A bare `floor` reads as the function, never a parameter: say so rather than "incomplete".
+      if (!isOp("(")) throw new ExprError(ta(`「${t.v}」是表达式函数，要带括号，如 ${t.v}(x)：${src}`, `“${t.v}” is an expression function and needs parentheses, as in ${t.v}(x): ${src}`))
       eat("(")
       const args = [expr()]
       while (isOp(",")) {
@@ -195,9 +210,13 @@ export function num(v: NumLike, scope: Scope): number {
 
 /**
  * Resolve a parameter table where values may reference other parameters, in
- * dependency order. Throws on unknown names and cycles.
+ * dependency order. Throws on unknown names, cycles and names an expression reserves.
  */
 export function resolveParams(params: Record<string, NumLike>): Scope {
+  for (const name of Object.keys(params)) {
+    const reserved = reservedParamName(name)
+    if (reserved) throw new ExprError(reserved)
+  }
   const scope: Scope = {}
   const visiting = new Set<string>()
   const visit = (name: string) => {

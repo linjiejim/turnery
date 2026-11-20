@@ -37,7 +37,7 @@ import { InputError } from "../../studio/kernel/errors"
 import type { MeasureResult, MeasureSpec } from "../../studio/kernel/measure"
 import { STARTERS } from "../../studio/starters"
 import { resolveParams } from "../../studio/expr"
-import { ASM_EXT, asmExtOf, besides, effectiveTree, gather, isAssembly, loadShared, shadowed, sharedText, type Shared } from "./sources"
+import { ASM_EXT, asmExtOf, besides, effectiveTree, gather, isAssembly, loadShared, shadowed, sharedNameClash, sharedText, type Shared } from "./sources"
 import { baseName, canBeRoot, dirName, inside, isAssemblyFile, partFileName, projectSkeleton, relativePath, rootFor, scanProject, stripEnding, type Scan, type ScanCache } from "./project"
 import { DESKTOP_TOOLS, STUDIO_TOOLS } from "../../studio/tools"
 import { AGENT_GUIDE, COMMAND } from "./catalog"
@@ -734,6 +734,8 @@ export class Engine {
     } else lines.push(treeText(doc.tree, doc.report!))
     const shadow = shadowed(doc.tree, doc.shared)
     if (shadow.length) lines.push(shadowWarning(shadow))
+    const clash = sharedNameClash(doc.shared)
+    if (clash) lines.push(`⚠ ${clash}`)
     return { ok: this.allOk(doc), text: lines.join("\n") }
   }
 
@@ -813,7 +815,8 @@ export class Engine {
       `已用共享参数文件 ${file}（${count} 个参数）。别的零件和装配写同一个 uses（share_params）就共用这些尺寸；改它们用 set_params，会写回这个文件。`,
       `Now using the shared parameter file ${file} (${plural(count, "parameter")}). Other parts and assemblies that write the same uses (share_params) share these dimensions. Change them with set_params: it writes back to this file.`,
     )
-    return { ok: this.allOk(doc), text: `${using}${shadow.length ? `\n${shadowWarning(shadow)}` : ""}\n${treeText(doc.tree, doc.report!)}` }
+    const clash = sharedNameClash(doc.shared)
+    return { ok: this.allOk(doc), text: `${using}${shadow.length ? `\n${shadowWarning(shadow)}` : ""}${clash ? `\n⚠ ${clash}` : ""}\n${treeText(doc.tree, doc.report!)}` }
   }
 
   /** A whole tree from the window (it shows shared parameters in the table): those go back to the shared file. */
@@ -1983,6 +1986,8 @@ export class Engine {
     }
     const shadow = shadowed(doc.tree, doc.shared)
     if (shadow.length) lines.push(shadowWarning(shadow))
+    const clash = sharedNameClash(doc.shared)
+    if (clash) lines.push(`⚠ ${clash}`)
     if (doc.context) {
       const refs = (report.refs ?? []).map((r) => r.name)
       lines.push(ta(`在装配「${partName(doc.context)}」里编辑：其他零件 ${refs.join("、") || "（没有）"} 半透明显示，只读`, `Editing inside the assembly “${partName(doc.context)}”: the other parts ${refs.join(", ") || "(none)"} are shown see-through, read-only`))
