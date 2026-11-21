@@ -120,7 +120,7 @@ export function CommunityPage() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "projects" | "collections")}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <TabsList>
+          <TabsList className="shrink-0 overflow-visible">
             <TabsTrigger value="projects">
               {t(`作品 (${totalProjects})`, `Projects (${totalProjects})`)}
             </TabsTrigger>
