@@ -2,479 +2,493 @@
 // input. The MCP server lists the agent's ones as tools, the CLI exposes them
 // as `turnery call <name>`, and the window uses the user's ones over IPC.
 //
-// Descriptions and the guide are in the agent's language (lib/agent-lang.ts), fixed when this module
-// loads: `turnery mcp` and the CLI settle the language before any import (desktop/src/lang-boot.ts).
+// Descriptions and the guide are in the agent's language (lib/agent-lang.ts): COMMANDS and AGENT_GUIDE
+// are fixed when this module loads (`turnery mcp` and the CLI settle the language before any import,
+// desktop/src/lang-boot.ts); the website's server asks for each language with commandsIn / guideIn.
 import { z } from "zod"
-import { type AgentLang, ta } from "../../lib/agent-lang"
+import { type AgentLang, agentLang, ta, withAgentLang } from "../../lib/agent-lang"
 import { EdgeSelector, FaceSelector, Num, PlaneRef, Tree } from "../../studio/dsl"
 import { Color, Finish } from "../../studio/appearance"
 import { systemPrompt } from "../../studio/prompt"
 import { STARTERS } from "../../studio/starters"
-import { DESKTOP_TOOLS, STUDIO_TOOLS } from "../../studio/tools"
+import { desktopTools, studioTools as webTools } from "../../studio/tools"
 
 /** agent: MCP / CLI; user: only the window; both: either. */
 export type Audience = "agent" | "user" | "both"
 
 export type CommandSpec = { name: string; description: string; input: z.ZodObject; audience: Audience }
 
-const Target = z
-  .object({
-    face: FaceSelector.optional(),
-    edge: EdgeSelector.optional(),
-    feature: z.string().optional().describe(ta("这个特征生成和修改的、现在仍存在的所有面（特征 id）", "Every face this feature created or modified that still exists (a feature id)")),
-    part: z.string().optional().describe(ta("一个零件、参考体，或在装配里改零件时上下文里的零件（名字）", "A part, a reference body, or, when editing a part in an assembly, a part of the context (by name)")),
-  })
-  .describe(
-    ta(
-      "量哪里：一个面（face）或一条边（edge，选择器要正好选中一个），一个特征的面（feature），或一个零件（part）",
-      "What to measure: a face (face) or an edge (edge; the selector must select exactly one), a feature's faces (feature), or a part (part)",
-    ),
-  )
-const V3 = z.tuple([z.number(), z.number(), z.number()])
-const VIEWS = ["iso", "front", "top", "right", "back", "bottom", "left"] as const
+/** The commands with their descriptions in the agent's language when this runs (see commandsIn). */
+function build(): CommandSpec[] {
+  const Target = z
+    .object({
+      face: FaceSelector.optional(),
+      edge: EdgeSelector.optional(),
+      feature: z.string().optional().describe(ta("这个特征生成和修改的、现在仍存在的所有面（特征 id）", "Every face this feature created or modified that still exists (a feature id)")),
+      part: z.string().optional().describe(ta("一个零件、参考体，或在装配里改零件时上下文里的零件（名字）", "A part, a reference body, or, when editing a part in an assembly, a part of the context (by name)")),
+    })
+    .describe(
+      ta(
+        "量哪里：一个面（face）或一条边（edge，选择器要正好选中一个），一个特征的面（feature），或一个零件（part）",
+        "What to measure: a face (face) or an edge (edge; the selector must select exactly one), a feature's faces (feature), or a part (part)",
+      ),
+    )
+  const V3 = z.tuple([z.number(), z.number(), z.number()])
+  const VIEWS = ["iso", "front", "top", "right", "back", "bottom", "left"] as const
 
-/** Modelling tools of the web studio, as they are (look is replaced below: here it renders in the window). */
-const studioTools: CommandSpec[] = Object.entries({ ...STUDIO_TOOLS, ...DESKTOP_TOOLS })
-  // look renders in the window here; set_appearance also writes an assembly's part files (both below).
-  .filter(([name]) => name !== "look" && name !== "set_appearance")
-  .map(([name, t]) => ({ name, description: typeof t.description === "string" ? t.description : "", input: t.inputSchema as z.ZodObject, audience: "both" as const }))
+  /** Modelling tools of the web studio, as they are (look is replaced below: here it renders in the window). */
+  const studioTools: CommandSpec[] = Object.entries({ ...webTools(), ...desktopTools() })
+    // look renders in the window here; set_appearance also writes an assembly's part files (both below).
+    .filter(([name]) => name !== "look" && name !== "set_appearance")
+    .map(([name, t]) => ({ name, description: typeof t.description === "string" ? t.description : "", input: t.inputSchema as z.ZodObject, audience: "both" as const }))
 
-const own: CommandSpec[] = [
-  {
-    name: "guide",
-    audience: "agent",
-    description: ta(
-      "Turnery 的建模说明：工作流程、坐标约定、选择器写法。第一次用 Turnery 时先读一遍。",
-      "Turnery's modeling guide: the workflow, coordinate conventions, how to write selectors. Read it once the first time you use Turnery.",
-    ),
-    input: z.object({}),
-  },
-  {
-    name: "open_part",
-    audience: "both",
-    description: ta(
-      "打开一个零件文件（*.turnery.json，就是特征树 JSON）或装配文件（*.turnery-asm.json），之后的命令都作用在它上面；Turnery 窗口会切到它。文件不存在时要新建就设 create=true，可以用 template 从现成的特征树开始。写 context（装配文件）就是在装配里改这个零件：装配里的其他零件按相对位置半透明地显示在旁边，可以 look、measure、check 它们（只读）；不写 context 再打开一次就退出。",
-      "Open a part file (*.turnery.json, which is the feature tree JSON) or an assembly file (*.turnery-asm.json); the commands after it act on it, and the Turnery window switches to it. To create the file when it doesn't exist, set create=true; template starts it from a ready-made feature tree. Writing context (an assembly file) edits this part in that assembly: the assembly's other parts show alongside it, semi-transparent, in their relative positions, and you can look, measure and check them (read-only); open it again without context to leave.",
-    ),
-    input: z.object({
-      path: z
-        .string()
-        .describe(
-          ta(
-            "零件文件路径，相对当前目录或绝对路径，例如 parts/box.turnery.json；装配用 .turnery-asm.json 结尾",
-            "Part file path, relative to the current directory or absolute, e.g. parts/box.turnery.json; an assembly ends in .turnery-asm.json",
+  const own: CommandSpec[] = [
+    {
+      name: "guide",
+      audience: "agent",
+      description: ta(
+        "Turnery 的建模说明：工作流程、坐标约定、选择器写法。第一次用 Turnery 时先读一遍。",
+        "Turnery's modeling guide: the workflow, coordinate conventions, how to write selectors. Read it once the first time you use Turnery.",
+      ),
+      input: z.object({}),
+    },
+    {
+      name: "open_part",
+      audience: "both",
+      description: ta(
+        "打开一个零件文件（*.turnery.json，就是特征树 JSON）或装配文件（*.turnery-asm.json），之后的命令都作用在它上面；Turnery 窗口会切到它。文件不存在时要新建就设 create=true，可以用 template 从现成的特征树开始。写 context（装配文件）就是在装配里改这个零件：装配里的其他零件按相对位置半透明地显示在旁边，可以 look、measure、check 它们（只读）；不写 context 再打开一次就退出。",
+        "Open a part file (*.turnery.json, which is the feature tree JSON) or an assembly file (*.turnery-asm.json); the commands after it act on it, and the Turnery window switches to it. To create the file when it doesn't exist, set create=true; template starts it from a ready-made feature tree. Writing context (an assembly file) edits this part in that assembly: the assembly's other parts show alongside it, semi-transparent, in their relative positions, and you can look, measure and check them (read-only); open it again without context to leave.",
+      ),
+      input: z.object({
+        path: z
+          .string()
+          .describe(
+            ta(
+              "零件文件路径，相对当前目录或绝对路径，例如 parts/box.turnery.json；装配用 .turnery-asm.json 结尾",
+              "Part file path, relative to the current directory or absolute, e.g. parts/box.turnery.json; an assembly ends in .turnery-asm.json",
+            ),
           ),
-        ),
-      create: z.boolean().optional().describe(ta("文件不存在时新建", "Create the file if it doesn't exist")),
-      context: z
-        .string()
-        .optional()
-        .describe(
-          ta(
-            "在这个装配（.turnery-asm.json）里改这个零件：装配里要有一个 component 的 file 是它",
-            "Edit this part in this assembly (.turnery-asm.json): the assembly must have a component whose file is this part",
+        create: z.boolean().optional().describe(ta("文件不存在时新建", "Create the file if it doesn't exist")),
+        context: z
+          .string()
+          .optional()
+          .describe(
+            ta(
+              "在这个装配（.turnery-asm.json）里改这个零件：装配里要有一个 component 的 file 是它",
+              "Edit this part in this assembly (.turnery-asm.json): the assembly must have a component whose file is this part",
+            ),
           ),
-        ),
-      template: z
-        .enum(STARTERS.map((s) => s.id) as [string, ...string[]])
-        .optional()
-        .describe(
-          ta(
-            `新建时用的现成特征树：${STARTERS.map((s) => `${s.id}（${s.title}）`).join("；")}`,
-            `A ready-made feature tree to start from when creating: ${STARTERS.map((s) => `${s.id} (${s.title})`).join("; ")}`,
+        template: z
+          .enum(STARTERS.map((s) => s.id) as [string, ...string[]])
+          .optional()
+          .describe(
+            ta(
+              `新建时用的现成特征树：${STARTERS.map((s) => `${s.id}（${s.title}）`).join("；")}`,
+              `A ready-made feature tree to start from when creating: ${STARTERS.map((s) => `${s.id} (${s.title})`).join("; ")}`,
+            ),
           ),
-        ),
-    }),
-  },
-  {
-    name: "open_project",
-    audience: "both",
-    description: ta(
-      "把一个文件夹作为项目打开：窗口左栏列出里面的装配和零件。create=true 时新建这个文件夹，并放一个同名的空装配（*.turnery-asm.json）和共享参数文件（*.params.json），然后打开装配。多个零件组成的东西先建项目。",
-      "Open a folder as a project: the window's left sidebar lists the assemblies and parts in it. With create=true, create the folder, put in it an empty assembly (*.turnery-asm.json) and a shared parameter file (*.params.json) of the same name, then open the assembly. For a thing made of several parts, create a project first.",
-    ),
-    input: z.object({
-      path: z.string().describe(ta("项目文件夹，相对当前目录或绝对路径，例如 pen", "Project folder, relative to the current directory or absolute, e.g. pen")),
-      create: z.boolean().optional().describe(ta("文件夹不存在或还没有装配时新建", "Create it if the folder doesn't exist or has no assembly yet")),
-    }),
-  },
-  {
-    name: "list_parts",
-    audience: "both",
-    description: ta(
-      "列出当前项目里的全部装配和零件（打开着的标出来）；没有项目时列出打开的零件。路径、特征数、未处理的备注数，以及哪个是当前零件。",
-      "List every assembly and part in the current project (open ones marked); without a project, list the open parts. Paths, feature counts, open note counts, and which one is the current part.",
-    ),
-    input: z.object({}),
-  },
-  {
-    name: "get_state",
-    audience: "both",
-    description: ta(
-      "当前零件的完整状态：参数、特征树和每步结果、实体尺寸、未处理的备注、最近谁改了什么。",
-      "The current part's full state: parameters, the feature tree and each step's result, solid dimensions, open notes, who changed what recently.",
-    ),
-    input: z.object({}),
-  },
-  {
-    name: "set_tree",
-    audience: "both",
-    description: ta(
-      "整体替换特征树（批量改、从别处拿来一棵树时用）。一步可以撤销。小改动优先用对应的特征工具或 edit_feature。",
-      "Replace the whole feature tree (for batch edits, or a tree taken from elsewhere). It undoes in one step. For small changes, prefer the matching feature tool or edit_feature.",
-    ),
-    input: z.object({
-      tree: Tree.describe(ta("完整的特征树：{ params, paramNotes?, features }", "The complete feature tree: { params, paramNotes?, features }")),
-      base_rev: z
-        .number()
-        .int()
-        .optional()
-        .describe(
-          ta(
-            "基于哪个版本改的；中间有人改过模型就拒绝，避免覆盖别人的改动",
-            "The revision this edit is based on; refused if someone changed the model in between, so nobody's changes are overwritten",
+      }),
+    },
+    {
+      name: "open_project",
+      audience: "both",
+      description: ta(
+        "把一个文件夹作为项目打开：窗口左栏列出里面的装配和零件。create=true 时新建这个文件夹，并放一个同名的空装配（*.turnery-asm.json）和共享参数文件（*.params.json），然后打开装配。多个零件组成的东西先建项目。",
+        "Open a folder as a project: the window's left sidebar lists the assemblies and parts in it. With create=true, create the folder, put in it an empty assembly (*.turnery-asm.json) and a shared parameter file (*.params.json) of the same name, then open the assembly. For a thing made of several parts, create a project first.",
+      ),
+      input: z.object({
+        path: z.string().describe(ta("项目文件夹，相对当前目录或绝对路径，例如 pen", "Project folder, relative to the current directory or absolute, e.g. pen")),
+        create: z.boolean().optional().describe(ta("文件夹不存在或还没有装配时新建", "Create it if the folder doesn't exist or has no assembly yet")),
+      }),
+    },
+    {
+      name: "list_parts",
+      audience: "both",
+      description: ta(
+        "列出当前项目里的全部装配和零件（打开着的标出来）；没有项目时列出打开的零件。路径、特征数、未处理的备注数，以及哪个是当前零件。",
+        "List every assembly and part in the current project (open ones marked); without a project, list the open parts. Paths, feature counts, open note counts, and which one is the current part.",
+      ),
+      input: z.object({}),
+    },
+    {
+      name: "get_state",
+      audience: "both",
+      description: ta(
+        "当前零件的完整状态：参数、特征树和每步结果、实体尺寸、未处理的备注、最近谁改了什么。",
+        "The current part's full state: parameters, the feature tree and each step's result, solid dimensions, open notes, who changed what recently.",
+      ),
+      input: z.object({}),
+    },
+    {
+      name: "set_tree",
+      audience: "both",
+      description: ta(
+        "整体替换特征树（批量改、从别处拿来一棵树时用）。一步可以撤销。小改动优先用对应的特征工具或 edit_feature。",
+        "Replace the whole feature tree (for batch edits, or a tree taken from elsewhere). It undoes in one step. For small changes, prefer the matching feature tool or edit_feature.",
+      ),
+      input: z.object({
+        tree: Tree.describe(ta("完整的特征树：{ params, paramNotes?, features }", "The complete feature tree: { params, paramNotes?, features }")),
+        base_rev: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            ta(
+              "基于哪个版本改的；中间有人改过模型就拒绝，避免覆盖别人的改动",
+              "The revision this edit is based on; refused if someone changed the model in between, so nobody's changes are overwritten",
+            ),
           ),
-        ),
-    }),
-  },
-  {
-    name: "move_feature",
-    audience: "both",
-    description: ta(
-      "调整特征顺序：by 为负往前移，为正往后移。不会越过它用到的或用到它的特征。",
-      "Reorder a feature: a negative by moves it earlier, a positive by moves it later. It never moves past a feature it uses or that uses it.",
-    ),
-    input: z.object({ id: z.string(), by: z.number().int().describe(ta("移动几位，-1 = 往前一位", "How many places to move; -1 = one place earlier")) }),
-  },
-  {
-    name: "undo",
-    audience: "both",
-    description: ta("撤销当前零件的上一次改动（不管是谁改的）。", "Undo the last change to the current part (whoever made it)."),
-    input: z.object({}),
-  },
-  {
-    name: "redo",
-    audience: "both",
-    description: ta("重做刚撤销的改动。", "Redo the change just undone."),
-    input: z.object({}),
-  },
-  {
-    name: "look",
-    audience: "agent",
-    description: ta(
-      "在 Turnery 窗口里渲染当前模型的视图图片给你看，检查形状、位置和方向。窗口里未处理的备注会画成编号圆点。建完一个零件、改完备注指的地方，都要看一次。小的细节用 focus 放大，里面的结构用 section 剖开看；最后一步改动很小时会自动加一张特写。结果里写着每张图 1 px 多少 mm。",
-      "Render view images of the current model in the Turnery window for you to see, to check shape, position and orientation. Open notes in the window are drawn as numbered dots. Look once after you finish a part, and once after you change the place a note points at. Zoom in on small details with focus; cut inner structure open with section; when the last change is small, a close-up is added automatically. The result says how many mm 1 px is in each image.",
-    ),
-    input: z.object({
-      views: z
-        .array(z.enum(VIEWS))
-        .optional()
-        .describe(
-          ta(
-            "缺省 iso、front、top、right；写了 section 时缺省是正对截面的那一张加 iso；写了 focus 时缺省 iso、front",
-            "Default iso, front, top, right; with section, the default is the view facing the cut plus iso; with focus, the default is iso, front",
+      }),
+    },
+    {
+      name: "move_feature",
+      audience: "both",
+      description: ta(
+        "调整特征顺序：by 为负往前移，为正往后移。不会越过它用到的或用到它的特征。",
+        "Reorder a feature: a negative by moves it earlier, a positive by moves it later. It never moves past a feature it uses or that uses it.",
+      ),
+      input: z.object({ id: z.string(), by: z.number().int().describe(ta("移动几位，-1 = 往前一位", "How many places to move; -1 = one place earlier")) }),
+    },
+    {
+      name: "undo",
+      audience: "both",
+      description: ta("撤销当前零件的上一次改动（不管是谁改的）。", "Undo the last change to the current part (whoever made it)."),
+      input: z.object({}),
+    },
+    {
+      name: "redo",
+      audience: "both",
+      description: ta("重做刚撤销的改动。", "Redo the change just undone."),
+      input: z.object({}),
+    },
+    {
+      name: "look",
+      audience: "agent",
+      description: ta(
+        "在 Turnery 窗口里渲染当前模型的视图图片给你看，检查形状、位置和方向。窗口里未处理的备注会画成编号圆点。建完一个零件、改完备注指的地方，都要看一次。小的细节用 focus 放大，里面的结构用 section 剖开看；最后一步改动很小时会自动加一张特写。结果里写着每张图 1 px 多少 mm。",
+        "Render view images of the current model in the Turnery window for you to see, to check shape, position and orientation. Open notes in the window are drawn as numbered dots. Look once after you finish a part, and once after you change the place a note points at. Zoom in on small details with focus; cut inner structure open with section; when the last change is small, a close-up is added automatically. The result says how many mm 1 px is in each image.",
+      ),
+      input: z.object({
+        views: z
+          .array(z.enum(VIEWS))
+          .optional()
+          .describe(
+            ta(
+              "缺省 iso、front、top、right；写了 section 时缺省是正对截面的那一张加 iso；写了 focus 时缺省 iso、front",
+              "Default iso, front, top, right; with section, the default is the view facing the cut plus iso; with focus, the default is iso, front",
+            ),
           ),
-        ),
-      highlight: z.string().optional().describe(ta("高亮这个特征生成的面", "Highlight the faces this feature created")),
-      at: z.string().optional().describe(ta("回滚到这个特征那一步看（缺省最新一步）", "Roll back to this feature's step to look (default: the latest step)")),
-      notes: z.boolean().optional().describe(ta("画出未处理备注的编号，缺省 true", "Draw the numbers of open notes; default true")),
-      focus: z
-        .union([
-          z.string().describe(ta("特征 id：框住它生成和修改的面", "A feature id: frame the faces it created and modified")),
-          z.object({ part: z.string().describe(ta("零件名或参考体的名字", "A part name or a reference body's name")) }),
-          z.object({ faces: FaceSelector }),
-        ])
-        .optional()
-        .describe(
-          ta(
-            "特写：每张图只框住这里（特征 id、{ part } 或 { faces }），看小细节时用",
-            "Close-up: every image frames only this (a feature id, { part } or { faces }); use it to see small details",
+        highlight: z.string().optional().describe(ta("高亮这个特征生成的面", "Highlight the faces this feature created")),
+        at: z.string().optional().describe(ta("回滚到这个特征那一步看（缺省最新一步）", "Roll back to this feature's step to look (default: the latest step)")),
+        notes: z.boolean().optional().describe(ta("画出未处理备注的编号，缺省 true", "Draw the numbers of open notes; default true")),
+        focus: z
+          .union([
+            z.string().describe(ta("特征 id：框住它生成和修改的面", "A feature id: frame the faces it created and modified")),
+            z.object({ part: z.string().describe(ta("零件名或参考体的名字", "A part name or a reference body's name")) }),
+            z.object({ faces: FaceSelector }),
+          ])
+          .optional()
+          .describe(
+            ta(
+              "特写：每张图只框住这里（特征 id、{ part } 或 { faces }），看小细节时用",
+              "Close-up: every image frames only this (a feature id, { part } or { faces }); use it to see small details",
+            ),
           ),
-        ),
-      section: z
-        .object({
-          plane: z
-            .enum(["XY", "XZ", "YZ"])
-            .describe(
+        section: z
+          .object({
+            plane: z
+              .enum(["XY", "XZ", "YZ"])
+              .describe(
+                ta(
+                  "剖切的基准面：XY 去掉上面（+Z）一侧，XZ 去掉前面（-Y）一侧，YZ 去掉右面（+X）一侧",
+                  "The datum plane to cut on: XY removes the upper (+Z) side, XZ removes the front (-Y) side, YZ removes the right (+X) side",
+                ),
+              ),
+            offset: Num.optional().describe(
               ta(
-                "剖切的基准面：XY 去掉上面（+Z）一侧，XZ 去掉前面（-Y）一侧，YZ 去掉右面（+X）一侧",
-                "The datum plane to cut on: XY removes the upper (+Z) side, XZ removes the front (-Y) side, YZ removes the right (+X) side",
+                "基准面的偏移（XY 是 Z 值，XZ 是 Y 值，YZ 是 X 值），缺省过整件中心",
+                "The plane's offset (for XY the Z value, for XZ the Y value, for YZ the X value); default: through the center of the whole model",
               ),
             ),
-          offset: Num.optional().describe(
+          })
+          .optional()
+          .describe(ta("剖视：切开看里面，例如零件之间的间隙、壁厚、内腔", "Section view: cut it open to see inside, e.g. gaps between parts, wall thickness, cavities")),
+        dir: z
+          .array(z.number())
+          .length(3)
+          .optional()
+          .describe(ta("再加一张从这个方向看的图，例如 [1, 1, 0.3]", "Add one more image seen from this direction, e.g. [1, 1, 0.3]")),
+        size: z.enum(["normal", "large"]).optional().describe(ta("large = 896×672（缺省 448×336）", "large = 896×672 (default 448×336)")),
+        hide: z
+          .array(z.string())
+          .optional()
+          .describe(ta("不画这些零件或参考体（按名字），例如藏起笔帽看里面", "Don't draw these parts or reference bodies (by name), e.g. hide the pen cap to see inside")),
+        plain: z
+          .boolean()
+          .optional()
+          .describe(
             ta(
-              "基准面的偏移（XY 是 Z 值，XZ 是 Y 值，YZ 是 X 值），缺省过整件中心",
-              "The plane's offset (for XY the Z value, for XZ the Y value, for YZ the X value); default: through the center of the whole model",
+              "画成白模，不按零件的颜色和质感（看形状、对比明暗时用）",
+              "Draw the clay model (plain white), not the parts' color and finish (to look at shape or compare light and shade)",
             ),
           ),
-        })
-        .optional()
-        .describe(ta("剖视：切开看里面，例如零件之间的间隙、壁厚、内腔", "Section view: cut it open to see inside, e.g. gaps between parts, wall thickness, cavities")),
-      dir: z
-        .array(z.number())
-        .length(3)
-        .optional()
-        .describe(ta("再加一张从这个方向看的图，例如 [1, 1, 0.3]", "Add one more image seen from this direction, e.g. [1, 1, 0.3]")),
-      size: z.enum(["normal", "large"]).optional().describe(ta("large = 896×672（缺省 448×336）", "large = 896×672 (default 448×336)")),
-      hide: z
-        .array(z.string())
-        .optional()
-        .describe(ta("不画这些零件或参考体（按名字），例如藏起笔帽看里面", "Don't draw these parts or reference bodies (by name), e.g. hide the pen cap to see inside")),
-      plain: z
-        .boolean()
-        .optional()
-        .describe(
-          ta(
-            "画成白模，不按零件的颜色和质感（看形状、对比明暗时用）",
-            "Draw the clay model (plain white), not the parts' color and finish (to look at shape or compare light and shade)",
-          ),
-        ),
-    }),
-  },
-  {
-    name: "set_appearance",
-    audience: "both",
-    description: ta(
-      "设零件的颜色和质感：窗口里按它显示，导出 3MF、STEP 时带上，零件清单里列出。只改外观，不改几何、不重建。零件文件里：不写 parts 是整个零件，写 parts 是拆件后的某几个零件。装配里：parts 写装配里的零件名；自建零件缺省写进它自己的零件文件（用到它的装配都跟着变），标准件、外购件（STEP）、子装配，以及写了 where: \"assembly\" 的，写在这个装配的 component 上（拆开的零件「外壳/上盖」可以只改上盖）。在装配里单独设过的比零件文件的优先：要改回跟零件文件一致，where 写 \"assembly\"，color、finish 写 null。color、finish 写 null 是清除。",
-      "Set parts' color and finish: the window shows it, 3MF and STEP exports carry it, the bill of materials lists it. It changes only appearance: no geometry change, no rebuild. In a part file: without parts it is the whole part; parts names some of the parts after a split. In an assembly: parts are part names in the assembly; a self-made part is written to its own part file by default (every assembly that uses it changes too); standard parts, purchased parts (STEP), subassemblies, and anything with where: \"assembly\" are written on this assembly's component (for a split part, \"Enclosure/Lid\" changes only the lid). What is set in the assembly takes precedence over the part file: to make it match the part file again, write where: \"assembly\" with color and finish null. null for color or finish clears it.",
-    ),
-    input: z.object({
-      parts: z
-        .array(z.string())
-        .optional()
-        .describe(
-          ta(
-            "零件名：拆件后的零件，或装配里的零件（get_state 的「外观」一行列着）；零件文件里不写就是整个零件",
-            `Part names: parts after a split, or parts in the assembly (listed in get_state's "Appearance" line); in a part file, leave it out for the whole part`,
-          ),
-        ),
-      color: Color.nullable().optional(),
-      finish: Finish.nullable().optional(),
-      where: z
-        .enum(["file", "assembly"])
-        .optional()
-        .describe(
-          ta(
-            "装配里：file = 写进零件文件（自建零件的缺省），assembly = 只在这个装配里",
-            "In an assembly: file = write it to the part file (the default for self-made parts), assembly = in this assembly only",
-          ),
-        ),
-    }),
-  },
-  {
-    name: "measure",
-    audience: "both",
-    description: ta(
-      "测量：一个面或边的尺寸（直径、面积、长度）和坐标（平面的中心、圆心、轴线、直线的端点），两个之间的最短距离、夹角、平行面间距、圆心距、轴线间距。也能量两个特征（feature）或两个零件（part）之间的最短距离，0 = 接触，零件相交时给出重叠体积。由内核算，不要自己推算。",
-      "Measure: a face's or edge's size (diameter, area, length) and coordinates (a plane's center, a circle's center, an axis, a line's end points); between two of them, the shortest distance, the angle, the distance between parallel faces, the center distance, the distance between axes. It also measures the shortest distance between two features (feature) or two parts (part): 0 = touching; when parts intersect it gives the overlap volume. The kernel computes it: don't work it out yourself.",
-    ),
-    input: z.object({ a: Target, b: Target.optional() }),
-  },
-  {
-    name: "export",
-    audience: "both",
-    description:
-      ta(
-        "导出当前零件或装配：step（实体；多个零件时一个文件里多个带名字的零件）/ stl（多个零件时打包成 zip，每个零件一个文件）/ 3mf（给切片软件：一个文件，每个零件一个对象，单位毫米）、py（等价的 build123d 代码，装配不能导出）、json（特征树）、bom（零件清单 Markdown：名称、文件、数量、体积、外形）。",
-        "Export the current part or assembly: step (solids; with several parts, several named parts in one file) / stl (with several parts, a zip with one file per part) / 3mf (for slicers: one file, one object per part, in millimeters), py (equivalent build123d code; assemblies can't be exported this way), json (the feature tree), bom (bill of materials in Markdown: name, file, quantity, volume, outer size). ",
-      ) +
-      ta(
-        "出图：png（图片，要开着窗口）/ svg（黑白线稿，消隐，可标号，专利附图用）。",
-        "Pictures: png (an image; needs the window open) / svg (black-and-white line drawing, hidden lines removed, can carry reference numbers, for patent drawings).",
+      }),
+    },
+    {
+      name: "set_appearance",
+      audience: "both",
+      description: ta(
+        "设零件的颜色和质感：窗口里按它显示，导出 3MF、STEP 时带上，零件清单里列出。只改外观，不改几何、不重建。零件文件里：不写 parts 是整个零件，写 parts 是拆件后的某几个零件。装配里：parts 写装配里的零件名；自建零件缺省写进它自己的零件文件（用到它的装配都跟着变），标准件、外购件（STEP）、子装配，以及写了 where: \"assembly\" 的，写在这个装配的 component 上（拆开的零件「外壳/上盖」可以只改上盖）。在装配里单独设过的比零件文件的优先：要改回跟零件文件一致，where 写 \"assembly\"，color、finish 写 null。color、finish 写 null 是清除。",
+        "Set parts' color and finish: the window shows it, 3MF and STEP exports carry it, the bill of materials lists it. It changes only appearance: no geometry change, no rebuild. In a part file: without parts it is the whole part; parts names some of the parts after a split. In an assembly: parts are part names in the assembly; a self-made part is written to its own part file by default (every assembly that uses it changes too); standard parts, purchased parts (STEP), subassemblies, and anything with where: \"assembly\" are written on this assembly's component (for a split part, \"Enclosure/Lid\" changes only the lid). What is set in the assembly takes precedence over the part file: to make it match the part file again, write where: \"assembly\" with color and finish null. null for color or finish clears it.",
       ),
-    input: z.object({
-      path: z
-        .string()
-        .describe(
-          ta(
-            "输出文件路径，相对当前目录；扩展名决定格式，除非写了 format",
-            "Output file path, relative to the current directory; the extension sets the format unless format is given",
+      input: z.object({
+        parts: z
+          .array(z.string())
+          .optional()
+          .describe(
+            ta(
+              "零件名：拆件后的零件，或装配里的零件（get_state 的「外观」一行列着）；零件文件里不写就是整个零件",
+              `Part names: parts after a split, or parts in the assembly (listed in get_state's "Appearance" line); in a part file, leave it out for the whole part`,
+            ),
           ),
-        ),
-      format: z.enum(["step", "stl", "3mf", "py", "json", "bom", "png", "svg"]).optional(),
-      view: z.enum(["iso", "front", "back", "left", "right", "top", "bottom"]).optional().describe(ta("出图视角", "The view to draw")),
-      dir: z.array(z.number()).length(3).optional().describe(ta("出图方向（零件→眼睛），代替 view", "The direction to draw from (part → eye), instead of view")),
-      projection: z.enum(["perspective", "orthographic"]).optional(),
-      style: z.enum(["shaded", "lines", "xray"]).optional().describe(ta("png 样式", "png style")),
-      explode: z.number().min(0).max(1).optional(),
-      hide: z.array(z.string()).optional().describe(ta("去掉的零件", "Parts to leave out")),
-      labels: z
-        .union([z.enum(["none", "numbers", "names"]), z.record(z.string(), z.string())])
-        .optional()
-        .describe(ta('svg 标号：10、20…；零件名；或 { "零件名": "12" }', 'svg reference numbers: 10, 20…; part names; or { "part name": "12" }')),
-      hidden_lines: z.boolean().optional().describe(ta("svg 虚线画挡住的线", "svg: draw hidden lines dashed")),
-      background: z.enum(["white", "transparent"]).optional(),
-    }),
-  },
-  {
-    name: "share_params",
-    audience: "both",
-    description: ta(
-      "让当前零件或装配用一个共享参数文件（*.params.json）：几个零件写同一个文件，就共用这些尺寸（例如笔杆内径和笔舌直径）。共享参数以文件为准；之后 set_params 改到它们时会写回这个文件，用到它的零件都会重建。move 把零件自己的参数移进共享文件；stop 停用（当前值抄回零件）。",
-      "Make the current part or assembly use a shared parameter file (*.params.json): parts that name the same file share these dimensions (e.g. the barrel's inner diameter and the feed's diameter). For shared parameters the file is the source of truth; from then on, set_params on them writes back to this file, and every part that uses it rebuilds. move moves the part's own parameters into the shared file; stop stops using it (the current values are copied back into the part).",
-    ),
-    input: z.object({
-      file: z
-        .string()
-        .optional()
-        .describe(ta("共享参数文件，相对零件文件所在的文件夹，例如 pen.params.json", "The shared parameter file, relative to the part file's folder, e.g. pen.params.json")),
-      create: z.boolean().optional().describe(ta("文件不存在时新建", "Create the file if it doesn't exist")),
-      move: z.array(z.string()).optional().describe(ta("把零件自己的这些参数移进共享文件", "Move these parameters of the part's own into the shared file")),
-      stop: z.boolean().optional().describe(ta("不再用共享参数文件", "Stop using the shared parameter file")),
-    }),
-  },
-  {
-    name: "get_notes",
-    audience: "both",
-    description: ta(
-      "读用户在 Turnery 窗口里点在面或边上的备注：编号、写了什么、选中的是什么、一个已验证只选中它的选择器、草图坐标。直接用备注给的选择器，不要自己另写。",
-      "Read the notes the user placed on faces or edges in the Turnery window: number, what they wrote, what is selected, a selector verified to select only it, sketch coordinates. Use the selector the note gives; don't write your own.",
-    ),
-    input: z.object({ status: z.enum(["open", "all"]).optional().describe(ta("缺省只看未处理的", "Default: open notes only")) }),
-  },
-  {
-    name: "resolve_note",
-    audience: "both",
-    description: ta(
-      "处理完一条备注后标为已处理，并用一句话告诉用户做了什么（显示在窗口里）。",
-      "After dealing with a note, mark it resolved and tell the user in one sentence what you did (shown in the window).",
-    ),
-    input: z.object({
-      id: z.string().describe(ta("备注 id，例如 n3", "Note id, e.g. n3")),
-      reply: z.string().max(400).optional(),
-      reopen: z.boolean().optional().describe(ta("重新打开", "Reopen it")),
-    }),
-  },
-  {
-    name: "request_pick",
-    audience: "agent",
-    description: ta(
-      "请用户在 Turnery 窗口里点一个面或一条边，等用户点完返回它是什么和一个已验证的选择器。说不清用户指的是哪里时用它，比自己猜准。",
-      "Ask the user to click a face or an edge in the Turnery window; when they have clicked, it returns what it is and a verified selector. Use it when you can't tell where the user means: it is more accurate than guessing.",
-    ),
-    input: z.object({
-      prompt: z
-        .string()
-        .max(200)
-        .describe(ta("显示给用户的一句话，例如「点一下要开孔的那个面」", 'One sentence shown to the user, e.g. "Click the face the hole goes in"')),
-      kind: z.enum(["face", "edge", "any"]).optional(),
-      timeout_sec: z
-        .number()
-        .int()
-        .min(5)
-        .max(280)
-        .optional()
-        .describe(
-          ta(
-            "最多等多久，缺省 120 秒；没点就返回，可以再调用一次接着等",
-            "The longest to wait, default 120 seconds; if nothing is clicked it returns, and you can call it again to keep waiting",
+        color: Color.nullable().optional(),
+        finish: Finish.nullable().optional(),
+        where: z
+          .enum(["file", "assembly"])
+          .optional()
+          .describe(
+            ta(
+              "装配里：file = 写进零件文件（自建零件的缺省），assembly = 只在这个装配里",
+              "In an assembly: file = write it to the part file (the default for self-made parts), assembly = in this assembly only",
+            ),
           ),
+      }),
+    },
+    {
+      name: "measure",
+      audience: "both",
+      description: ta(
+        "测量：一个面或边的尺寸（直径、面积、长度）和坐标（平面的中心、圆心、轴线、直线的端点），两个之间的最短距离、夹角、平行面间距、圆心距、轴线间距。也能量两个特征（feature）或两个零件（part）之间的最短距离，0 = 接触，零件相交时给出重叠体积。由内核算，不要自己推算。",
+        "Measure: a face's or edge's size (diameter, area, length) and coordinates (a plane's center, a circle's center, an axis, a line's end points); between two of them, the shortest distance, the angle, the distance between parallel faces, the center distance, the distance between axes. It also measures the shortest distance between two features (feature) or two parts (part): 0 = touching; when parts intersect it gives the overlap volume. The kernel computes it: don't work it out yourself.",
+      ),
+      input: z.object({ a: Target, b: Target.optional() }),
+    },
+    {
+      name: "export",
+      audience: "both",
+      description:
+        ta(
+          "导出当前零件或装配：step（实体；多个零件时一个文件里多个带名字的零件）/ stl（多个零件时打包成 zip，每个零件一个文件）/ 3mf（给切片软件：一个文件，每个零件一个对象，单位毫米）、py（等价的 build123d 代码，装配不能导出）、json（特征树）、bom（零件清单 Markdown：名称、文件、数量、体积、外形）。",
+          "Export the current part or assembly: step (solids; with several parts, several named parts in one file) / stl (with several parts, a zip with one file per part) / 3mf (for slicers: one file, one object per part, in millimeters), py (equivalent build123d code; assemblies can't be exported this way), json (the feature tree), bom (bill of materials in Markdown: name, file, quantity, volume, outer size). ",
+        ) +
+        ta(
+          "出图：png（图片，要开着窗口）/ svg（黑白线稿，消隐，可标号，专利附图用）。",
+          "Pictures: png (an image; needs the window open) / svg (black-and-white line drawing, hidden lines removed, can carry reference numbers, for patent drawings).",
         ),
-    }),
-  },
-  {
-    name: "show",
-    audience: "agent",
-    description: ta(
-      "在 Turnery 窗口里高亮一个特征、一组面或边，指给用户看（例如「我说的是这两条边」）。clear=true 取消高亮。",
-      'Highlight a feature, a set of faces, or edges in the Turnery window to point them out to the user (e.g. "these are the two edges I mean"). clear=true removes the highlight.',
-    ),
-    input: z.object({
-      feature: z.string().optional().describe(ta("高亮这个特征生成的面", "Highlight the faces this feature created")),
-      faces: FaceSelector.optional(),
-      edges: EdgeSelector.optional(),
-      label: z.string().max(80).optional().describe(ta("窗口里显示的说明", "The caption shown in the window")),
-      clear: z.boolean().optional(),
-    }),
-  },
-  // ---- the window only
-  {
-    name: "add_note",
-    audience: "user",
-    description: ta(
-      "记一条备注：在点选的面或边上（pick），关于选中的零件（parts）、一个步骤（feature），框选或画笔标出的一片区域（region），或者整个零件。",
-      "Add a note: on a picked face or edge (pick), about the selected parts (parts), a step (feature), a region marked with the box or the pen (region), or the whole part.",
-    ),
-    input: z.object({
-      pick: z.record(z.string(), z.unknown()).optional(),
-      text: z.string().max(600),
-      parts: z.array(z.string().max(300)).max(100).optional(),
-      feature: z.string().max(100).optional(),
-      name: z.string().max(200).optional(),
-      point: V3.optional(),
-      part: z.string().max(300).optional(),
-      region: z
-        .object({
-          shape: z.enum(["box", "pen"]),
-          camera: z.object({ position: V3, target: V3, up: V3 }),
-          rect: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
-          strokes: z.array(z.array(V3).max(2000)).max(50).optional(),
-          faces: z.number().int().min(0),
-          bbox: z.tuple([V3, V3]).nullable(),
-          origins: z.array(z.string()).max(200),
-          parts: z.array(z.string()).max(200),
-          image: z.string().max(12_000_000).optional(),
-        })
-        .optional(),
-    }),
-  },
-  {
-    name: "update_note",
-    audience: "user",
-    description: ta("改备注的文字，或删除、重开、标为已处理。", "Change a note's text, or delete, reopen or resolve it."),
-    input: z.object({ id: z.string(), text: z.string().max(600).optional(), status: z.enum(["open", "resolved"]).optional(), remove: z.boolean().optional() }),
-  },
-  {
-    name: "rename_file",
-    audience: "user",
-    description: ta(
-      "给零件或装配文件改名（name 不带结尾）：文件和它的备注一起改，用到它的装配跟着改；打开着的照样开着。",
-      "Rename a part or assembly file (name without the ending): the file and its notes are renamed together, and the assemblies that use it follow; if it is open it stays open.",
-    ),
-    input: z.object({ path: z.string(), name: z.string().max(80) }),
-  },
-  {
-    name: "rename_part",
-    audience: "user",
-    description: ta(
-      "给装配里的一个零件改名（id 是它的 component）：只改这个装配里的叫法，贴合、核对和备注里的名字跟着改。",
-      "Rename a part in the assembly (id is its component): only its name in this assembly changes; the names in mates, checks and notes follow.",
-    ),
-    input: z.object({ id: z.string(), name: z.string().max(40) }),
-  },
-  {
-    name: "close_part",
-    audience: "user",
-    description: ta("关闭一个零件（文件不动）。", "Close a part (the file is left as it is)."),
-    input: z.object({ path: z.string() }),
-  },
-  {
-    name: "close_project",
-    audience: "user",
-    description: ta("关闭项目和全部打开的文件（文件不动），窗口回到首页。", "Close the project and every open file (the files are left as they are); the window goes back to the home page."),
-    input: z.object({}),
-  },
-  {
-    name: "scan_project",
-    audience: "user",
-    description: ta("重新扫描项目文件夹（窗口回到前台时）。", "Scan the project folder again (when the window comes back to the front)."),
-    input: z.object({}),
-  },
-  {
-    name: "add_part",
-    audience: "user",
-    description: ta(
-      "往当前装配里加零件：name 新建 parts/<name>.turnery.json 并在装配里编辑它（可以带上颜色和质感）；file 放一个已有的零件、装配或 STEP。",
-      "Add a part to the current assembly: name creates parts/<name>.turnery.json and edits it in the assembly (it can come with a color and finish); file places an existing part, assembly or STEP.",
-    ),
-    input: z.object({ name: z.string().optional(), file: z.string().optional(), color: Color.optional(), finish: Finish.optional() }),
-  },
-]
+      input: z.object({
+        path: z
+          .string()
+          .describe(
+            ta(
+              "输出文件路径，相对当前目录；扩展名决定格式，除非写了 format",
+              "Output file path, relative to the current directory; the extension sets the format unless format is given",
+            ),
+          ),
+        format: z.enum(["step", "stl", "3mf", "py", "json", "bom", "png", "svg"]).optional(),
+        view: z.enum(["iso", "front", "back", "left", "right", "top", "bottom"]).optional().describe(ta("出图视角", "The view to draw")),
+        dir: z.array(z.number()).length(3).optional().describe(ta("出图方向（零件→眼睛），代替 view", "The direction to draw from (part → eye), instead of view")),
+        projection: z.enum(["perspective", "orthographic"]).optional(),
+        style: z.enum(["shaded", "lines", "xray"]).optional().describe(ta("png 样式", "png style")),
+        explode: z.number().min(0).max(1).optional(),
+        hide: z.array(z.string()).optional().describe(ta("去掉的零件", "Parts to leave out")),
+        labels: z
+          .union([z.enum(["none", "numbers", "names"]), z.record(z.string(), z.string())])
+          .optional()
+          .describe(ta('svg 标号：10、20…；零件名；或 { "零件名": "12" }', 'svg reference numbers: 10, 20…; part names; or { "part name": "12" }')),
+        hidden_lines: z.boolean().optional().describe(ta("svg 虚线画挡住的线", "svg: draw hidden lines dashed")),
+        background: z.enum(["white", "transparent"]).optional(),
+      }),
+    },
+    {
+      name: "share_params",
+      audience: "both",
+      description: ta(
+        "让当前零件或装配用一个共享参数文件（*.params.json）：几个零件写同一个文件，就共用这些尺寸（例如笔杆内径和笔舌直径）。共享参数以文件为准；之后 set_params 改到它们时会写回这个文件，用到它的零件都会重建。move 把零件自己的参数移进共享文件；stop 停用（当前值抄回零件）。",
+        "Make the current part or assembly use a shared parameter file (*.params.json): parts that name the same file share these dimensions (e.g. the barrel's inner diameter and the feed's diameter). For shared parameters the file is the source of truth; from then on, set_params on them writes back to this file, and every part that uses it rebuilds. move moves the part's own parameters into the shared file; stop stops using it (the current values are copied back into the part).",
+      ),
+      input: z.object({
+        file: z
+          .string()
+          .optional()
+          .describe(ta("共享参数文件，相对零件文件所在的文件夹，例如 pen.params.json", "The shared parameter file, relative to the part file's folder, e.g. pen.params.json")),
+        create: z.boolean().optional().describe(ta("文件不存在时新建", "Create the file if it doesn't exist")),
+        move: z.array(z.string()).optional().describe(ta("把零件自己的这些参数移进共享文件", "Move these parameters of the part's own into the shared file")),
+        stop: z.boolean().optional().describe(ta("不再用共享参数文件", "Stop using the shared parameter file")),
+      }),
+    },
+    {
+      name: "get_notes",
+      audience: "both",
+      description: ta(
+        "读用户在 Turnery 窗口里点在面或边上的备注：编号、写了什么、选中的是什么、一个已验证只选中它的选择器、草图坐标。直接用备注给的选择器，不要自己另写。",
+        "Read the notes the user placed on faces or edges in the Turnery window: number, what they wrote, what is selected, a selector verified to select only it, sketch coordinates. Use the selector the note gives; don't write your own.",
+      ),
+      input: z.object({ status: z.enum(["open", "all"]).optional().describe(ta("缺省只看未处理的", "Default: open notes only")) }),
+    },
+    {
+      name: "resolve_note",
+      audience: "both",
+      description: ta(
+        "处理完一条备注后标为已处理，并用一句话告诉用户做了什么（显示在窗口里）。",
+        "After dealing with a note, mark it resolved and tell the user in one sentence what you did (shown in the window).",
+      ),
+      input: z.object({
+        id: z.string().describe(ta("备注 id，例如 n3", "Note id, e.g. n3")),
+        reply: z.string().max(400).optional(),
+        reopen: z.boolean().optional().describe(ta("重新打开", "Reopen it")),
+      }),
+    },
+    {
+      name: "request_pick",
+      audience: "agent",
+      description: ta(
+        "请用户在 Turnery 窗口里点一个面或一条边，等用户点完返回它是什么和一个已验证的选择器。说不清用户指的是哪里时用它，比自己猜准。",
+        "Ask the user to click a face or an edge in the Turnery window; when they have clicked, it returns what it is and a verified selector. Use it when you can't tell where the user means: it is more accurate than guessing.",
+      ),
+      input: z.object({
+        prompt: z
+          .string()
+          .max(200)
+          .describe(ta("显示给用户的一句话，例如「点一下要开孔的那个面」", 'One sentence shown to the user, e.g. "Click the face the hole goes in"')),
+        kind: z.enum(["face", "edge", "any"]).optional(),
+        timeout_sec: z
+          .number()
+          .int()
+          .min(5)
+          .max(280)
+          .optional()
+          .describe(
+            ta(
+              "最多等多久，缺省 120 秒；没点就返回，可以再调用一次接着等",
+              "The longest to wait, default 120 seconds; if nothing is clicked it returns, and you can call it again to keep waiting",
+            ),
+          ),
+      }),
+    },
+    {
+      name: "show",
+      audience: "agent",
+      description: ta(
+        "在 Turnery 窗口里高亮一个特征、一组面或边，指给用户看（例如「我说的是这两条边」）。clear=true 取消高亮。",
+        'Highlight a feature, a set of faces, or edges in the Turnery window to point them out to the user (e.g. "these are the two edges I mean"). clear=true removes the highlight.',
+      ),
+      input: z.object({
+        feature: z.string().optional().describe(ta("高亮这个特征生成的面", "Highlight the faces this feature created")),
+        faces: FaceSelector.optional(),
+        edges: EdgeSelector.optional(),
+        label: z.string().max(80).optional().describe(ta("窗口里显示的说明", "The caption shown in the window")),
+        clear: z.boolean().optional(),
+      }),
+    },
+    // ---- the window only
+    {
+      name: "add_note",
+      audience: "user",
+      description: ta(
+        "记一条备注：在点选的面或边上（pick），关于选中的零件（parts）、一个步骤（feature），框选或画笔标出的一片区域（region），或者整个零件。",
+        "Add a note: on a picked face or edge (pick), about the selected parts (parts), a step (feature), a region marked with the box or the pen (region), or the whole part.",
+      ),
+      input: z.object({
+        pick: z.record(z.string(), z.unknown()).optional(),
+        text: z.string().max(600),
+        parts: z.array(z.string().max(300)).max(100).optional(),
+        feature: z.string().max(100).optional(),
+        name: z.string().max(200).optional(),
+        point: V3.optional(),
+        part: z.string().max(300).optional(),
+        region: z
+          .object({
+            shape: z.enum(["box", "pen"]),
+            camera: z.object({ position: V3, target: V3, up: V3 }),
+            rect: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+            strokes: z.array(z.array(V3).max(2000)).max(50).optional(),
+            faces: z.number().int().min(0),
+            bbox: z.tuple([V3, V3]).nullable(),
+            origins: z.array(z.string()).max(200),
+            parts: z.array(z.string()).max(200),
+            image: z.string().max(12_000_000).optional(),
+          })
+          .optional(),
+      }),
+    },
+    {
+      name: "update_note",
+      audience: "user",
+      description: ta("改备注的文字，或删除、重开、标为已处理。", "Change a note's text, or delete, reopen or resolve it."),
+      input: z.object({ id: z.string(), text: z.string().max(600).optional(), status: z.enum(["open", "resolved"]).optional(), remove: z.boolean().optional() }),
+    },
+    {
+      name: "rename_file",
+      audience: "user",
+      description: ta(
+        "给零件或装配文件改名（name 不带结尾）：文件和它的备注一起改，用到它的装配跟着改；打开着的照样开着。",
+        "Rename a part or assembly file (name without the ending): the file and its notes are renamed together, and the assemblies that use it follow; if it is open it stays open.",
+      ),
+      input: z.object({ path: z.string(), name: z.string().max(80) }),
+    },
+    {
+      name: "rename_part",
+      audience: "user",
+      description: ta(
+        "给装配里的一个零件改名（id 是它的 component）：只改这个装配里的叫法，贴合、核对和备注里的名字跟着改。",
+        "Rename a part in the assembly (id is its component): only its name in this assembly changes; the names in mates, checks and notes follow.",
+      ),
+      input: z.object({ id: z.string(), name: z.string().max(40) }),
+    },
+    {
+      name: "close_part",
+      audience: "user",
+      description: ta("关闭一个零件（文件不动）。", "Close a part (the file is left as it is)."),
+      input: z.object({ path: z.string() }),
+    },
+    {
+      name: "close_project",
+      audience: "user",
+      description: ta("关闭项目和全部打开的文件（文件不动），窗口回到首页。", "Close the project and every open file (the files are left as they are); the window goes back to the home page."),
+      input: z.object({}),
+    },
+    {
+      name: "scan_project",
+      audience: "user",
+      description: ta("重新扫描项目文件夹（窗口回到前台时）。", "Scan the project folder again (when the window comes back to the front)."),
+      input: z.object({}),
+    },
+    {
+      name: "add_part",
+      audience: "user",
+      description: ta(
+        "往当前装配里加零件：name 新建 parts/<name>.turnery.json 并在装配里编辑它（可以带上颜色和质感）；file 放一个已有的零件、装配或 STEP。",
+        "Add a part to the current assembly: name creates parts/<name>.turnery.json and edits it in the assembly (it can come with a color and finish); file places an existing part, assembly or STEP.",
+      ),
+      input: z.object({ name: z.string().optional(), file: z.string().optional(), color: Color.optional(), finish: Finish.optional() }),
+    },
+  ]
 
-export const COMMANDS: CommandSpec[] = [...own.slice(0, 2), ...studioTools, ...own.slice(2)]
+  return [...own.slice(0, 2), ...studioTools, ...own.slice(2)]
+}
+
+const built: Partial<Record<AgentLang, CommandSpec[]>> = {}
+
+/** Every command, described in `lang` (the website's server answers each request in its own language). */
+export const commandsIn = (lang: AgentLang) => (built[lang] ??= withAgentLang(lang, build))
+
+export const COMMANDS: CommandSpec[] = commandsIn(agentLang())
 export const COMMAND = new Map(COMMANDS.map((c) => [c.name, c]))
 
 export const agentCommands = () => COMMANDS.filter((c) => c.audience !== "user")
+
+/** The agent's commands described in `lang`. */
+export const agentCommandsIn = (lang: AgentLang) => commandsIn(lang).filter((c) => c.audience !== "user")
 
 type Json = Record<string, unknown>
 const toJson = (schema: z.ZodType): Json => {
@@ -601,7 +615,7 @@ function sharedDefs() {
  * `set_tree` takes a whole feature tree: its full schema is every feature tool's schema at once (~100 KB).
  * The agent writes features exactly as it calls the feature tools; the engine validates the tree.
  */
-const TREE_JSON: Json = {
+const treeJson = (): Json => ({
   type: "object",
   description: ta(
     "完整的特征树 { uses?, params, paramNotes?, features, checks? }。features 里每一项写 op（特征工具的名字，如 sketch、extrude、fillet）加上和那个工具一样的字段；checks 的每一项和 check 工具的 items 一样。整棵树按特征工具的参数校验，有错会说明是哪一项。",
@@ -615,12 +629,12 @@ const TREE_JSON: Json = {
     checks: { type: "array", items: { type: "object" } },
   },
   required: ["params", "features"],
-}
+})
 
 /** JSON Schema of a command's input, for MCP `tools/list`: shared selectors under `$defs`. */
 export function inputJsonSchema(spec: CommandSpec): Record<string, unknown> {
   const s = toJson(spec.input)
-  if (spec.name === "set_tree") (s.properties as Json).tree = TREE_JSON
+  if (spec.name === "set_tree") (s.properties as Json).tree = treeJson()
   const { raw, out: defs } = sharedDefs()
   const used = new Set<string>()
   const result = refShared(s, raw, used) as Json
@@ -801,3 +815,6 @@ ${promptSections("en")}
 Sheet metal and surface thickening are not supported yet. Assembly mates only place parts (computed once, in order); they are not a constraint solver, and there is no motion. Standard parts are metric coarse M2–M12 only, and the thread on a screw is drawn as a plain shank (cosmetic). If something can't be done, say so plainly and give the closest approach. Don't invent parameters the tools don't have.`
 
 export const AGENT_GUIDE = ta(GUIDE_ZH, GUIDE_EN)
+
+/** The guide in `lang`. */
+export const guideIn = (lang: AgentLang) => (lang === "en" ? GUIDE_EN : GUIDE_ZH)

@@ -38,6 +38,17 @@ export function setAgentLang(lang: AgentLang) {
   chosen = lang
 }
 
+/** Run `fn` with the agent's language set to `lang` (text made inside is in it), then put it back. */
+export function withAgentLang<T>(lang: AgentLang, fn: () => T): T {
+  const before = chosen
+  chosen = lang
+  try {
+    return fn()
+  } finally {
+    chosen = before
+  }
+}
+
 /** The string in the agent's language. */
 export const ta = (zh: string, en: string) => (agentLang() === "en" ? en : zh)
 
