@@ -259,10 +259,10 @@ test.describe("工作台", () => {
     await expect(viewer.getByRole("dialog", { name: /孔阵列/ }).getByText(/^×6/), "nothing was saved").toBeVisible()
     await viewer.keyboard.press("Escape")
 
-    // Copy: replaces this browser's (empty) model, undoably.
+    // Copy: into this browser's (empty) part, undoably.
     await viewer.getByRole("button", { name: "复制到我的工作台" }).first().click()
     await expect(viewer).toHaveURL(/\/studio$/)
-    await expect(viewer.getByText("已替换当前模型")).toBeVisible({ timeout: 90_000 })
+    await expect(viewer.getByText("已打开「法兰盘」")).toBeVisible({ timeout: 90_000 })
     await expect(tree.getByText("5 个特征")).toBeVisible()
     await viewer.getByRole("button", { name: "撤销上一步" }).click()
     await expect(tree, "undo brings back the empty model").toHaveCount(0)
@@ -277,7 +277,7 @@ test.describe("工作台", () => {
     expect((await page.request.get(`/api/studio/share/${id}`)).status()).toBe(404)
   })
 
-  test("/studio 导入特征树 JSON：好的替换可撤销，坏的在原处说明", async ({ page }) => {
+  test("/studio 导入特征树 JSON：成为项目里的新零件，可撤销；坏的在原处说明", async ({ page }) => {
     await page.goto("/studio?start=flange")
     const tree = page.getByRole("navigation", { name: "特征树" })
     await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
@@ -289,13 +289,21 @@ test.describe("工作台", () => {
       ],
     }
 
-    // From the menu.
+    // From the menu: a new part of the project, opened; the flange stays.
     const chooser = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "更多" }).click()
-    await page.getByRole("menuitem", { name: "导入特征树（JSON）…" }).click()
+    await page.getByRole("menuitem", { name: "导入文件…" }).click()
     await (await chooser).setFiles({ name: "垫块.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(pad)) })
     await expect(page.getByText("已导入「垫块」")).toBeVisible()
     await expect(tree.getByText("2 个特征")).toBeVisible()
+    const fileList = page.getByRole("navigation", { name: "文件" })
+    await expect(fileList.getByRole("button", { name: /^垫块/ })).toBeVisible()
+    await expect(fileList.getByRole("button", { name: /^零件/ })).toBeVisible()
+
+    // The toast's undo takes the imported part away and goes back to the flange.
+    await page.locator("[data-sonner-toast]").filter({ hasText: "已导入「垫块」" }).getByRole("button", { name: "撤销" }).click()
+    await expect(tree.getByText("5 个特征"), "undo brings the flange back").toBeVisible()
+    await expect(fileList.getByRole("button", { name: /^垫块/ })).toHaveCount(0)
 
     // Dropped on the view: a broken file is explained where it was dropped, and changes nothing.
     const { sketch: _sketch, ...noSketch } = pad.features[1]
@@ -309,10 +317,7 @@ test.describe("工作台", () => {
     await page.locator("main").dispatchEvent("drop", { dataTransfer: files })
     const alert = page.getByRole("alert").filter({ hasText: "没能导入「坏的.json」" })
     await expect(alert).toContainText("第 2 个特征（拉伸1）缺少 sketch 字段")
-    await expect(tree.getByText("2 个特征"), "the model is unchanged").toBeVisible()
-
-    await page.getByRole("button", { name: "撤销上一步" }).click()
-    await expect(tree.getByText("5 个特征"), "undo brings the flange back").toBeVisible()
+    await expect(tree.getByText("5 个特征"), "the model is unchanged").toBeVisible()
   })
 
   test("/studio 工程图：三视图、尺寸、标题栏，导出 SVG", async ({ page }) => {
@@ -532,7 +537,7 @@ test.describe("工作台", () => {
     // Import the reference answer: every requirement ticks, the practice is done.
     const chooser = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "更多" }).click()
-    await page.getByRole("menuitem", { name: "导入特征树（JSON）…" }).click()
+    await page.getByRole("menuitem", { name: "导入文件…" }).click()
     await (await chooser).setFiles({ name: "答案.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(p.solution)) })
     await expect(card.getByText(`${p.checks.length}/${p.checks.length}`)).toBeVisible()
     await expect(card.getByText("练习完成")).toBeVisible()
@@ -542,5 +547,64 @@ test.describe("工作台", () => {
     await page.getByRole("button", { name: "退出练习" }).click()
     await expect(page.getByRole("region", { name: "练习" })).toHaveCount(0)
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("arbor:progress") ?? "{}").done)).toContain(`practice:${p.id}`)
+  })
+})
+
+test.describe("工作台 · 项目和装配", () => {
+  test.setTimeout(180_000)
+
+  test("/studio 新建装配项目：加新零件、「直接做」建形状、放 STEP 参考件、导出零件清单", async ({ page }) => {
+    await page.goto("/studio")
+    const files = page.getByRole("navigation", { name: "文件" })
+    await expect(files.getByRole("button", { name: /^零件/ }), "the first visit starts 「我的模型」 with one part").toBeVisible({ timeout: 90_000 })
+
+    // 新建项目 → several parts: an assembly with its parameter file, opened.
+    await page.getByRole("complementary").getByRole("button", { name: "项目：我的模型" }).click()
+    await page.getByRole("menuitem", { name: "新建项目…" }).click()
+    const dialog = page.getByRole("dialog", { name: "新建项目" })
+    await dialog.getByLabel("项目名").fill("笔")
+    await dialog.getByText("几个零件（装配）").click()
+    await dialog.getByRole("button", { name: "新建项目" }).click()
+    await expect(files.getByRole("button", { name: /^笔/ })).toBeVisible({ timeout: 30_000 })
+    const structure = page.getByRole("region", { name: "装配零件" })
+    await expect(structure.getByText(/还没有零件/)).toBeVisible()
+
+    // ＋ 零件 → 新零件: made under parts/ and opened inside the assembly.
+    await structure.getByRole("button", { name: "零件", exact: true }).click()
+    await page.getByRole("menuitem", { name: "新零件…" }).click()
+    const naming = page.getByRole("dialog", { name: "新零件" })
+    await naming.getByLabel("零件名").fill("笔杆")
+    await naming.getByRole("button", { name: "新建" }).click()
+    await expect(page.getByText("在装配里", { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(files.getByRole("button", { name: /^笔杆/ })).toBeVisible()
+
+    // 「直接做」: the desktop assistant's commands, run by the engine in this page (the scripted model builds a box).
+    await page.getByRole("radio", { name: "直接做" }).click()
+    await page.getByRole("textbox", { name: "给建模助教的消息" }).fill("做一个小盒子")
+    await page.keyboard.press("Enter")
+    await expect(page.getByText(/^做好了/), "the scripted turn finishes").toBeVisible({ timeout: 90_000 })
+    await expect(page.getByRole("button", { name: "核对要求 · 3/3" })).toBeVisible()
+    await expect(page.getByRole("navigation", { name: "特征树" }).getByText("5 个特征")).toBeVisible()
+
+    // Back to the assembly: a STEP reference uploaded from the computer goes in beside the part.
+    await page.getByRole("button", { name: /^回到装配/ }).click()
+    await expect(structure.getByText("笔杆")).toBeVisible({ timeout: 30_000 })
+    await structure.getByRole("button", { name: "零件", exact: true }).click()
+    await page.getByRole("menuitem", { name: "STEP 参考件…" }).click()
+    const chooser = page.waitForEvent("filechooser")
+    await page.getByRole("dialog").getByRole("button", { name: /上传/ }).click()
+    await (await chooser).setFiles("e2e/fixtures/cube.step")
+    await expect(structure.getByText("cube")).toBeVisible({ timeout: 60_000 })
+    await expectRendered(page.locator("canvas").first(), "/studio assembly")
+
+    // The parts list of the assembly, downloaded.
+    await page.getByRole("button", { name: "导出", exact: true }).click()
+    const download = page.waitForEvent("download")
+    await page.getByRole("menuitem", { name: "导出零件清单（Markdown）" }).click()
+    expect((await download).suggestedFilename()).toBe("笔-零件清单.md")
+
+    // A reload comes back to the same project and file.
+    await page.reload()
+    await expect(structure.getByText("cube")).toBeVisible({ timeout: 90_000 })
   })
 })

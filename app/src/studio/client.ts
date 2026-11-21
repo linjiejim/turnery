@@ -1,12 +1,13 @@
 import { workerName } from "../lib/agent-lang"
-import type { MeasureResult, MeasureTarget } from "./kernel/measure"
+import type { MeasureResult, MeasureSpec } from "./kernel/measure"
 import type { KernelPort } from "./apply"
 import type { Tree } from "./dsl"
 import type { PickInfo } from "./annotations"
-import type { BuildReport, DisplayData } from "./kernel/build"
+import type { BuildReport, ComponentSource, ContextSource, DisplayData } from "./kernel/build"
 import type { Dim } from "./kernel/dims"
 import type { DrawingData } from "./kernel/drawing"
-import type { WorkerMessage, WorkerRequest } from "./worker"
+import type { AssetSource, RebuildOptions, WorkerMessage, WorkerRequest } from "./worker"
+import type { Look, Appearance } from "./appearance"
 
 // Distributive Omit, so each request variant keeps its own fields.
 type Payload<T> = T extends unknown ? Omit<T, "id"> : never
@@ -20,6 +21,8 @@ export class KernelClient implements KernelPort {
   private seq = 0
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   private lastTree: Tree | null = null
+  /** What the kernel was handed besides the tree (files, components, context): handed again to a new worker. */
+  private sources: { assets: AssetSource[] | null; components: ComponentSource[] | null; context: ContextSource | null } = { assets: null, components: null, context: null }
   ready!: Promise<void>
   onProgress?: (loadedMB: number) => void
 
@@ -55,9 +58,38 @@ export class KernelClient implements KernelPort {
     })
   }
 
-  async rebuild(tree: Tree): Promise<BuildReport> {
+  async rebuild(tree: Tree, options?: RebuildOptions): Promise<BuildReport> {
     this.lastTree = tree
-    return this.call("rebuild", { type: "rebuild", tree })
+    return this.call("rebuild", { type: "rebuild", tree, options })
+  }
+
+  /** Only colours or finishes changed: true when the kernel took the tree without rebuilding. */
+  async restyle(tree: Tree): Promise<boolean> {
+    const ok = await this.call<boolean>("restyle", { type: "restyle", tree })
+    if (ok) this.lastTree = tree
+    return ok
+  }
+
+  looks(): Promise<{ name: string; look: Look; here?: Appearance }[]> {
+    return this.call("looks", { type: "looks" })
+  }
+
+  /** The files `import` features read. */
+  setAssets(list: AssetSource[]): Promise<void> {
+    this.sources.assets = list
+    return this.call("setAssets", { type: "setAssets", list })
+  }
+
+  /** What an assembly's components read. */
+  setComponents(list: ComponentSource[]): Promise<void> {
+    this.sources.components = list
+    return this.call("setComponents", { type: "setComponents", list })
+  }
+
+  /** Editing a part inside an assembly: the parts around it. */
+  setContext(ctx: ContextSource | null): Promise<void> {
+    this.sources.context = ctx
+    return this.call("setContext", { type: "setContext", ctx })
   }
 
   display(index?: number): Promise<DisplayData> {
@@ -84,7 +116,7 @@ export class KernelClient implements KernelPort {
     return this.call("faceEdges", { type: "faceEdges", hash, before })
   }
 
-  measure(targets: MeasureTarget[]): Promise<MeasureResult | null> {
+  measure(targets: MeasureSpec[]): Promise<MeasureResult | null> {
     return this.call("measure", { type: "measure", targets })
   }
 
@@ -105,6 +137,11 @@ export class KernelClient implements KernelPort {
     this.worker.terminate()
     this.spawn()
     await this.ready
+    // The new worker starts empty: everything the last build read goes over again before it.
+    const { assets, components, context } = this.sources
+    if (assets) await this.setAssets(assets)
+    if (components) await this.setComponents(components)
+    if (context) await this.setContext(context)
     if (this.lastTree) await this.rebuild(this.lastTree)
   }
 

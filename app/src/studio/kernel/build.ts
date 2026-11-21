@@ -1631,7 +1631,7 @@ export class Kernel {
           throw new InputError(
             this.assetsGiven
               ? ta(`没有读到「${f.file}」`, `Couldn't read “${f.file}”`)
-              : ta("导入 STEP 只能在桌面版 Turnery 里用：网页读不到你电脑上的文件", "Importing STEP works only in the Turnery desktop app: a web page can't read files on your computer"),
+              : ta("导入 STEP 要在项目里打开这个零件（工作台或桌面版）：这里读不到它引用的文件", "Importing STEP needs this part opened in a project (the workbench or the desktop app): the files it refers to can't be read here"),
           )
         if (!asset.shape) throw new InputError(ta(`「${f.file}」读不了：${asset.error ?? "不是能读的 STEP 文件"}`, `Can't read “${f.file}”: ${asset.error ?? "not a readable STEP file"}`))
         let shape = asset.shape.clone() as AnyShape
@@ -2151,7 +2151,7 @@ export class Kernel {
         throw new InputError(
           this.componentsGiven
             ? ta(`没有读到「${f.file}」`, `Couldn't read “${f.file}”`)
-            : ta("装配只能在桌面版 Turnery 里用：网页读不到你电脑上的文件", "Assemblies work only in the Turnery desktop app: a web page can't read files on your computer"),
+            : ta("装配要在项目里打开（工作台或桌面版）：这里读不到它引用的零件文件", "An assembly needs to be opened in a project (the workbench or the desktop app): the part files it refers to can't be read here"),
         )
       built = buildComponent(got.source)
       source = f.file!
