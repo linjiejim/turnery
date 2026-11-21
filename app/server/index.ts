@@ -19,12 +19,16 @@ import { bodyLimit } from "hono/body-limit"
 import { Annotations, annotationText } from "../src/studio/annotations"
 import { Tree } from "../src/studio/dsl"
 import { languageRule, statePrompt, systemPrompt, teachPrompt, withState } from "../src/studio/prompt"
-import { studioTools } from "../src/studio/tools"
+import { studioTools, workbenchTools } from "../src/studio/tools"
 import { trimMessages } from "../src/studio/trim"
 import { Budget, clientIp, RateLimiter } from "./limits"
 import { mockModel } from "./mock"
 import { deepseekRoute, hostedRoute } from "./models"
 import { scheduleCleanup, ShareStore, shareRoutes } from "./shares"
+import { HubAuth } from "./hub/auth"
+import { FileBlobStore } from "./hub/blobs"
+import { HubStore } from "./hub/db"
+import { hubRoutes } from "./hub/routes"
 
 const env = process.env
 const MOCK = env.STUDIO_MOCK === "1"
@@ -39,11 +43,23 @@ const requests = new RateLimiter(Number(env.REQUESTS_PER_HOUR ?? 400), 3600_000)
 const shares = new ShareStore(DATA_DIR)
 scheduleCleanup(shares)
 
+const hubStore = new HubStore(DATA_DIR)
+const hubBlobs = new FileBlobStore(hubStore.dir)
+const hubAuth = new HubAuth({
+  hubDir: hubStore.dir,
+  sessionSecret: env.HUB_SESSION_SECRET,
+  githubClientId: env.GITHUB_CLIENT_ID,
+  githubClientSecret: env.GITHUB_CLIENT_SECRET,
+  githubCallbackUrl: env.GITHUB_CALLBACK_URL,
+  localAuth: env.HUB_LOCAL_AUTH === "1" ? true : env.HUB_LOCAL_AUTH === "0" ? false : undefined,
+})
+
 const app = new Hono()
 
 app.get("/api/health", (c) => c.json({ ok: true }))
 
 app.route("/", shareRoutes(shares))
+app.route("/", hubRoutes({ store: hubStore, blobs: hubBlobs, auth: hubAuth, webhookSecret: env.HUB_WEBHOOK_SECRET }))
 
 app.get("/api/studio/status", (c) =>
   c.json({
@@ -62,7 +78,7 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
   /** The language of the page they sent it from: what the learner reads, and what the model is told in. */
   const lang = body.lang === "en" ? "en" : "zh"
   const say = (zh: string, en: string) => (lang === "en" ? en : zh)
-  const tools = studioTools(lang)
+  const tools = body.mode === "build" ? workbenchTools(lang) : studioTools(lang)
   const tree = Tree.safeParse(body.tree ?? { params: {}, features: [] })
   if (!tree.success) return c.json({ error: "bad-request", message: say("特征树格式不对", "The feature tree is malformed.") }, 400)
   const summary = typeof body.summary === "string" ? body.summary.slice(0, 12000) : ""

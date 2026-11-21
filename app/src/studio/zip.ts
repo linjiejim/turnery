@@ -69,3 +69,99 @@ export function zipStore(files: { name: string; data: Uint8Array }[]): Blob {
 export function stepAscii(text: string): string {
   return text.replace(/[^\x20-\x7e\n\r\t]+/g, (run) => `\\X2\\${Array.from({ length: run.length }, (_, i) => run.charCodeAt(i).toString(16).toUpperCase().padStart(4, "0")).join("")}\\X0\\`)
 }
+
+/**
+ * Minimal ZIP reader: reads stored (method 0) and deflate (method 8) entries
+ * using the standard Web/Node DecompressionStream API. Rejects malformed archives
+ * or entries exceeding `maxBytes` / `maxFiles`.
+ */
+export async function unzipStore(
+  bytes: Uint8Array,
+  opts: { maxFiles?: number; maxTotalBytes?: number } = {},
+): Promise<{ name: string; data: Uint8Array }[]> {
+  const maxFiles = opts.maxFiles ?? 100
+  const maxTotalBytes = opts.maxTotalBytes ?? 32 * 1024 * 1024
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  // Find End of Central Directory record (signature 0x06054b50) scanning backward.
+  let eocd = -1
+  const minOffset = Math.max(0, bytes.byteLength - 65557)
+  for (let i = bytes.byteLength - 22; i >= minOffset; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i
+      break
+    }
+  }
+  if (eocd < 0) throw new Error("Not a valid ZIP archive (missing EOCD)")
+  const count = view.getUint16(eocd + 10, true)
+  const cdOffset = view.getUint32(eocd + 16, true)
+  if (count > maxFiles) throw new Error(`ZIP has too many entries (${count}, max ${maxFiles})`)
+
+  const dec = new TextDecoder("utf-8", { fatal: false })
+  const out: { name: string; data: Uint8Array }[] = []
+  let pos = cdOffset
+  let total = 0
+  for (let i = 0; i < count; i++) {
+    if (pos + 46 > bytes.byteLength || view.getUint32(pos, true) !== 0x02014b50) {
+      throw new Error("Malformed ZIP central directory")
+    }
+    const method = view.getUint16(pos + 10, true)
+    const compSize = view.getUint32(pos + 20, true)
+    const uncompSize = view.getUint32(pos + 24, true)
+    const nameLen = view.getUint16(pos + 28, true)
+    const extraLen = view.getUint16(pos + 30, true)
+    const commentLen = view.getUint16(pos + 32, true)
+    const localOffset = view.getUint32(pos + 42, true)
+    const name = dec.decode(bytes.subarray(pos + 46, pos + 46 + nameLen))
+    pos += 46 + nameLen + extraLen + commentLen
+    // Skip directories and macOS resource forks.
+    if (name.endsWith("/") || name.startsWith("__MACOSX/")) continue
+    if (total + uncompSize > maxTotalBytes) throw new Error(`ZIP exceeds maximum uncompressed size (${Math.round(maxTotalBytes / (1024 * 1024))} MB)`)
+    if (localOffset + 30 > bytes.byteLength || view.getUint32(localOffset, true) !== 0x04034b50) {
+      throw new Error(`Malformed local header for ${name}`)
+    }
+    const lNameLen = view.getUint16(localOffset + 26, true)
+    const lExtraLen = view.getUint16(localOffset + 28, true)
+    const dataStart = localOffset + 30 + lNameLen + lExtraLen
+    if (dataStart + compSize > bytes.byteLength) throw new Error(`Truncated ZIP entry: ${name}`)
+    const raw = bytes.subarray(dataStart, dataStart + compSize)
+    let data: Uint8Array
+    if (method === 0) {
+      data = raw.slice()
+    } else if (method === 8) {
+      data = await inflateRaw(raw, maxTotalBytes - total)
+    } else {
+      throw new Error(`Unsupported ZIP compression method ${method} for ${name}`)
+    }
+    total += data.byteLength
+    if (total > maxTotalBytes) throw new Error(`ZIP exceeds maximum uncompressed size`)
+    out.push({ name, data })
+  }
+  return out
+}
+
+async function inflateRaw(data: Uint8Array, limit: number): Promise<Uint8Array> {
+  const ds = new DecompressionStream("deflate-raw")
+  const writer = ds.writable.getWriter()
+  const writeDone = writer.write(new Uint8Array(data)).then(() => writer.close())
+  const reader = ds.readable.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > limit) {
+      await reader.cancel().catch(() => {})
+      throw new Error("Decompressed ZIP entry exceeds size limit")
+    }
+    chunks.push(value)
+  }
+  await writeDone
+  const merged = new Uint8Array(size)
+  let off = 0
+  for (const c of chunks) {
+    merged.set(c, off)
+    off += c.byteLength
+  }
+  return merged
+}

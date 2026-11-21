@@ -4,13 +4,20 @@ import opencascade from "replicad-opencascadejs"
 import wasmUrl from "replicad-opencascadejs/wasm?url"
 import { setOC } from "replicad"
 import type { Tree } from "./dsl"
-import { Kernel } from "./kernel/build"
+import { Kernel, type ComponentSource, type ContextSource } from "./kernel/build"
 import { ensureFonts } from "./kernel/fonts"
 import type { MeasureTarget } from "./kernel/measure"
 
+export type AssetInput = { name: string; bytes: Uint8Array | null; error?: string }
+
 export type WorkerRequest =
   | { id: number; type: "init" }
+  | { id: number; type: "setAssets"; list: AssetInput[] }
+  | { id: number; type: "setComponents"; list: ComponentSource[] }
+  | { id: number; type: "setContext"; ctx: ContextSource | null }
   | { id: number; type: "rebuild"; tree: Tree }
+  | { id: number; type: "restyle"; tree: Tree }
+  | { id: number; type: "looks" }
   | { id: number; type: "display"; index?: number }
   | { id: number; type: "inspect"; what: "body" | "faces" | "edges"; selector?: unknown }
   | { id: number; type: "export"; format: "step" | "stl" | "3mf"; index?: number }
@@ -33,6 +40,13 @@ const fetchBuffer = async (url: URL) => {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.arrayBuffer()
+}
+
+async function ensureComponentFonts(list: ComponentSource[]) {
+  for (const c of list) {
+    if (c.tree) await ensureFonts(c.tree, fetchBuffer).catch(() => {})
+    if (c.components?.length) await ensureComponentFonts(c.components)
+  }
 }
 
 let kernel: Kernel | null = null
@@ -85,10 +99,30 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     switch (req.type) {
       case "init":
         break
+      case "setAssets":
+        k.setAssets(req.list)
+        break
+      case "setComponents":
+        await ensureComponentFonts(req.list)
+        k.setComponents(req.list)
+        break
+      case "setContext":
+        if (req.ctx) {
+          await ensureFonts(req.ctx.tree, fetchBuffer).catch(() => {})
+          await ensureComponentFonts(req.ctx.components)
+        }
+        k.setContext(req.ctx)
+        break
       case "rebuild":
         // A text whose font didn't arrive fails on its own step, with a message saying so.
         await ensureFonts(req.tree, fetchBuffer).catch(() => {})
         result = k.rebuild(req.tree)
+        break
+      case "restyle":
+        result = k.restyle(req.tree)
+        break
+      case "looks":
+        result = k.looks()
         break
       case "display": {
         const d = k.display(req.index)

@@ -4,12 +4,19 @@ import { takeKernel } from "./boot"
 import type { KernelClient } from "./client"
 import { EMPTY_TREE, Tree, type Check } from "./dsl"
 import { withPinned } from "./pinned"
-import type { BuildReport, DisplayData } from "./kernel/build"
+import type { BuildReport, ComponentSource, ContextSource, DisplayData } from "./kernel/build"
 import type { Dim } from "./kernel/dims"
 import type { MeasureTarget } from "./kernel/measure"
 import { renderViews, type Pin } from "./look"
 import { STARTERS } from "./starters"
 import { ta } from "../lib/agent-lang"
+import type { AssetInput } from "./worker"
+
+export type KernelSources = {
+  assets?: AssetInput[]
+  components?: ComponentSource[]
+  context?: ContextSource | null
+}
 
 const STORE = "ft-studio-v1"
 
@@ -36,7 +43,7 @@ export type KernelState = { phase: "loading"; loadedMB: number } | { phase: "rea
  * With `shared` (a shared link) the page starts from that tree and nothing is
  * persisted: parameters can be tried and undone, a reload restores the link.
  */
-export function useStudio(shared?: Tree) {
+export function useStudio(shared?: Tree, initialSources?: KernelSources) {
   const [saved] = React.useState<Saved>(() => (shared ? { tree: shared, history: [] } : loadSaved()))
   const persist = !shared
   const [tree, setTreeState] = React.useState<Tree>(saved.tree)
@@ -57,6 +64,7 @@ export function useStudio(shared?: Tree) {
   const treeRef = React.useRef(tree)
   const rollbackRef = React.useRef(rollback)
   const historyRef = React.useRef(history)
+  const sourcesRef = React.useRef<KernelSources>(initialSources ?? {})
   const queue = React.useRef<Promise<unknown>>(Promise.resolve())
   /** Numbered pins of the current annotations; `look` draws them for the model. */
   const pinsRef = React.useRef<Pin[]>([])
@@ -107,6 +115,10 @@ export function useStudio(shared?: Tree) {
         if (!life.alive) return
         setKernel({ phase: "ready" })
         readyRef.current = true
+        const src = sourcesRef.current
+        if (src.assets?.length) await c.setAssets(src.assets)
+        if (src.components?.length) await c.setComponents(src.components)
+        if (src.context !== undefined) await c.setContext(src.context)
         // /studio?start=<id> opens a ready-made tree (from a teardown, or a shared link).
         const url = new URL(location.href)
         const starter = persist ? STARTERS.find((x) => x.id === url.searchParams.get("start")) : undefined
@@ -242,7 +254,41 @@ export function useStudio(shared?: Tree) {
     [showStep],
   )
 
-  const exportBody = React.useCallback(async (format: "step" | "stl") => client.current?.exportBody(format) ?? null, [])
+  const exportBody = React.useCallback(async (format: "step" | "stl" | "3mf") => client.current?.exportBody(format) ?? null, [])
+
+  /** Push assembly components, STEP assets and optional context into the worker, then rebuild `nextTree` if given. */
+  const setSources = React.useCallback(
+    async (src: KernelSources, nextTree?: Tree) => {
+      sourcesRef.current = src
+      const c = client.current
+      if (!c) return null
+      await c.ready
+      await c.setAssets(src.assets ?? [])
+      await c.setComponents(src.components ?? [])
+      await c.setContext(src.context ?? null)
+      if (nextTree) {
+        rollbackRef.current = null
+        setRollback(null)
+        return commit(nextTree)
+      }
+      return null
+    },
+    [commit],
+  )
+
+  /** Render a clean isometric PNG preview data URL of the latest model (for community publishing). */
+  const capturePreview = React.useCallback(async (): Promise<string | null> => {
+    const c = client.current
+    if (!c) return null
+    try {
+      const d = await c.display()
+      if (!d?.mesh) return null
+      const imgs = renderViews(d, ["iso"])
+      return imgs[0] ?? null
+    } catch {
+      return null
+    }
+  }, [])
 
   /** Describe a clicked face or edge of the latest body (null while rolled back or not ready). */
   const pick = React.useCallback(
@@ -311,7 +357,13 @@ export function useStudio(shared?: Tree) {
     measure,
     setPins,
     pinChecks,
+    setSources,
+    capturePreview,
   }
 }
 
-export type Studio = ReturnType<typeof useStudio>
+export type WebStudio = ReturnType<typeof useStudio>
+export type Studio = Omit<WebStudio, "setSources" | "capturePreview"> & {
+  setSources?: WebStudio["setSources"]
+  capturePreview?: WebStudio["capturePreview"]
+}

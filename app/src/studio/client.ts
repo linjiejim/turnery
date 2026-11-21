@@ -3,10 +3,11 @@ import type { MeasureResult, MeasureTarget } from "./kernel/measure"
 import type { KernelPort } from "./apply"
 import type { Tree } from "./dsl"
 import type { PickInfo } from "./annotations"
-import type { BuildReport, DisplayData } from "./kernel/build"
+import type { Appearance, Look } from "./appearance"
+import type { BuildReport, ComponentSource, ContextSource, DisplayData } from "./kernel/build"
 import type { Dim } from "./kernel/dims"
 import type { DrawingData } from "./kernel/drawing"
-import type { WorkerMessage, WorkerRequest } from "./worker"
+import type { AssetInput, WorkerMessage, WorkerRequest } from "./worker"
 
 // Distributive Omit, so each request variant keeps its own fields.
 type Payload<T> = T extends unknown ? Omit<T, "id"> : never
@@ -20,6 +21,9 @@ export class KernelClient implements KernelPort {
   private seq = 0
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   private lastTree: Tree | null = null
+  private lastAssets: AssetInput[] = []
+  private lastComponents: ComponentSource[] = []
+  private lastContext: ContextSource | null = null
   ready!: Promise<void>
   onProgress?: (loadedMB: number) => void
 
@@ -55,9 +59,34 @@ export class KernelClient implements KernelPort {
     })
   }
 
+  async setAssets(list: AssetInput[]): Promise<void> {
+    this.lastAssets = list
+    await this.call("setAssets", { type: "setAssets", list })
+  }
+
+  async setComponents(list: ComponentSource[]): Promise<void> {
+    this.lastComponents = list
+    await this.call("setComponents", { type: "setComponents", list })
+  }
+
+  async setContext(ctx: ContextSource | null): Promise<void> {
+    this.lastContext = ctx
+    await this.call("setContext", { type: "setContext", ctx })
+  }
+
   async rebuild(tree: Tree): Promise<BuildReport> {
     this.lastTree = tree
     return this.call("rebuild", { type: "rebuild", tree })
+  }
+
+  async restyle(tree: Tree): Promise<boolean> {
+    const ok = await this.call<boolean>("restyle", { type: "restyle", tree })
+    if (ok) this.lastTree = tree
+    return ok
+  }
+
+  looks(): Promise<{ name: string; look: Look; here?: Appearance }[]> {
+    return this.call("looks", { type: "looks" })
   }
 
   display(index?: number): Promise<DisplayData> {
@@ -105,6 +134,9 @@ export class KernelClient implements KernelPort {
     this.worker.terminate()
     this.spawn()
     await this.ready
+    if (this.lastAssets.length) await this.setAssets(this.lastAssets)
+    if (this.lastComponents.length) await this.setComponents(this.lastComponents)
+    if (this.lastContext) await this.setContext(this.lastContext)
     if (this.lastTree) await this.rebuild(this.lastTree)
   }
 

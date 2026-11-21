@@ -326,6 +326,17 @@ export const studioTools = (lang: AgentLang = agentLang()) => toolsIn(lang).stud
 export const desktopTools = (lang: AgentLang = agentLang()) => toolsIn(lang).desktop
 
 /**
+ * Full Web Workbench modeling tools (`mode === "build"`): desktop-parity feature ops
+ * (thread, import, component, intersect, onto, symmetric, spline, rounded corners) and
+ * full requirement checks (position, gap, clearance, interference), combined with the
+ * interactive editing/inspection/appearance tools.
+ */
+export const workbenchTools = (lang: AgentLang = agentLang()) => {
+  const b = toolsIn(lang)
+  return { ...b.studio, ...b.desktop }
+}
+
+/**
  * The tools in the agent's language as it was when this module loaded: for their names and schemas.
  * Where the language can differ or change (the website's server, the desktop app's main process),
  * read the descriptions from studioTools(lang) / desktopTools(lang).

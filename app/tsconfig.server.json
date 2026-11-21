@@ -5,6 +5,6 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["server", "scripts", "src/studio/**/*.ts"],
-  "exclude": ["src/studio/**/*.tsx", "src/studio/worker.ts", "src/studio/client.ts", "src/studio/render.ts"]
+  "include": ["server", "scripts", "src/studio/**/*.ts", "src/hub/**/*.ts", "src/desktop/core/sources.ts", "src/desktop/core/tree-diff.ts", "src/desktop/core/protocol.ts"],
+  "exclude": ["src/studio/**/*.tsx", "src/hub/**/*.tsx", "src/studio/worker.ts", "src/studio/client.ts", "src/studio/render.ts", "src/studio/project-store.ts"]
 }
