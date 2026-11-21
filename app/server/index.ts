@@ -20,6 +20,7 @@ import { Annotations, annotationText } from "../src/studio/annotations"
 import { Tree } from "../src/studio/dsl"
 import { languageRule, statePrompt, systemPrompt, teachPrompt, withState } from "../src/studio/prompt"
 import { studioTools } from "../src/studio/tools"
+import { webAgentGuide, webAgentState, webAgentTools } from "../src/studio/web-agent"
 import { trimMessages } from "../src/studio/trim"
 import { Budget, clientIp, RateLimiter } from "./limits"
 import { mockModel } from "./mock"
@@ -62,7 +63,9 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
   /** The language of the page they sent it from: what the learner reads, and what the model is told in. */
   const lang = body.lang === "en" ? "en" : "zh"
   const say = (zh: string, en: string) => (lang === "en" ? en : zh)
-  const tools = studioTools(lang)
+  // 「直接做」 is the desktop app's assistant, run by the engine in the page; 「边做边学」 keeps the tutor's tools.
+  const teach = body.mode === "teach"
+  const tools = teach ? studioTools(lang) : webAgentTools(lang)
   const tree = Tree.safeParse(body.tree ?? { params: {}, features: [] })
   if (!tree.success) return c.json({ error: "bad-request", message: say("特征树格式不对", "The feature tree is malformed.") }, 400)
   const summary = typeof body.summary === "string" ? body.summary.slice(0, 12000) : ""
@@ -80,15 +83,18 @@ app.post("/api/studio/chat", bodyLimit({ maxSize: 6 * 1024 * 1024 }), async (c) 
   // The state the learner saw when they sent the message (snapshot in its
   // metadata); older clients only send the live tree.
   const lastUser = [...body.messages].reverse().find((m) => m.role === "user")
-  const snap = (lastUser?.metadata ?? {}) as { tree?: unknown; summary?: unknown }
+  const snap = (lastUser?.metadata ?? {}) as { tree?: unknown; summary?: unknown; state?: unknown }
   const snapTree = Tree.safeParse(snap.tree)
-  const state = snapTree.success
-    ? statePrompt(snapTree.data, typeof snap.summary === "string" ? snap.summary.slice(0, 12000) : "", lang)
-    : statePrompt(tree.data, summary, lang)
+  const state =
+    !teach && typeof snap.state === "string"
+      ? webAgentState(lang, snap.state.slice(0, 24000))
+      : snapTree.success
+        ? statePrompt(snapTree.data, typeof snap.summary === "string" ? snap.summary.slice(0, 12000) : "", lang)
+        : statePrompt(tree.data, summary, lang)
   const messages = await convertToModelMessages(trimMessages(body.messages.map((m) => withAnnotations(m, lang)), 8, lang), { tools, ignoreIncompleteToolCalls: true })
   const result = streamText({
     model: MOCK ? mockModel() : route!.model,
-    system: `${systemPrompt(lang)}${body.mode === "teach" ? `\n\n${teachPrompt(lang)}` : ""}${languageRule(lang)}`,
+    system: `${teach ? `${systemPrompt(lang)}\n\n${teachPrompt(lang)}` : webAgentGuide(lang)}${languageRule(lang)}`,
     messages: withState(messages, state),
     tools,
     maxOutputTokens: 8000,

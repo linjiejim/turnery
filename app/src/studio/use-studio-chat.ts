@@ -20,12 +20,42 @@ const BETWEEN_STEPS_MS = 400
 /** Tool calls allowed per user turn before the loop pauses. */
 export const MAX_CALLS_PER_TURN = 30
 
-function loadMessages(): UIMessage[] {
+/** Where a conversation is kept: one per project (`scope`, its folder), or the one of the page without projects. */
+const storeKey = (scope?: string | null) => (scope ? `${STORE}:${scope}` : STORE)
+
+function loadMessages(scope?: string | null): UIMessage[] {
   try {
-    const m = JSON.parse(localStorage.getItem(STORE) ?? "[]")
+    let raw = localStorage.getItem(storeKey(scope))
+    // The conversation from before projects goes to the first project that opens (the one its model went into).
+    if (raw === null && scope && localStorage.getItem(STORE) !== null) {
+      raw = localStorage.getItem(STORE)
+      localStorage.setItem(storeKey(scope), raw ?? "[]")
+      localStorage.removeItem(STORE)
+    }
+    const m = JSON.parse(raw ?? "[]")
     return Array.isArray(m) ? m : []
   } catch {
     return []
+  }
+}
+
+/** A project renamed: its conversation follows it. */
+export function moveChat(from: string, to: string) {
+  try {
+    const raw = localStorage.getItem(storeKey(from))
+    if (raw !== null) localStorage.setItem(storeKey(to), raw)
+    localStorage.removeItem(storeKey(from))
+  } catch {
+    /* private mode */
+  }
+}
+
+/** A project deleted: its conversation goes too. */
+export function dropChat(scope: string) {
+  try {
+    localStorage.removeItem(storeKey(scope))
+  } catch {
+    /* private mode */
   }
 }
 
@@ -63,17 +93,30 @@ export function errorText(e: Error | undefined) {
  * The chat transport and tool callback outlive renders; they read the latest
  * studio state through this bridge (one studio page at a time).
  */
-const bridge: { studio: Studio | null; addOutput: ReturnType<typeof useChat>["addToolOutput"] | null; mode: ChatMode } = {
+const bridge: { studio: Studio | null; addOutput: ReturnType<typeof useChat>["addToolOutput"] | null; mode: ChatMode; state: (() => Promise<string>) | null } = {
   studio: null,
   addOutput: null,
   mode: "build",
+  state: null,
 }
 
-export function useStudioChat(studio: Studio) {
+export type ChatOptions = {
+  /** The project the conversation belongs to (its folder): each project keeps its own. */
+  scope?: string | null
+  /** 「直接做」: what the assistant is told the project and the open file look like (the engine's get_state). */
+  state?: () => Promise<string>
+}
+
+export function useStudioChat(studio: Studio, options: ChatOptions = {}) {
+  const { scope = null, state = null } = options
   React.useEffect(() => {
     bridge.studio = studio
   }, [studio])
-  const [initial] = React.useState(loadMessages)
+  React.useEffect(() => {
+    bridge.state = state
+  }, [state])
+  // Each project has its own conversation: another scope is another chat (the one before stops).
+  const initial = React.useMemo(() => loadMessages(scope), [scope])
   const [paused, setPaused] = React.useState(false)
   const [mode, setModeState] = React.useState<ChatMode>(() => (localStorage.getItem(MODE_STORE) === "build" ? "build" : "teach"))
   React.useEffect(() => {
@@ -99,6 +142,7 @@ export function useStudioChat(studio: Studio) {
   )
 
   const chat = useChat({
+    id: scope ?? "studio",
     messages: initial,
     transport,
     // Re-render (and re-parse the Markdown) at most every 40 ms while text streams in.
@@ -123,17 +167,23 @@ export function useStudioChat(studio: Studio) {
     bridge.addOutput = chat.addToolOutput
   }, [chat.addToolOutput])
 
+  const [shownScope, setShownScope] = React.useState(scope)
+  if (shownScope !== scope) {
+    setShownScope(scope)
+    setPaused(false)
+  }
+
   React.useEffect(() => {
     if (chat.status !== "ready" && chat.status !== "error") return
     try {
-      localStorage.setItem(STORE, JSON.stringify(forStorage(chat.messages).slice(-80)))
+      localStorage.setItem(storeKey(scope), JSON.stringify(forStorage(chat.messages).slice(-80)))
     } catch {
       /* quota */
     }
-  }, [chat.messages, chat.status])
+  }, [chat.messages, chat.status, scope])
 
   const send = React.useCallback(
-    (text: string, files?: FileUIPart[], notes?: Note[], shot?: string | null) => {
+    async (text: string, files?: FileUIPart[], notes?: Note[], shot?: string | null) => {
       const said = text.trim()
       if (!said && !files?.length && !notes?.length) return
       setPaused(false)
@@ -141,7 +191,9 @@ export function useStudioChat(studio: Studio) {
       s?.checkpoint()
       // What the model is told the part looks like for this whole turn, and where the learner pointed.
       const annotations = notes?.length ? notes.map(({ hash: _hash, ...a }) => a) : undefined
-      const metadata = s ? { tree: s.treeRef.current, summary: s.summary, annotations } : { annotations }
+      // 「直接做」 with the engine: the project and the open file as get_state tells them.
+      const state = bridge.mode === "build" && bridge.state ? await bridge.state().catch(() => undefined) : undefined
+      const metadata = s ? { tree: s.treeRef.current, summary: s.summary, annotations, ...(state ? { state } : {}) } : { annotations }
       const all = [...(files ?? []), ...(shot ? [{ type: "file" as const, mediaType: "image/png", filename: ANNOTATED_VIEW, url: shot }] : [])]
       // Nothing typed: a short message of the person's own, in their language.
       void chat.sendMessage({ text: said || (notes?.length ? t("按标注修改", "Change it as noted") : t("照着这张图建模", "Model it from this picture")), files: all.length ? all : undefined, metadata })
@@ -163,8 +215,8 @@ export function useStudioChat(studio: Studio) {
     void chat.stop()
     chat.setMessages([])
     setPaused(false)
-    localStorage.removeItem(STORE)
-  }, [chat])
+    localStorage.removeItem(storeKey(scope))
+  }, [chat, scope])
 
   // Between the steps of one turn the status drops to "ready" for a moment before the next
   // request starts; hold `busy` over that gap so the UI doesn't flicker between steps.

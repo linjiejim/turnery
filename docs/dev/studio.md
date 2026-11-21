@@ -33,8 +33,15 @@ app/src/studio/
   look.ts          离屏渲染四视图（look 工具），可以画上编号图钉
   annotations.ts   标注：类型、校验、发给模型的文字（浏览器、服务端、评测共用）
   use-annotations.ts  标注的状态：待发、已发、卡片、高亮
-  use-studio.ts    页面状态：特征树、撤销、回滚、参数
-  use-studio-chat.ts  useChat：客户端执行工具、自动续发、每轮最多 30 次调用
+  use-studio.ts    分享链接只读页的状态：一棵树、撤销、回滚、参数（工作台本身走下面的 web-host）
+  use-studio-chat.ts  useChat：客户端执行工具、自动续发、每轮最多 30 次调用；每个项目一段对话
+  web-host/        工作台里跑的桌面版引擎（见下面「工作台里的项目」）
+    browser-files.ts  引擎的文件系统：内存里一份，写透到 IndexedDB
+    worker-kernel.ts  引擎的内核端口：现有的内核 Worker
+    web-host.ts    引擎、项目（新建、改名、删除）、导入、导出、桥（turnery）
+    use-web-host.ts   页面挂载时启动引擎；引擎 → Studio 的适配（复用桌面版的 useDesktopStudio）
+    use-web-structure.ts  装配的「结构」和选择（桌面版窗口同样的逻辑，没有备注）
+  web-agent.ts     「直接做」的工具和系统提示词：桌面版内置助手的命令，去掉网页做不了的
   md-blocks.ts     流式 Markdown：按段切开，只重渲最后一段，补上没写完的 ** 和 `
   ui/              对话面板、视口（点选与图钉）、叠在视口底部的特征时间线、步骤详情、
                    视口工具（测量、剖视）、参数和代码面板
@@ -51,9 +58,25 @@ app/src/studio/
 app/server/        对话 API（Hono + AI SDK 7），只转发对话，不碰几何
   models.ts        走哪条路调模型（OpenRouter / DeepSeek 直连）以及每次花了多少钱
   shares.ts        分享链接：存、取、删、清理、限速
-app/routes/studio.tsx         工作台（分享、导入、导出）
+app/routes/studio.tsx         工作台（项目、导入、导出、分享）
 app/routes/studio-share.tsx   分享链接的只读页 /studio/s/:id
 ```
+
+## 工作台里的项目
+
+工作台（`/studio`）和桌面版用同一个引擎（`app/src/desktop/core/engine.ts`）。引擎不绑平台：文件系统（`Files`）和内核（`KernelHost`）从外面传进来。Electron 主进程给它磁盘和内核线程，CLI 和单元测试给它内存里的文件和同线程的内核，网页给它：
+
+- `BrowserFiles`：所有文件在内存里一份，每次写入按顺序写进 IndexedDB（库 `turnery-web`，表 `files`，键是虚拟路径）。项目放在 `/web/projects/<项目名>/`，每个项目文件夹里有一个空的 `.turnery-project`，空项目也算一个文件夹。IndexedDB 打不开或写失败（无痕窗口、配额）时退回内存，页面顶上说明关掉就没了。
+- `WorkerKernelHost`：现有的内核 Worker（`worker.ts`），协议加了 `setAssets`、`setComponents`、`setContext`、`restyle`、`looks` 和重建选项。只有一个内核、不分槽，切文件就重建。堆超过 1400 MB 时 `KernelClient` 换一个 Worker，把最后交过的文件、组件、上下文和树重新交给它。
+- 桥：`web-host.ts` 的 `webBridge` 实现 `TurneryBridge`，页面挂载时用 `installBridge` 装上（`desktop/bridge.ts` 的 `turnery` 依次找 Electron 的、装上的、都没有就报「只能在 App 里用」）。所以桌面版的 `useEngine`、`useDesktopStudio`、`PartsSidebar`、`AddPartMenu` 在网页里原样能用。
+
+页面自己做的：项目菜单（切换、新建、改名、删除、导出 zip）、导入（零件和装配 JSON、共享参数、STEP 加进当前项目，zip 新建项目）、导出（引擎的 `export` 写到 `/web/.exports`，读出来下载再删掉）、选文件的对话框（`host.setAsk`）。
+
+第一次打开时，旧版存在 `localStorage["ft-studio-v1"]` 的那一个模型搬进项目「我的模型」的 `零件.turnery.json`，旧的对话归这个项目；旧数据不删。之后每次打开上次的项目和文件（在装配里改的零件，回到装配里）。
+
+对话：「边做边学」的工具和提示词不变，工具调用由引擎以助手（`assistant`）的身份执行；「直接做」是桌面版内置助手（`catalog.ts` 的命令、`AGENT_GUIDE`，按请求的语言生成，见 `commandsIn` / `guideIn`），去掉 `guide`、`request_pick`、`show`、`get_notes`、`resolve_note`，发消息时把 `get_state` 的文字放进消息的 `metadata.state`。助手在装配上只能用「直接做」：对话面板会提示切换。
+
+练习固定的要求只在练习的那个零件里生效（`turnery:practice-part`）；练习进行中导入特征树，换掉的是练习零件的内容。
 
 ## 桌面装配的加载与检查
 
