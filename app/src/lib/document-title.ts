@@ -21,6 +21,7 @@ export function syncDocumentTitle(pathname: string) {
   const card = path.match(/^\/card\/([^/]+)$/)
   // A shared link names its model once the snapshot arrives (routes/studio-share.tsx).
   if (path.startsWith("/studio/s/")) set(t("分享的模型", "Shared model"))
+  else if (path.startsWith("/community/")) set(t("开源社区", "Community"))
   else if (lesson) set(lessonPageMeta(decodeURIComponent(lesson[1]))?.title)
   else if (card) set(cardPageMeta(decodeURIComponent(card[1]))?.title)
   else if (teardown) {

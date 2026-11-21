@@ -23,6 +23,8 @@ import {
   slugify,
 } from "../hub/package"
 
+export { ASM_EXT, PARAMS_EXT, PART_EXT }
+
 export type VirtualFileData = {
   encoding: "utf8" | "base64"
   content: string
@@ -38,6 +40,8 @@ export type WebProject = {
   files: Record<string, VirtualFileData>
   /** Optional link to a published community project for one-click continuous updates. */
   communityRef?: { handle: string; slug: string; version: string }
+  /** Optional provenance when remixed from a community release. */
+  forkedFrom?: { handle: string; slug: string; version: string }
   updatedAt: number
 }
 
@@ -152,6 +156,7 @@ export function toEngineFiles(project: WebProject): Files {
       }
       return out.size ? [...out].map(([name, isDir]) => ({ name, dir: isDir })) : null
     },
+    watch: () => () => {},
     write: async (raw, data) => {
       const p = norm(raw)
       project.files[p] = typeof data === "string" ? utf8File(data) : binaryFile(data)
@@ -212,6 +217,7 @@ export function projectFromBundle(input: {
   entry: string
   files: BundleFileInput[]
   communityRef?: { handle: string; slug: string; version: string }
+  forkedFrom?: { handle: string; slug: string; version: string }
 }): WebProject {
   const now = Date.now()
   const files: Record<string, VirtualFileData> = {}
@@ -228,6 +234,7 @@ export function projectFromBundle(input: {
     activeFile,
     files,
     communityRef: input.communityRef,
+    forkedFrom: input.forkedFrom,
     updatedAt: now,
   }
 }

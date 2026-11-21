@@ -30,6 +30,9 @@ const routes = [
       { path: "/atlas", lazy: lazy(() => import("@/routes/atlas"), "AtlasPage") },
       { path: "/glossary", lazy: lazy(() => import("@/routes/glossary"), "GlossaryPage") },
       { path: "/card/:code", lazy: lazy(() => import("@/routes/card"), "CardPage") },
+      { path: "/community", lazy: lazy(() => import("@/routes/community"), "CommunityPage") },
+      { path: "/community/:handle", lazy: lazy(() => import("@/routes/community-profile"), "CommunityProfilePage") },
+      { path: "/community/:handle/c/:slug", lazy: lazy(() => import("@/routes/community-collection"), "CommunityCollectionPage") },
       { path: "/desktop", lazy: lazy(() => import("@/routes/desktop"), "DesktopPage") },
       // 「练习」was taken down on 2026-11-06; old links land on the learning path.
       { path: "/practice", loader: () => redirect("/learn") },
@@ -54,6 +57,22 @@ const routes = [
       void import("@/studio/boot").then((b) => b.startKernel())
       return import("@/routes/studio-share")
     }, "StudioSharePage"),
+  },
+  {
+    // Community project interactive 3D viewer (latest release)
+    path: "/community/:handle/:slug",
+    lazy: lazy(() => {
+      void import("@/studio/boot").then((b) => b.startKernel())
+      return import("@/routes/community-project")
+    }, "CommunityProjectPage"),
+  },
+  {
+    // Community project interactive 3D viewer (pinned version)
+    path: "/community/:handle/:slug/v/:version",
+    lazy: lazy(() => {
+      void import("@/studio/boot").then((b) => b.startKernel())
+      return import("@/routes/community-project")
+    }, "CommunityProjectPage"),
   },
 ] satisfies Parameters<typeof createBrowserRouter>[0]
 

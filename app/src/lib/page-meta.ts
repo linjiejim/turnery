@@ -52,7 +52,11 @@ const STATIC_ZH: Record<string, PageMeta> = {
   },
   "/studio": {
     title: "工作台",
-    description: "用中文描述零件，AI 助教一步步建出可回滚、可改参数的特征树，并讲清每一步的设计意图。几何在浏览器里由 OpenCascade 算出，可导出 STEP 和 build123d 代码。",
+    description: "浏览器里的参数化 CAD 工作台：支持多零件装配、STEP 导入、标准件、实时几何与 BOM 分析，以及一键发布到开源社区。",
+  },
+  "/community": {
+    title: "开源社区",
+    description: "探索与分享开源参数化零件、多零件装配体与策展项目合集。打开即可在浏览器里调参、分析、导出或二次创作。",
   },
   "/desktop": {
     title: "桌面版",
@@ -83,7 +87,11 @@ const STATIC_EN: Record<string, PageMeta> = {
   },
   "/studio": {
     title: "Workbench",
-    description: "Describe a part and the AI tutor builds it as a feature tree you can roll back, replay and change by its parameters. OpenCascade runs in your browser; export STEP, STL and build123d code.",
+    description: "Browser parametric CAD workbench with multi-part assemblies, STEP import, ISO fasteners, live geometry & BOM analysis, and one-click community publishing.",
+  },
+  "/community": {
+    title: "Community",
+    description: "Explore and publish open-source parametric parts, multi-part assemblies, and curated collections. Inspect, analyze, tweak parameters, and remix right in the browser.",
   },
   "/desktop": {
     title: "Desktop app",

@@ -16,6 +16,7 @@ const NAV = [
   { to: "/teardown", label: t("案例拆解", "Teardowns") },
   { to: "/atlas", label: t("工具图鉴", "Command atlas") },
   { to: "/glossary", label: t("术语表", "Glossary") },
+  { to: "/community", label: t("开源社区", "Community") },
   { to: "/studio", label: t("工作台", "Workbench") },
   { to: "/desktop", label: t("桌面版", "Desktop app") },
 ]
