@@ -34,8 +34,9 @@ export function CommunityProfilePage() {
   const [user, setUser] = React.useState<HubUser | null>(null)
   const [projects, setProjects] = React.useState<HubProject[]>([])
   const [collections, setCollections] = React.useState<HubCollection[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const [loadedHandle, setLoadedHandle] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const loading = loadedHandle !== cleanHandle && error === null
 
   const [tokens, setTokens] = React.useState<HubTokenRow[]>([])
   const [tokenName, setTokenName] = React.useState("")
@@ -44,17 +45,23 @@ export function CommunityProfilePage() {
   const isMe = auth.user?.handle.toLowerCase() === cleanHandle.toLowerCase()
 
   React.useEffect(() => {
-    setLoading(true)
-    setError(null)
-    hubApi
+    const ac = new AbortController()
+    void hubApi
       .userProfile(cleanHandle)
       .then((res) => {
+        if (ac.signal.aborted) return
+        setError(null)
         setUser(res.user)
         setProjects(res.projects)
         setCollections(res.collections)
+        setLoadedHandle(cleanHandle)
       })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false))
+      .catch((e) => {
+        if (ac.signal.aborted) return
+        setError((e as Error).message)
+        setLoadedHandle(cleanHandle)
+      })
+    return () => ac.abort()
   }, [cleanHandle])
 
   React.useEffect(() => {

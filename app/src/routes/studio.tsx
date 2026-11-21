@@ -261,13 +261,16 @@ export function StudioPage() {
         communityRef: incoming.bundle.communityRef,
       })
       projectHydratedRef.current = true
-      setProject(importedProj)
-      if (Object.keys(importedProj.files).length > 1) setSidebarOpen(true)
-      void saveWebProject(importedProj).then(refreshProjectsList)
       resetAnnotations()
       addDivider(t(`加载了社区项目「${incoming.title}」`, `Loaded community project “${incoming.title}”`))
-      void applyProjectFileToKernel(importedProj, importedProj.activeFile)
-        .then(() => notify.success(t(`已加载「${incoming.title}」`, `Loaded “${incoming.title}”`)))
+      void saveWebProject(importedProj)
+        .then(async () => {
+          setProject(importedProj)
+          if (Object.keys(importedProj.files).length > 1) setSidebarOpen(true)
+          await refreshProjectsList()
+          await applyProjectFileToKernel(importedProj, importedProj.activeFile)
+          notify.success(t(`已加载「${incoming.title}」`, `Loaded “${incoming.title}”`))
+        })
         .catch((e) => notify.error((e as Error).message))
       return
     }

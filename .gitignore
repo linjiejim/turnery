@@ -6,6 +6,7 @@ __pycache__/
 .DS_Store
 .tmp/
 .claude/worktrees/
+app/data/
 
 /projects/
 .codex/

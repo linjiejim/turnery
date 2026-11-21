@@ -250,8 +250,18 @@ export function useHubAuth() {
   }, [])
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    const ac = new AbortController()
+    void hubApi
+      .me()
+      .then((res) => {
+        if (!ac.signal.aborted) setState(res)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false)
+      })
+    return () => ac.abort()
+  }, [])
 
   return { ...state, loading, refresh }
 }

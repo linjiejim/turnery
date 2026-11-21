@@ -689,10 +689,9 @@ export class HubStore {
         .slice(0, 8)
       if (tokens.length) {
         const matchExpr = tokens.map((tok) => `"${tok}"*`).join(" AND ")
-        from += " JOIN projects_fts fts ON fts.project_id = p.id"
-        where.push("(projects_fts MATCH ? OR p.title_zh LIKE ? OR p.title_en LIKE ? OR p.summary_zh LIKE ? OR p.summary_en LIKE ?)")
+        where.push("(p.id IN (SELECT project_id FROM projects_fts WHERE projects_fts MATCH ?) OR p.title_zh LIKE ? OR p.title_en LIKE ? OR p.summary_zh LIKE ? OR p.summary_en LIKE ? OR p.slug LIKE ?)")
         const like = `%${q}%`
-        params.push(matchExpr, like, like, like, like)
+        params.push(matchExpr, like, like, like, like, like)
       }
     }
 

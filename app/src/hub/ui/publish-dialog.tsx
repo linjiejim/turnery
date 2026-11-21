@@ -59,15 +59,26 @@ export function PublishDialog({
   const validChecks = (checks ?? []).filter((c) => !c.invalid)
   const passedChecks = validChecks.filter((c) => c.pass).length
 
-  React.useEffect(() => {
-    if (!open) return
+  const [prevOpen, setPrevOpen] = React.useState(false)
+  if (open && !prevOpen) {
+    setPrevOpen(true)
     setError(null)
     setDone(null)
     setTitleZh(project.name)
     setSlug(slugify(project.name))
     setChangelog("")
-    void capturePreview().then((img) => setPreview(img))
-  }, [open, project.name, capturePreview])
+  } else if (!open && prevOpen) {
+    setPrevOpen(false)
+  }
+
+  React.useEffect(() => {
+    if (!open) return
+    const ac = new AbortController()
+    void capturePreview().then((img) => {
+      if (!ac.signal.aborted) setPreview(img)
+    })
+    return () => ac.abort()
+  }, [open, capturePreview])
 
   React.useEffect(() => {
     if (!open || !auth.user) return

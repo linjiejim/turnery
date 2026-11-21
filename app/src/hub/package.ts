@@ -3,7 +3,7 @@
 import { z } from "zod"
 import { Tree } from "../studio/dsl"
 import { checkTree } from "../studio/limits"
-import { SharedFile, asmExtOf, besides, normalizePath } from "../desktop/core/sources"
+import { SharedFile, asmExtOf } from "../desktop/core/sources"
 import { partExtOf } from "../desktop/core/protocol"
 import { describeTreeChange } from "../desktop/core/tree-diff"
 
@@ -50,7 +50,7 @@ export const HUB_LIMITS = {
 } as const
 
 /** Secret patterns rejected before anything enters the open community store. */
-const SECRET_RE = /\b(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b/
+const SECRET_RE = /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|trn_[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b)/
 
 export const BilingualText = z.union([
   z.string().trim().min(1).max(HUB_LIMITS.maxSummary),
@@ -307,9 +307,19 @@ export function validateProjectFiles(rawFiles: BundleFileInput[], entryRaw: stri
   for (const f of files) {
     if (!f.tree) continue
     const checkRef = (ref: string, label: string): string | null => {
-      if (/^([A-Za-z]:)?\//.test(ref.trim())) return `${f.path} 的 ${label} 不能使用绝对路径（${ref}）`
-      const resolved = normalizePath(besides(`/${f.path}`, ref))
-      if (!resolved.startsWith("/") || resolved.includes("/..")) return `${f.path} 的 ${label} 超出了项目根目录（${ref}）`
+      const trimmed = ref.trim().replace(/\\/g, "/")
+      if (/^([A-Za-z]:)?\//.test(trimmed)) return `${f.path} 的 ${label} 不能使用绝对路径（${ref}）`
+      const baseParts = f.path.split("/").slice(0, -1)
+      let depth = 0
+      for (const s of [...baseParts, ...trimmed.split("/")]) {
+        if (!s || s === ".") continue
+        if (s === "..") {
+          depth--
+          if (depth < 0) return `${f.path} 的 ${label} 超出了项目根目录（${ref}）`
+        } else {
+          depth++
+        }
+      }
       return null
     }
     if (f.tree.uses) {

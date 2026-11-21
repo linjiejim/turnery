@@ -25,32 +25,36 @@ export function CommunityCollectionPage() {
   const auth = useHubAuth()
   const [collection, setCollection] = React.useState<HubCollection | null>(null)
   const [items, setItems] = React.useState<HubCollectionItem[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const routeKey = `${cleanHandle}/${slug}`
+  const [loadedKey, setLoadedKey] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-
-  const load = React.useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await hubApi.getCollection(cleanHandle, slug)
-      setCollection(res.collection)
-      setItems(res.items)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [cleanHandle, slug])
+  const [reloadTick, setReloadTick] = React.useState(0)
+  const loading = loadedKey !== routeKey && error === null
 
   React.useEffect(() => {
-    void load()
-  }, [load])
+    const ac = new AbortController()
+    void hubApi
+      .getCollection(cleanHandle, slug)
+      .then((res) => {
+        if (ac.signal.aborted) return
+        setError(null)
+        setCollection(res.collection)
+        setItems(res.items)
+        setLoadedKey(routeKey)
+      })
+      .catch((e) => {
+        if (ac.signal.aborted) return
+        setError((e as Error).message)
+        setLoadedKey(routeKey)
+      })
+    return () => ac.abort()
+  }, [cleanHandle, slug, routeKey, reloadTick])
 
   const remove = async (projectId: string) => {
     try {
       await hubApi.removeCollectionItem(cleanHandle, slug, projectId)
       notify.success(t("已从合集移除", "Removed from collection"))
-      void load()
+      setReloadTick((n) => n + 1)
     } catch (e) {
       notify.error((e as Error).message)
     }
