@@ -196,7 +196,11 @@ function Workbench({ host }: { host: WebHost }) {
   const [arriving] = React.useState(() => new URL(window.location.href).searchParams.get("practice"))
   const [practice, setPractice] = React.useState<Practice | null>(() => practiceById(arriving ?? localStorage.getItem(PRACTICE_STORE) ?? "") ?? null)
   const [practicePart, setPracticePart] = React.useState<string | null>(() => localStorage.getItem(PRACTICE_PART))
-  const practicing = Boolean(practice) && (!practicePart || doc?.path === practicePart)
+  /** The practice from the address whose part is made: until then its card waits. */
+  const [settled, setSettled] = React.useState<string | null>(null)
+  // A practice arriving from a lesson counts once its own part is made and open, not on the part a
+  // previous practice left behind (its card would act on the wrong part meanwhile).
+  const practicing = Boolean(practice) && (practicePart ? doc?.path === practicePart && (!arriving || practice?.id === settled) : !arriving)
   const { pinChecks } = studio
   React.useEffect(() => pinChecks(practicing ? (practice?.checks ?? null) : null), [practicing, practice, pinChecks])
   const exitPractice = React.useCallback(() => {
@@ -219,6 +223,7 @@ function Workbench({ host }: { host: WebHost }) {
       const path = await openModel({ ...(p.start ?? EMPTY_TREE), checks: p.checks }, p.title)
       setPractice(p)
       setPracticePart(path)
+      setSettled(p.id)
       localStorage.setItem(PRACTICE_PART, path)
     })
   }, [booted, arriving, openModel, run])

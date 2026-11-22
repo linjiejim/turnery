@@ -517,8 +517,9 @@ test.describe("工作台", () => {
     const p = PRACTICE.find((x) => x.id === "sketch-to-solid-1")!
     await page.goto(`/studio?practice=${p.id}`)
     const card = page.getByRole("region", { name: "练习" })
-    await expect(card.getByText(p.title)).toBeVisible()
-    await expect(card.getByText(`0/${p.checks.length}`)).toBeVisible({ timeout: 90_000 })
+    // The card shows once the practice's own part is made and open (the kernel loads first).
+    await expect(card.getByText(p.title)).toBeVisible({ timeout: 90_000 })
+    await expect(card.getByText(`0/${p.checks.length}`)).toBeVisible()
     await expect(page).toHaveURL(/\/studio$/)
     // Import the reference answer: every requirement ticks, the practice is done.
     const chooser = page.waitForEvent("filechooser")
