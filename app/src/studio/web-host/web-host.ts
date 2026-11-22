@@ -110,11 +110,6 @@ export class WebHost {
     return this.engine.run(command, input, { actor: "user", part })
   }
 
-  /** A command from the assistant in the chat, on the part it works on. */
-  assistant(command: string, input: unknown, part?: string) {
-    return this.engine.run(command, input, { actor: "assistant", part })
-  }
-
   private async must(r: Promise<CommandResult>) {
     const res = await r
     if (!res.ok) throw new Error(res.text.replace(/^✗ /, ""))
@@ -507,7 +502,7 @@ export function webBridge(host: WebHost): TurneryBridge {
     },
     recentProjects: () => host.projects(),
     openExample: async () => false,
-    // The site's chat has its own model settings and transport (use-studio-chat.ts).
+    // The site has no assistant: the desktop window's assistant calls answer with nothing.
     models: async () => ({ current: null, presets: [], keysEncrypted: false }),
     saveModel: async () => ({ current: null, presets: [], keysEncrypted: false }),
     assistantSend: async () => {},

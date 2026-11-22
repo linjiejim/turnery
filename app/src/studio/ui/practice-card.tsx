@@ -2,7 +2,7 @@ import * as React from "react"
 import { Link } from "react-router"
 import { CircleCheck, CircleDashed, X } from "lucide-react"
 import { Hint } from "@/components/hint"
-import { IconButton } from "@/components/ui/button"
+import { Button, IconButton } from "@/components/ui/button"
 import type { Practice } from "@/content/practice"
 import { markDone, useProgress } from "@/lib/progress"
 import { t } from "@/lib/i18n"
@@ -11,11 +11,12 @@ import type { CheckResult } from "../kernel/check"
 import { practiceKey, practiceState } from "../practice-state"
 
 /**
- * The practice on top of the conversation: the task, its requirements ticking
- * as the model changes, hints behind the ⓘ. All met → done, recorded in the
+ * The practice on top of the side panel: the task, its requirements ticking
+ * as the model changes, hints behind the ⓘ, and 「看参考做法」 (the reference
+ * answer replayed in a part of its own). All met → done, recorded in the
  * learning progress.
  */
-export function PracticeCard({ practice: p, results, rolledBack, onExit }: { practice: Practice; results: CheckResult[] | undefined; rolledBack: boolean; onExit: () => void }) {
+export function PracticeCard({ practice: p, results, rolledBack, onExit, onSolution }: { practice: Practice; results: CheckResult[] | undefined; rolledBack: boolean; onExit: () => void; onSolution?: () => void }) {
   const { rows, passed, done } = practiceState(p, results)
   const progress = useProgress()
   const recorded = progress.done.includes(practiceKey(p.id))
@@ -47,6 +48,11 @@ export function PracticeCard({ practice: p, results, rolledBack, onExit }: { pra
           </li>
         ))}
       </ul>
+      {onSolution && !done && (
+        <Button size="sm" variant="ghost" className="mt-1.5 -ml-2 text-muted-foreground" onClick={onSolution}>
+          {t("看参考做法", "See a reference answer")}
+        </Button>
+      )}
       {rolledBack && <p className="mt-2 text-caption text-faint-foreground">{t("回滚中：按最新一步判断", "Rolled back: checked against the latest step")}</p>}
       {done && (
         <p className="mt-2 text-small text-success">

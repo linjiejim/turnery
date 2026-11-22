@@ -3,13 +3,14 @@ import { Check, ChevronRight, CircleHelp, TriangleAlert, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { byLocale, t } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
+import { applyEdit } from "../apply"
 import { Input } from "@/components/ui/input"
 import { CodeBlock } from "@/components/code-block"
 import { toBuild123d } from "../codegen"
 import type { Tree } from "../dsl"
 import { drivenFeatures, paramDependents, paramUses, describeUse } from "../param-uses"
 import type { Hover } from "../scene"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 import type { Annotations } from "../use-annotations"
 import type { CheckResult } from "../kernel/check"
 import { Hint } from "@/components/hint"
@@ -20,17 +21,20 @@ import { useWords } from "./host-words"
  * involved. Each says what it is (the note the model wrote) and where it's
  * used; pointing at one lights up the features it drives.
  */
-export function ParamsPanel({ studio, onHover, annotations }: { studio: Studio; onHover: (h: Hover | null) => void; annotations?: Annotations }) {
+export function ParamsPanel({ studio, onHover, annotations, canAdd = true }: { studio: Studio; onHover: (h: Hover | null) => void; annotations?: Annotations; canAdd?: boolean }) {
   const { tree } = studio
   const entries = Object.entries(tree.params)
   const checks = studio.report?.checks ?? []
   const words = useWords()
   if (!entries.length && !checks.length)
     return (
-      <p className="flex items-center gap-1 px-4 py-4 text-body text-muted-foreground">
-        {t("还没有参数", "No parameters yet")}
-        <Hint tips={[words.noParams]} />
-      </p>
+      <div className="px-2 py-3">
+        <p className="flex items-center gap-1 px-2 text-body text-muted-foreground">
+          {t("还没有参数", "No parameters yet")}
+          <Hint tips={[words.noParams]} />
+        </p>
+        {canAdd && <NewParam studio={studio} />}
+      </div>
     )
   return (
     <div className="space-y-1 px-2 py-3" onMouseLeave={() => onHover(null)}>
@@ -59,7 +63,63 @@ export function ParamsPanel({ studio, onHover, annotations }: { studio: Studio; 
           />
         )
       })}
+      {canAdd && <NewParam studio={studio} />}
     </div>
+  )
+}
+
+/** 「＋ 新参数」: a name, a value (a number or an expression of the others) and what it is. One undo step. */
+function NewParam({ studio }: { studio: Studio }) {
+  const [open, setOpen] = React.useState(false)
+  const [name, setName] = React.useState("")
+  const [value, setValue] = React.useState("")
+  const [note, setNote] = React.useState("")
+  const [error, setError] = React.useState<string | null>(null)
+  if (!open)
+    return (
+      <Button size="sm" variant="ghost" className="mt-1 text-muted-foreground" onClick={() => setOpen(true)}>
+        {t("＋ 新参数", "＋ New parameter")}
+      </Button>
+    )
+  const add = async () => {
+    const k = name.trim()
+    if (!k) return setError(t("要有名字", "It needs a name"))
+    if (k in studio.tree.params) return setError(t(`已经有参数「${k}」了`, `There is already a parameter “${k}”`))
+    const raw = value.trim()
+    if (!raw) return setError(t("要有值", "It needs a value"))
+    const v = Number.isFinite(Number(raw)) ? Number(raw) : raw
+    const err = await studio.editTree((tree) => applyEdit(tree, "set_params", { set: { [k]: v }, ...(note.trim() ? { notes: { [k]: note.trim() } } : {}) }).tree)
+    if (err) return setError(err)
+    setOpen(false)
+    setName("")
+    setValue("")
+    setNote("")
+    setError(null)
+  }
+  return (
+    <form
+      aria-label={t("新参数", "New parameter")}
+      className="mt-1 space-y-2 rounded-md border px-2 py-2"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void add()
+      }}
+    >
+      <div className="grid grid-cols-2 gap-2">
+        <Input autoFocus aria-label={t("参数名", "Parameter name")} className="font-mono" placeholder={t("名字，如 L", "Name, e.g. L")} value={name} onChange={(e) => setName(e.target.value)} />
+        <Input aria-label={t("参数值", "Parameter value")} className="font-mono tabular" placeholder={t("值，如 60 或 L/2", "Value, e.g. 60 or L/2")} value={value} onChange={(e) => setValue(e.target.value)} />
+      </div>
+      <Input aria-label={t("参数说明", "Parameter note")} placeholder={t("说明（可以不写）", "What it is (optional)")} value={note} onChange={(e) => setNote(e.target.value)} />
+      {error && <p className="text-caption text-destructive">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button type="button" size="sm" variant="ghost" onClick={() => (setOpen(false), setError(null))}>
+          {t("取消", "Cancel")}
+        </Button>
+        <Button type="submit" size="sm" variant="primary">
+          {t("加上", "Add")}
+        </Button>
+      </div>
+    </form>
   )
 }
 
@@ -81,7 +141,7 @@ function Checklist({
   baseline: Record<string, boolean>
   rolledBack: boolean
   onHover: (h: Hover | null) => void
-  /** 「让助教修正」: not on a shared link, which has no chat. */
+  /** Hand a failed check over (the desktop's 「给 agent 留备注」); the site has nobody to hand it to. */
   onFix?: (text: string) => void
 }) {
   const words = useWords()
@@ -134,7 +194,7 @@ function Checklist({
                     </span>
                   </span>
                 </div>
-                {st === "fail" && onFix && (
+                {st === "fail" && onFix && words.fixCheck && (
                   <Button size="sm" variant="ghost" className="mt-0.5 ml-5 h-6 px-2 text-caption" onClick={() => onFix(t(`核对没通过：「${r.said}」要求 ${r.expected}，现在是 ${r.actual}，请修正。`, `Check failed: “${r.said}” wants ${r.expected}, now ${r.actual}. Please fix it.`))}>
                     {words.fixCheck}
                   </Button>

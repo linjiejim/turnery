@@ -1,7 +1,7 @@
 import { t } from "../lib/i18n"
 import { promoteToParam, setFieldAt } from "./apply"
 import type { Dim } from "./kernel/dims"
-import type { Studio } from "./use-studio"
+import type { Studio } from "./studio"
 
 /**
  * The one rule for changing a dimension, from the model or the feature card:
@@ -14,7 +14,7 @@ export async function applyDimEdit(studio: Studio, dim: Dim, text: string, promo
   const src = dim.source
   if (src.type === "param") return studio.setParam(src.name, v)
   if (src.type === "factor") return studio.setParam(src.name, Math.round((v / src.k) * 1e9) / 1e9)
-  if (src.type === "derived") return t("这个数由公式算出，改它用到的参数，或者让助教来改", "This value comes from a formula. Change the parameters it uses, or ask the tutor.")
+  if (src.type === "derived") return t("这个数由公式算出：改它用到的参数", "This value comes from a formula: change the parameters it uses.")
   if (promoteAs !== undefined) return studio.editTree((tree) => promoteToParam(tree, dim.feature, dim.path, promoteAs.trim(), dim.label, v))
   return studio.editTree((tree) => setFieldAt(tree, dim.feature, dim.path, v))
 }

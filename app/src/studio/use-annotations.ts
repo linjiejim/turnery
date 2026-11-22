@@ -4,7 +4,7 @@ import { notify } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
 import type { Annotation, PickInfo } from "./annotations"
 import { renderViews, type Pin } from "./look"
-import type { Studio } from "./use-studio"
+import type { Studio } from "./studio"
 
 /** An annotation in the composer: what the message will carry, plus the mesh hash to highlight. */
 export type Note = Annotation & { hash: number }
@@ -95,7 +95,7 @@ export function useAnnotations(studio: Studio) {
     setFocus(null)
   }, [])
 
-  /** Text to start the next message with (「让助教改这一步」); the composer takes it and focuses. */
+  /** Text to start the next note with (the desktop's 「给 agent 留备注」); the composer takes it and focuses. */
   const [prefill, setPrefill] = React.useState<{ text: string; n: number } | null>(null)
   // `about`: what the message is about (a step), for hosts that keep it as a note; the site writes it in the text.
   const startMessage = React.useCallback((text: string, about?: { feature?: string; name?: string }) => {

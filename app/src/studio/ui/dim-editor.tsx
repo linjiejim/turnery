@@ -7,7 +7,7 @@ import { applyDimEdit } from "../dim-edit"
 import { fmtDim } from "../dim-source"
 import type { Dim } from "../kernel/dims"
 import { describeUse, paramUses } from "../param-uses"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 
 /**
  * Edit a dimension in place: a parameter's dimension edits the parameter

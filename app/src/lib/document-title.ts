@@ -1,5 +1,4 @@
 import { loadIndex } from "@/three/baked"
-import { t } from "@/lib/i18n"
 import { cardPageMeta, documentTitle, lessonPageMeta, STATIC_PAGES, teardownPageMeta } from "@/lib/page-meta"
 
 let shown: string | null = null
@@ -19,9 +18,7 @@ export function syncDocumentTitle(pathname: string) {
   const lesson = path.match(/^\/lesson\/([^/]+)$/)
   const teardown = path.match(/^\/teardown\/([^/]+)$/)
   const card = path.match(/^\/card\/([^/]+)$/)
-  // A shared link names its model once the snapshot arrives (routes/studio-share.tsx).
-  if (path.startsWith("/studio/s/")) set(t("分享的模型", "Shared model"))
-  else if (lesson) set(lessonPageMeta(decodeURIComponent(lesson[1]))?.title)
+  if (lesson) set(lessonPageMeta(decodeURIComponent(lesson[1]))?.title)
   else if (card) set(cardPageMeta(decodeURIComponent(card[1]))?.title)
   else if (teardown) {
     // The index is usually cached already; until it arrives, keep the current (often prerendered) title.

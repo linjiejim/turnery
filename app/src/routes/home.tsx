@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as THREE from "three"
 import { Link } from "react-router"
-import { ArrowRight, BookOpen, Layers, MessageSquareText, RotateCcw } from "lucide-react"
+import { ArrowRight, BookOpen, Layers, PencilRuler, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Viewport } from "@/components/viewport"
 import { OpIcon } from "@/components/op-icon"
@@ -99,11 +99,11 @@ export function HomePage() {
             />
             <Step
               n={3}
-              icon={<MessageSquareText />}
+              icon={<PencilRuler />}
               title={t("自己做一个", "Make one yourself")}
               text={t(
-                "在工作台里用说的让 AI 助教一步步建；要用自己的 Claude Code、Codex 建真东西，用桌面版。",
-                "Describe a part and the AI tutor builds it in the Workbench; to build real things with your own Claude Code or Codex, use the desktop app.",
+                "在工作台里亲手一步步建，练课后的练习；要让自己的 Claude Code、Codex 建真东西，用桌面版。",
+                "Build it yourself step by step in the Workbench, and do the lessons’ practices there; to have your own Claude Code or Codex build real things, use the desktop app.",
               )}
               links={[
                 { to: "/studio", label: t("打开工作台", "Open the Workbench") },

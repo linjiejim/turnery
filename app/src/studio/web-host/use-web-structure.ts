@@ -11,7 +11,7 @@ import type { Instance, Structure } from "@/desktop/ui/parts-sidebar"
 import { setPartLook, type LookChange } from "../appearance"
 import { selectGroup, wholeOf } from "../part-selection"
 import { NO_PARTS_VIEW, type Hover, type PartsView } from "../scene"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 import type { WebHost } from "./web-host"
 
 const NONE: string[] = []

@@ -1,6 +1,8 @@
-# AI 建模工作台（/studio）
+# 工作台（/studio）
 
-方案见 `docs/specs/2026-11-05-ai-modeling.md`。这里讲代码怎么组织、怎么在本地跑、怎么评测和部署。
+网页工作台在浏览器里手动建参数化零件：回滚、改参数、导出，课程的练习也在这里做。想让 agent 来建，用桌面版，它的窗口用的是同一套组件。网站没有后端，是纯静态站。
+
+方案见 `docs/specs/2026-11-05-ai-modeling.md`（最早的 AI 建模）和 `docs/specs/2026-11-22-web-without-chat.md`（网页去掉对话和分享，补上手动建特征）。这里讲代码怎么组织、怎么在本地跑、怎么评测。
 
 ## 结构
 
@@ -26,40 +28,35 @@ app/src/studio/
   worker.ts        浏览器里的内核 Worker（加载 23 MB 的 OpenCascade wasm）
   client.ts        Worker 的 Promise 封装；wasm 堆过大时自动重启并重建
   boot.ts          一进 /studio 路由就启动内核，和页面代码并行下载 wasm
-  tools.ts         给模型的 19 个工具（服务端和浏览器共用定义）
+  tools.ts         给模型的 19 个工具（引擎、桌面版内置助手和评测共用定义）
   apply.ts         执行一次工具调用：改树 → 重建 → 纯文本结果
-  prompt.ts        系统提示词（每次请求都一样）和模型状态（附在学习者的消息上）
+  prompt.ts        系统提示词（每次请求都一样）和模型状态（附在用户的消息上）
   trim.ts          发给模型前裁剪历史：只留最近的图和本轮的思考
   look.ts          离屏渲染四视图（look 工具），可以画上编号图钉
-  annotations.ts   标注：类型、校验、发给模型的文字（浏览器、服务端、评测共用）
+  annotations.ts   标注：类型、校验、发给模型的文字（桌面版和评测共用）
   use-annotations.ts  标注的状态：待发、已发、卡片、高亮
-  use-studio.ts    分享链接只读页的状态：一棵树、撤销、回滚、参数（工作台本身走下面的 web-host）
-  use-studio-chat.ts  useChat：客户端执行工具、自动续发、每轮最多 30 次调用；每个项目一段对话
+  feature-forms.ts 手动建特征：表单管哪些特征和字段、「＋」的菜单、新特征插在哪、缺省值、还缺什么
+  forget-chat.ts   打开工作台时删掉网页对话留在浏览器里的 key 和记录
   web-host/        工作台里跑的桌面版引擎（见下面「工作台里的项目」）
     browser-files.ts  引擎的文件系统：内存里一份，写透到 IndexedDB
     worker-kernel.ts  引擎的内核端口：现有的内核 Worker
     web-host.ts    引擎、项目（新建、改名、删除）、导入、导出、桥（turnery）
     use-web-host.ts   页面挂载时启动引擎；引擎 → Studio 的适配（复用桌面版的 useDesktopStudio）
     use-web-structure.ts  装配的「结构」和选择（桌面版窗口同样的逻辑，没有备注）
-  web-agent.ts     「直接做」的工具和系统提示词：桌面版内置助手的命令，去掉网页做不了的
   md-blocks.ts     流式 Markdown：按段切开，只重渲最后一段，补上没写完的 ** 和 `
-  ui/              对话面板、视口（点选与图钉）、叠在视口底部的特征时间线、步骤详情、
-                   视口工具（测量、剖视）、参数和代码面板
+  ui/              视口（点选与图钉）、叠在视口底部的特征时间线、步骤详情、
+                   特征表单（feature-form.tsx）、视口工具（测量、剖视）、参数和代码面板
   param-uses.ts    参数用在哪里、影响哪些特征（参数面板用）
   dim-source.ts    尺寸的数来自哪里：参数、参数的倍数、字面值，或由公式算出（不标在模型上）
   dimension-layer.ts  把尺寸画到模型上：尺寸线、箭头、引线、节圆和可点的标签，重叠的标签自动错开
   holes.ts         标准孔：公制螺钉的过孔、攻丝底孔、沉孔、埋头孔
   section.ts       剖视的平面
   evals.ts         17 道评测题和自动检查
-  limits.ts        别人给的特征树的上限（大小、特征数、字符串长度、阵列个数），服务器和浏览器共用
-  share.ts         分享链接的浏览器端：按白名单构造快照、读回时再校验、删除口令
+  limits.ts        别人给的特征树的上限（大小、特征数、字符串长度、阵列个数），导入时检查
   import.ts        导入特征树 JSON（导出的特征树，或分享快照的原始 JSON）
   codegen.ts       特征树 → build123d 代码；表达式解析后重新生成，注释去换行
-app/server/        对话 API（Hono + AI SDK 7），只转发对话，不碰几何
-  models.ts        走哪条路调模型（OpenRouter / DeepSeek 直连）以及每次花了多少钱
-  shares.ts        分享链接：存、取、删、清理、限速
-app/routes/studio.tsx         工作台（项目、导入、导出、分享）
-app/routes/studio-share.tsx   分享链接的只读页 /studio/s/:id
+app/routes/studio.tsx         工作台（项目、导入、导出）
+app/scripts/studio-eval.ts    评测（npm run eval:studio）；走哪条路调模型、每次花了多少钱在 eval-models.ts
 ```
 
 ## 工作台里的项目
@@ -72,9 +69,7 @@ app/routes/studio-share.tsx   分享链接的只读页 /studio/s/:id
 
 页面自己做的：项目菜单（切换、新建、改名、删除、导出 zip）、导入（零件和装配 JSON、共享参数、STEP 加进当前项目，zip 新建项目）、导出（引擎的 `export` 写到 `/web/.exports`，读出来下载再删掉）、选文件的对话框（`host.setAsk`）。
 
-第一次打开时，旧版存在 `localStorage["ft-studio-v1"]` 的那一个模型搬进项目「我的模型」的 `零件.turnery.json`，旧的对话归这个项目；旧数据不删。之后每次打开上次的项目和文件（在装配里改的零件，回到装配里）。
-
-对话：「边做边学」的工具和提示词不变，工具调用由引擎以助手（`assistant`）的身份执行；「直接做」是桌面版内置助手（`catalog.ts` 的命令、`AGENT_GUIDE`，按请求的语言生成，见 `commandsIn` / `guideIn`），去掉 `guide`、`request_pick`、`show`、`get_notes`、`resolve_note`，发消息时把 `get_state` 的文字放进消息的 `metadata.state`。助手在装配上只能用「直接做」：对话面板会提示切换。
+第一次打开时，旧版存在 `localStorage["ft-studio-v1"]` 的那一个模型搬进项目「我的模型」的 `零件.turnery.json`；旧数据不删。之后每次打开上次的项目和文件（在装配里改的零件，回到装配里）。网页去掉对话以后，打开工作台时删掉浏览器里留下的自填 DeepSeek key、对话记录、对话模式和分享的删除口令。
 
 练习固定的要求只在练习的那个零件里生效（`turnery:practice-part`）；练习进行中导入特征树，换掉的是练习零件的内容。
 
@@ -98,6 +93,8 @@ app/routes/studio-share.tsx   分享链接的只读页 /studio/s/:id
 
 桌面视口默认“查看与选择”：悬浮联动右侧步骤信息，单击固定，Esc 取消。“标注”在左侧工具栏单独切换，与测量互斥。项目列表采用单行，数量靠右。
 
+装配实例区固定在侧边栏底部，仅打开装配时展开；上方项目文件列表保持原顺序及独立滚动。桌面视口默认统一浅灰白模并关闭变更着色，浅青色表示悬浮、蓝色表示持续选中；悬浮其他零件不清除已有选择。开启「查看变更」后，新增面显示绿色、修改面显示橙色，交互高亮优先。
+
 成功重建装配后，自动把预览写进项目顶层的隐藏文件夹 `.turnery/cache/`（按装配在项目里的相对路径存成 `*.preview`；装配不在项目里时写在它自己的文件夹下）。这个文件夹里都是可以重新生成的东西，随时可以删，自带 `.gitignore` 不进版本库。预览是带校验和的压缩 JSON 网格，随整个项目目录一起复制即可跨目录使用，不依赖本机 `TURNERY_HOME`。0.8 及更早的版本把预览写在装配旁边（`*-asm.preview`）：打开同一文件夹里的装配时自动搬进缓存文件夹，装配已经不在的直接删掉。完整依赖内容或内核版本变化时跳过旧预览并重新生成；损坏、缺失或只读目录不阻断打开。预览先显示，精确几何后台恢复；加载提示持续到当前网格实际绘制，预览期间仍可旋转、选件、隔离和透明查看。
 
 3D 视图里拆成多块的实体（装配、拆过件的零件）每块一个网格、一组边线，按显示数据建一次（`scene.ts` 的 `sortedOf` 按零件理好三角面和边，所有网格共用同一份顶点缓冲，每块带自己的包围盒）。隐藏、隔离、其余透明、爆炸只改这些网格的可见性、位置和材质（`applyView`），不重建几何；相邻且材质相同的面合并成一次绘制（`paintMesh`），点到哪个面仍从 `userData.groups` 查。2026-11-11 在 116 件、17 万三角面的装配上实测：每帧绘制调用 3571 → 236，拖爆炸滑块的长任务 39 个（共约 11.9 s）→ 0，悬停拾取每帧 8.9 ms → 0.5 ms。「结构」列表的行只在自己的状态变了时重画。
@@ -110,47 +107,18 @@ app/routes/studio-share.tsx   分享链接的只读页 /studio/s/:id
 
 性能复测须使用空的 `TURNERY_HOME`，并分别记录完整网格到达、交互就绪和精确检查结束；避免与测试套件或其他 CPU 密集任务并行。`TURNERY_PROFILE=1` 会输出各零件准备耗时。
 
-## 一次对话怎么走
-
-1. 学习者发消息时，浏览器把当时的特征树和重建摘要存进这条消息的 `metadata`，然后把整段对话发到 `POST /api/studio/chat`。
-2. 服务端把这份快照拼成「模型状态」附在最后一条学习者消息后面，系统提示词保持不变，然后调用 DeepSeek 流式返回。工具没有 `execute`，模型发出工具调用后流就结束了。
-3. 浏览器在 `onToolCall` 里执行工具：`applyEdit` 改树 → Worker 重建 → 生成结果文本，然后 `addToolOutput`。
-4. 这一步所有工具都有结果后，`sendAutomaticallyWhen` 自动发下一轮请求，直到模型不再调用工具。
-
-几何从不上服务器；服务器的负担只有转发文本，所以小机器也扛得住。
-
-### 为什么状态不放在系统提示词里
-
-DeepSeek 按前缀缓存输入，命中的部分价格约是未命中的 1/50。请求的前缀依次是系统提示词、工具定义（约 1.2 万 token）、对话历史。如果状态写在系统提示词里，模型每改一次树，后面的工具定义和历史就都不能复用缓存。
-
-现在状态挂在学习者的消息上，一轮对话里这条消息不会变；模型在这一轮里做的改动，工具结果里都写着。实测缓存命中率从约 6% 升到 99%，每轮花费约为原来的 1/10。
-
-改提示词时守住一条：每次请求都会变的内容，不要放进系统提示词和工具说明。
-
 ## 本地开发
 
 ```bash
 cd app
-npm run dev                       # 网站，http://localhost:5287（/api 代理到 18914）
-STUDIO_MOCK=1 npm run dev:api     # 对话 API，用脚本模型，不需要 key
+npm run dev                       # 网站，http://localhost:5287
 ```
 
-真模型（和线上一样走 OpenRouter，或者直连 DeepSeek）：
-
-```bash
-node --env-file=$HOME/.config/turnery/openrouter.env node_modules/.bin/tsx server/index.ts
-DEEPSEEK_API_KEY=sk-… npm run dev:api
-```
-
-或者不配服务端 key，在页面右上角的钥匙图标里填自己的 key（只存浏览器本地）。
-
-5287 或 18914 被别的检出占着时，换端口：`PORT=18927 npm run dev:api`，再 `STUDIO_API_PORT=18927 npx vite --port 5391`（vite 的 `/api` 代理读 `STUDIO_API_PORT`）。冒烟测试同理：`E2E_PORT=4398 E2E_API_PORT=18928 npx playwright test`。
-
-脚本模型（`server/mock.ts`）每次请求发一个工具调用，按顺序建一个带圆角、抽壳、底孔的盒子，再调一次 `look`。它用来测整条链路，不代表真实模型的表现。
+5287 被别的检出占着时换端口：`npx vite --port 5391`。冒烟测试同理：`E2E_PORT=4398 npx playwright test`。
 
 ## 在模型上标注
 
-方案见 `docs/specs/2026-11-06-studio-annotations.md`。
+方案见 `docs/specs/2026-11-06-studio-annotations.md`。标注只在桌面版里有，标出来的东西变成给 agent 的备注；网页上没有标注（去掉对话以后没有可以发给的对象），单击就是查看与选择。
 
 1. **点选**：单击视口（按下到抬起的位移小于 5px）。`studio-viewport.tsx` 用射线找光标下的面，再在屏幕空间找 8px 内、没被挡住的边（触屏 14px）。
 2. **描述**：内核的 `pick` 用网格里每个面、每条边的 hash 找回那个面或那条边，返回这些信息：
@@ -158,10 +126,8 @@ DEEPSEEK_API_KEY=sk-… npm run dev:api
    - 一个验证过、只选中它的选择器（`uniqueFaceSelector` / `uniqueEdgeSelector`）；
    - 平面的草图坐标。
 3. **相切线**：圆角和相邻面之间的线画出来像边，其实两侧光滑过渡，不能单独倒圆角。内核会标出这种线（`smooth`），视口这时改选光标下的面。
-4. **随消息发出**：
-   - 浏览器把标注存进用户消息的 `metadata.annotations`，附上一张带编号的当前视角截图；
-   - 服务端用 `annotationText` 把标注拼成文字，追加在那条消息后面（只追加，缓存照样命中）。
-5. **回看**：消息里的标签和回复里的 ①②，都会用 `locate` 在当前模型上重新解析选择器并高亮；解析不到就提示。
+4. **留成备注**：标注存进零件文件里的备注（`add_note`），agent 用 `get_notes` 读到，处理完用 `resolve_note` 写一句回复。
+5. **回看**：点一条备注，用 `locate` 在当前模型上重新解析选择器并高亮；解析不到就提示「在现在的模型上找不到它了」。
 
 评测里带 `start` 和 `notes` 的题会先建好起始模型，在 Node 内核里按同样的方式点选，再把标注文字发给模型。
 
@@ -172,10 +138,10 @@ DEEPSEEK_API_KEY=sk-… npm run dev:api
 - **视图布局**：左上是工具栏（测量、剖视、显示尺寸、爆炸，下面是「视图怎么用」ⓘ），面板在工具栏右边展开；右上是视图方块，三轴在它左边；底部是特征时间线。
 - **视图方块**（`components/viewport.tsx` 的 `ViewCube`）：每个面分成 3×3 块，中间转到这个面的视图，四条边带转到棱的视图，四个角转到角的视图（`Viewer.setViewDir`）；同一条棱、同一个角在相邻面上一起高亮。拖动方块转视角（`Viewer.orbitBy`），房子图标回等轴测。
 - **特征树**横排在 3D 视图底部（`ui/tree-overlay.tsx`），每一步一个小图标；条带从不变大，指向或打开一步时只是亮起来，所以上方「选中零件」工具栏按它的高度（`--timeline-h`）让位就不会被盖住。新加的步骤自动滚到末尾，← → 在各步之间移动，滚轮横向滚动。
-  - 步骤详情（`ui/step-panel.tsx` 的 `StepPanel`）盖在右侧面板上显示，不挡 3D 视图：各宿主（工作台、分享页、桌面版）在右侧面板里放一层空的 `detailsIn`，时间线用 portal 把详情放进去。一栏从上往下：第几步、类型、名字、新面（蓝）和改动面数（橙）、用时；做了什么（摘要、基于哪个草图、警告、设计意图、失败原因）；尺寸；文字内容或标准孔；选中的面或边。
+  - 步骤详情（`ui/step-panel.tsx` 的 `StepPanel`）盖在右侧面板上显示，不挡 3D 视图：各宿主（工作台、桌面版）在右侧面板里放一层空的 `detailsIn`，时间线用 portal 把详情放进去。一栏从上往下：第几步、类型、名字、新面（蓝）和改动面数（橙）、用时；做了什么（摘要、基于哪个草图、警告、设计意图、失败原因）；尺寸；文字内容或标准孔；选中的面或边。
   - 指向一步：高亮这个特征生成的面，图标下方出现它的名字（整条只有这一个名字；没指向时显示打开或回滚到的那一步，`step-timeline.ts` 的 `namedStep`）。停约 0.4 秒，上方弹出小卡片：第几步 · 类型 · 切除 · 所属零件，一两个主要尺寸（参数优先，`cardDims`），新面和改动数或失败原因，一行设计意图；名字在下方放不下时卡片补上全名。弹出过一次后，在相邻的步之间移动卡片立刻切换；键盘聚焦一步时直接弹出。
-  - 单击一步：模型回到这一步（最后一步不回滚，测量和标注照常），详情固定下来并变成可改的；再点一次、「关闭」、Esc 或「回到最新」都回到最新一步。「让助教改这一步」把话写进对话框，同时收起详情让出对话。
-- **参数面板**：每个参数写着说明（`paramNotes`，模型用 `set_params` 的 `notes` 写），下面一行灰字是它用在哪里（`param-uses.ts` 从特征树算出）。指向参数时，模型上高亮它影响的特征，阵列、镜像出来的也算。
+  - 单击一步：模型回到这一步（最后一步不回滚，测量和标注照常），详情固定下来并变成可改的；再点一次、「关闭」、Esc 或「回到最新」都回到最新一步。
+- **参数面板**：每个参数写着说明（`paramNotes`，模型用 `set_params` 的 `notes` 写），下面一行灰字是它用在哪里（`param-uses.ts` 从特征树算出）。指向参数时，模型上高亮它影响的特征，阵列、镜像出来的也算。最后一行「＋ 新参数」：名字、值（数或别的参数的表达式）、说明，一步撤销。
 - **尺寸标在模型上**（`kernel/dims.ts`、`dimension-layer.ts`）：每次重建后，内核按建模时记下的几何算出各特征的尺寸。
   - 指向参数面板的一行：模型上画出这个参数的尺寸，从这一行到标签连一条线（`ui/connector-overlay.tsx`）；
   - 指向特征时间线的一步：画出这一步的尺寸；
@@ -185,12 +151,12 @@ DEEPSEEK_API_KEY=sk-… npm run dev:api
 - **固定下来的步骤面板**（单击时间线的一步）：讲「这一步」，不是表单。
   - 摘要和设计意图；这一步的尺寸（指向时模型上标出，单击就地改，规则同模型上的标签，见 `dim-edit.ts`）；由公式算出的尺寸折叠成只读；
   - 两个直接可改的选项：刻字的文字内容、标准孔的规格和用途；
-  - 选中的面或边用白话写（`selector-words.ts`），「在模型上重选」（`use-reselect.ts`）：视图退回这一步之前的实体，点选切换，内核把一组点选合成语义条件（`select.ts` 的 `groupEdgeSelector` / `groupFaceSelector`，`expect` = 个数）；合成不出来时「让助教来选」，把每条边的描述预填进对话；
-  - 底栏：删除（可撤销）、主按钮「让助教改这一步」（报错时是「让助教修这一步」），预填对话框（`annotations.startMessage`）。压缩、调整顺序等结构性的改动都交给助教。
-- **需求核对**（`kernel/check.ts`、`check` 工具）：助教把学习者的每个数值要求列成一项，写进特征树的 `checks`（期望值只能是数字）。每次重建都在最新的实体上量一遍，结果在重建报告的 `checks` 里。
-  - 对话里的「核对要求 · 4/5」卡片记的是那一刻；参数页顶部的「要求核对」是实时的，有不满足的会自动展开，指向一行时模型上高亮量的面和边。
-  - 助教最后一步时满足、之后被学习者自己改参数改到不满足的，标黄色「已偏离」，不算错（`use-studio.ts` 的 `checkBaseline`）；其余不满足的是红色，可以「让助教修正」。
-  - 评测输出里多了一列：助教列了几项核对、最后是否都满足、有没有先 ✗ 再修好（caught）。
+  - 选中的面或边用白话写（`selector-words.ts`），「在模型上重选」（`use-reselect.ts`）：视图退回这一步之前的实体，点选切换，内核把一组点选合成语义条件（`select.ts` 的 `groupEdgeSelector` / `groupFaceSelector`，`expect` = 个数）；合成不出来时就地说明原因；
+  - 底栏：删除（可撤销）、上移一步、下移一步（`moveFeature`，不能排到它用到的特征前面）、「编辑」（有表单的特征，见下面「手动建特征」）；桌面版还有「给 agent 留备注」（`annotations.startMessage`，备注挂在这一步上）。
+- **需求核对**（`kernel/check.ts`、`check` 工具）：agent 把用户的每个数值要求列成一项，写进特征树的 `checks`（期望值只能是数字）；练习自带固定的要求。每次重建都在最新的实体上量一遍，结果在重建报告的 `checks` 里。
+  - 参数页顶部的「要求核对」是实时的，有不满足的会自动展开，指向一行时模型上高亮量的面和边。
+  - agent 最后一步时满足、之后被人自己改参数改到不满足的，标黄色「已偏离」，不算错（`Studio.checkBaseline`）；其余不满足的是红色，桌面版可以「给 agent 留备注」。
+  - 评测输出里多了一列：模型列了几项核对、最后是否都满足、有没有先 ✗ 再修好（caught）。
 - **工程图**（顶栏「3D｜工程图」，`kernel/drawing.ts`、`ui/drawing-sheet.tsx`）：
   - 内核用 OpenCascade 的消隐（`makeProjectedEdges`）出主视图（从 −Y 看）、俯视图（从 +Z 看）、左视图（从 −X 看），边离散成线段；和看得见的线重合的虚线去掉；圆柱面画中心线（正对时十字，侧看时轴线）。
   - 尺寸用尺寸模型（`dims.ts`），每个尺寸放进最能看清它的那个视图，同样的字只标一次；总长、总宽、总高从包围盒补上，已有同值尺寸时不重复。
@@ -203,46 +169,26 @@ DEEPSEEK_API_KEY=sk-… npm run dev:api
   - 用 `MaterialKit.setSection`：切掉一侧，切口的背面涂成实心灰色。
   - 剖开时，点选只认留下那一侧的正面。
   - 手机上只显示图标。
-- **右侧面板**是「对话 | 参数 | 代码」三个标签，宽度可以拖动。
-- **对话进行中**：底部固定一行状态，写着正在做什么（思考中、正在回复、正在做「拉伸 · 底座」、正在看模型）和已用的秒数。
-  - 同一轮的几步之间，状态会短暂回到 ready，所以 `busy` 会多保持 400 ms，状态行和「停止」按钮不会闪。
-- **防抖**：
-  - 对话只在停在底部时才跟随滚动，往上翻着看时不会被拽下去。跟随靠 ResizeObserver，所以流式文字、工具卡片、`look` 的图片撑高内容时都会跟上。
-  - 文字流入时最多每 40 ms 更新一次。Markdown 按段切开，写完的段不再重渲；最后一段里没写完的 `**`、`` ` `` 和代码块先补上。
-- **工具卡片**：改模型的步骤有浅蓝底色，`inspect` / `look` 没有底色，失败的是浅红底。
+- **右侧面板**（网页）：从上往下是练习卡（练习时）、参数和核对。空零件时上面多一块「从一张草图开始」：新建草图、打开示例、先学一节课；练习的空零件只有「从草图开始」。
+- **练习卡**：任务、实时打勾的要求、ⓘ 里的提示，没做完时有「看参考做法」：参考答案放进项目里的一个新零件「参考：<练习名>」，打开它并从第一步回放（时间线的 `control.replay()`）；那个零件上方有「回到练习」。
 
-## 分享与导入
+## 手动建特征
 
-方案见 `docs/specs/2026-11-07-studio-share.md`。
+方案见 `docs/specs/2026-11-22-web-without-chat.md`。网页和桌面版共用：时间线最后的「＋」（`tree-overlay.tsx` 的 `NewStepMenu`）和步骤面板的「编辑」打开同一张表单（`ui/feature-form.tsx`），放在步骤详情的位置。
 
-### 分享链接
+- **管哪些特征**：草图、拉伸（含「拉伸切除」）、旋转、放样、孔、圆角、倒角、抽壳、拔模、线性阵列、圆周阵列、镜像（`FORM_OPS`）。每种表单改哪些字段写在 `FORM_FIELDS`、`PLANE_FIELDS`、`SHAPE_FIELDS`；特征上别的字段（agent 写的 `until`、`thin`、圆弧折线……）原样保留，表单上写一句「原样保留」。扫掠、筋、螺纹、拆件、导入、装配零件没有表单，照常能改尺寸。`feature-forms.test.ts` 检查每道练习的参考答案都能用表单写出来。
+- **插在哪**：时间线回滚到某一步（或打开着某一步）时插在它后面，否则在最后；具体位置沿用 `applyEdit` 的规则（排在用到的特征后面、文字特征前面）。插在中间时视图回滚到新的这一步。
+- **缺省值**（`startDraft`）：打开就能建出来，选择类的除外。空零件里只有「草图」能点；拉伸、旋转要一个还没被用过的草图（「先画一个新草图」）；圆角、倒角、拔模打开时选择框直接激活。id 取第一个没用过的（`fillet2`、`cut1`），名字留空显示为「圆角2」。
+- **实时重建**：表单停 300 ms 就写进特征树（`studio.editTree(change, { group })`）。还缺东西（`missing`：圆角还没选边）时不写，表单上说还差什么。数值框收数或参数表达式，语法错就地提示、不写进去。
+- **一步撤销**：一张表单一个 `group`。窗口专用的引擎命令 `edit_tree` 带 `group` 时，撤销栈顶是同一个 group、而且零件还停在这一组上次写下的树（`Entry.wrote`），就只更新那一条，不压新的；中间只有备注不算改动。活动里这一组只留一行。顶栏的撤销一次撤掉整张表单。
+- **取消**：把这个特征写回打开表单之前的样子（新建的删掉），用同一个 group。改回了原样，引擎就把这一组的撤销条目和活动行都去掉；中间有 agent 的改动时，那次改动留着，取消算单独一步。写不回去（比如后面的特征用到了它）就留在表单里说明。表单自己没写过东西（只是跟着显示了别处的改动）时，取消直接关掉。
+- **和别处的改动**：表单开着时，这个特征被别处改了（模型上的尺寸、agent、撤销），表单跟着显示；特征没了，表单关掉。自己刚写出去、还没回来的那一版不算别处的改动。换零件时宿主给时间线换 `key`，表单随之关掉；`useDesktopStudio.editTree` 拒绝为已经不在显示的零件写入，最后一次没写完的改动不会落到另一个零件里。
+- **选择框**：复用 `use-reselect.ts`，`start` 多了 `index`（新特征还不在树里，按它要插的位置取之前的实体）和 `onApply`（选择器交回表单，不直接写进树）。视口顶上写「现在显示的是这一步开始时的样子」。选边框里点一个面等于选它的一圈边。贴面的平面：选了朝 ±Z / ±Y / ±X 的面，基准面跟着换成 XY / XZ / YZ。
+- **内核**：手动建模更容易做出「切掉整个实体」「绕不在草图平面里的轴旋转」这种步骤。这两种以前让整次重建抛 OCCT 异常，现在 `Kernel.run` 在提交实体前先数面、量一遍，算成这一步的错误（`build.ts`），旋转的提示也写了轴要在草图平面里。
 
-1. **生成**：顶栏的分享图标打开 `ui/share-dialog.tsx`：标题（预填第一个非草图特征的名字）、说明（可选，≤ 200 字）、「附上和助教的对话（只含文字）」（默认不勾）。
-   - `share.ts` 的 `sharePayload` 按白名单逐字段构造快照：特征树再过一遍 `Tree.parse`（去掉 schema 以外的字段），对话只取文字（`chatLines`：没有图片、思考、工具调用，也没有分隔线），再加上构建版本（`__APP_VERSION__`，vite 在构建时写入 `GITHUB_SHA` 的前 7 位，本地是 `dev`）。
-   - localStorage 里的东西（学习者的 key、整段对话）从不整体拷贝。
-   - `POST /api/studio/share` 返回 `{ id, url, deleteToken }`。删除口令存在本浏览器的 `ft-studio-shares-v1`，服务器只存它的 sha256。
-2. **打开** `/studio/s/:id`（`routes/studio-share.tsx`）：
-   - 拿到快照后用 `limits.ts` 的 `checkTree` 再校验一次，和服务器同样的上限；不过关就写明原因，给「下载原始 JSON」。
-   - 页面复用工作台的视口、特征树、参数和代码面板：`useStudio(shared)` 从快照开始、不写 localStorage，参数可以试、可以撤销，刷新就回到原样。
-   - `TreeOverlay` 和 `StudioViewport` 的 `readOnly`：单击特征是回滚到那一步（不开编辑卡片），单击模型不标注（测量、剖视照常）。
-   - 「说明」页：标题、说明、对话回放。用户消息是纯文字，助教回复走 `Markdown`（不渲染原始 HTML）；不用 `dangerouslySetInnerHTML`。
-   - `<head>` 里动态加 `<meta name="robots" content="noindex">`，离开页面时去掉。服务器上不改 Caddy：`try_files … /index.html` 已经把 `/studio/s/*` 回落到单页应用。
-   - 链接是本浏览器生成的（有删除口令）时，「说明」页底部能删除它。
-3. **复制到我的工作台**：带着当前的树（试过的参数也算）`navigate("/studio", { state: { incoming } })`。工作台等内核就绪后 `studio.load` 替换（原来的树进撤销历史），弹「已替换当前模型 · 撤销」，再把 router state 清掉，刷新不会再替换一次。
-4. **对话里的分隔线**：换模型（复制、导入）时 `chat.addDivider` 插一条 `metadata.divider` 的消息，只给人看：发给模型前过滤掉（每条用户消息本来就带着当时的特征树），也不进分享快照。对话为空时不插。
+## 导入
 
-### 服务器（`server/shares.ts`）
-
-- 一份快照一个文件：`$STUDIO_DATA_DIR/shares/<id 前两位>/<id>.json`，先写临时文件再改名。id 是 10 位 base62（`crypto.randomBytes`，拒绝采样），拼路径前用 `^[0-9A-Za-z]{10}$` 校验。
-- 「最后打开时间」是文件的 mtime，打开时如果不是今天（北京时间）就更新。启动时和之后每天清理一次：一年没打开的删掉，同时重算总量。
-- 上限（`src/studio/limits.ts` 的 `LIMITS`）：请求体 512 KB，特征树 200 KB、≤ 200 个特征、≤ 100 个参数、任何字符串 ≤ 500 字，对话 300 KB、≤ 200 条。超了 413「模型太大，不能分享」。格式不对 400，并说明是哪个特征的哪个字段。
-- 请求体里有形如 `sk-…` 的长串就拒绝（400「内容里像是有密钥」）。
-- 限速（每个 IP，内存里，重启清零）：创建 20 次 / 小时，打开 300 次，删除 60 次；超了 429，写几分钟后再试。
-- 总量超过 2 GB 不再接受新分享（503），并在错误日志里报警。
-- 日志每次创建、打开、删除、清理记一行 JSON：`{"share":"create","id":…,"bytes":…,"ip":"<12 位哈希>"}`。IP 加了进程级随机盐再哈希，不记内容。
-- `shareRoutes(store, { limiters, log })` 是独立的 Hono 应用，单元测试直接 `app.request(...)`。
-
-### 导入
+方案见 `docs/specs/2026-11-07-studio-share.md`。分享链接 2026-11-22 去掉了，旧链接不迁移；导入和下面对别人的特征树的处理留着。
 
 - 「导出与导入」菜单的「导入特征树（JSON）…」，或者把 `.json` 拖进 3D 视图。
 - `import.ts` 收两种：导出的特征树，或分享快照的原始 JSON（取其中的 `tree` 和 `title`）。同样过 `checkTree`；文件 ≤ 1 MB。
@@ -284,7 +230,7 @@ DEEPSEEK_API_KEY=sk-… npm run dev:api
 ## 特征树格式
 
 - 参数：`{ "L": 80, "inner": "L - 2*t" }`，任何数值字段都可以写参数名或表达式。
-- 特征：`sketch`、`extrude`、`revolve`、`fillet`、`chamfer`、`shell`、`hole`、`linear_pattern`、`circular_pattern`、`mirror`、`sweep`、`loft`、`draft`、`rib`、`split`；还有只在桌面版 Turnery 里用的 `import`（读 STEP 文件，`tools.ts` 的 `DESKTOP_OPS`，不给网页助教；网页内核遇到它会报错），见 `docs/specs/2026-11-07-turnery-desktop.md`。
+- 特征：`sketch`、`extrude`、`revolve`、`fillet`、`chamfer`、`shell`、`hole`、`linear_pattern`、`circular_pattern`、`mirror`、`sweep`、`loft`、`draft`、`rib`、`split`；还有只在桌面版 Turnery 里用的 `import`（读 STEP 文件，`tools.ts` 的 `DESKTOP_OPS`；网页内核遇到它会报错），见 `docs/specs/2026-11-07-turnery-desktop.md`。
 - 拉伸的几种写法（`kernel/features2.ts`）：
   - `distance`、`through`、`until` 三者正好写一个。`until: "next"`：拉得很长，加料时减去实体、切除时与实体求交，只留贴着草图平面的那几块，所以挡住它的面是斜的、弯的都行；`until: { face }`：平行的面就是算好的距离，斜面用 replicad 的 `extrudeUntil`。
   - `thin`：封闭轮廓用 `Drawing.offset` 偏出一圈（向外偏时凸角会变圆）；开放的线（草图图形 `path`，圆弧按 5 µm 离散）按折线偏移、端头平齐，`inside` 是线拐弯的那一侧。
@@ -317,20 +263,23 @@ DEEPSEEK_API_KEY=sk-… npm run dev:api
 1. `dsl.ts`：加 schema，并写进 `OP_NAMES`。
 2. `kernel/build.ts`：在 `apply` 里加一个分支。
 3. `tools.ts`：在 `OP_DOCS` 里写说明。
-4. `ui/tree-overlay.tsx` 和 `ui/chat-panel.tsx`：加图标。
+4. `components/op-icon.tsx`：加图标（时间线、步骤详情和工具图鉴共用）。
 5. 评测题和单元测试。
 
 ## 评测
 
 ```bash
 cd app
-node --env-file=$HOME/.config/turnery/deepseek.env node_modules/.bin/tsx scripts/studio-eval.ts            # 全部 10 题
+node --env-file=$HOME/.config/turnery/deepseek.env node_modules/.bin/tsx scripts/studio-eval.ts            # 全部题目
 node --env-file=… node_modules/.bin/tsx scripts/studio-eval.ts flange mug --thinking=disabled
 ```
 
-- 评测走和线上一样的路：有 `OPENROUTER_API_KEY` 就走 OpenRouter，否则直连 DeepSeek。
+`npm run eval:studio` 跑的是同一个脚本，key 要已经在环境变量里。
+
+- 评的是桌面版内置助手也在用的系统提示词（`prompt.ts`）和工具（`tools.ts`）。
+- 走哪条路调模型、每次花了多少钱在 `scripts/eval-models.ts`（原来在 `app/server/`，网页去掉对话时搬过来）：有 `OPENROUTER_API_KEY` 就走 OpenRouter，否则直连 DeepSeek（`DEEPSEEK_API_KEY`）；`--model=…` 换模型。
 - 评测里工具直接调内核执行，没有浏览器，所以没有 `look`（模型调用它会得到「不能渲染」，这不算失败）。
-- 同一步里的多个工具调用按顺序一个个执行，和浏览器一致（AI SDK 默认并发执行，会互相覆盖特征树）。
+- 同一步里的多个工具调用按顺序一个个执行，和桌面版内置助手一致（AI SDK 默认并发执行，会互相覆盖特征树）。
 - 每题检查这几项：
   - 重建全部成功；
   - 尺寸误差 ±2%，`upright` 题还检查方向；
@@ -340,6 +289,7 @@ node --env-file=… node_modules/.bin/tsx scripts/studio-eval.ts flange mug --th
   - 必需的特征类型都用到了。
 - 报告写在 `app/.tmp/evals/`，里面有每次工具调用的输入和结果。
 - 改系统提示词、工具说明或 DSL 时都要跑一遍，通过率不能下降。评测要花钱，所以不放进 CI。
+- 每次请求都会变的内容（模型状态）不放进系统提示词和工具说明，附在用户的消息上（`prompt.ts` 的 `withState`）。DeepSeek 按前缀缓存，命中的部分价格约是未命中的 1/50；状态写在系统提示词里时实测命中率约 6%，挂在消息上是 99%。
 
 现在共 17 道：
 - 10 道从零建模；
@@ -347,32 +297,9 @@ node --env-file=… node_modules/.bin/tsx scripts/studio-eval.ts flange mug --th
 - 3 道带标注：在点的位置开孔、只给点的那条棱倒圆角、把点的凸台加高；
 - 2 道刻字：铭牌顶面刻英文；方块背面刻中文，检查字刻在背面里。
 
-## 部署
-
-和静态站在同一个工作流里（`.github/workflows/deploy.yml`）：`npm run build:api` 用 esbuild 打成单文件 `dist-server/index.mjs`，上传到 `/root/turnery/api/releases/<sha7>/`，切换 `current`，`pm2 startOrReload`。
-
-- 进程：PM2 `turnery-api`，`127.0.0.1:18914`，配置在 `app/server/ecosystem.config.cjs`。
-- 密钥和限额：`/root/turnery/shared/.env`（权限 600，不进仓库）。
-
-  ```
-  OPENROUTER_API_KEY=…      # 公共额度走 OpenRouter（优先）
-  OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash-1017
-  OPENROUTER_ROUTING={"quantizations":["fp8","fp16","bf16"],"sort":"price"}   # 可选，OpenRouter 的 provider 路由
-  DEEPSEEK_API_KEY=…        # 不用 OpenRouter 时直连 DeepSeek；两个都留空 = 只能自带 key
-  STUDIO_MODEL=deepseek-flash
-  DAILY_BUDGET_USD=0.14     # 公共额度每天的上限（按北京时间换日）
-  TURNS_PER_HOUR=30         # 每个 IP 每小时能发的消息数（自带 key 不限）
-  ```
-
-  学习者自己填的 key 永远直连 DeepSeek。
-
-  改完执行 `pm2 restart turnery-api --update-env`。
-- 花费：服务端日志每次请求记一行用量和成本（不记内容）。走 OpenRouter 时用它返回的实际花费，直连 DeepSeek 时按价目表估算。`/root/turnery/api/data/budget.json` 是当天累计。
-- 分享快照：`/root/turnery/api/data/shares/`（`STUDIO_DATA_DIR` 在 `ecosystem.config.cjs` 里设好，工作流每次发布 `mkdir -p` 这个目录，只切换 `releases/`，不动 `data/`）。不单独备份，丢了只是链接失效。分享相关的日志行带 `"share"` 字段，`grep '"share":"create"'` 就能数出当天新建了几个。
-
 ### OpenRouter 的路由
 
-同一个模型在 OpenRouter 上有几十家服务商，有的跑 fp4 量化版。默认只用 fp8 及以上、按价格选，这样每一步大多落在同一家，缓存也能连着命中。哪些服务商能用，还要看账户的数据政策：现在的设置排除了「可能用数据训练」的服务商，DeepSeek 官方因此不在其中。
+同一个模型在 OpenRouter 上有几十家服务商，有的跑 fp4 量化版。默认只用 fp8 及以上、按价格选（`eval-models.ts` 的 `OPENROUTER_ROUTING`，同名环境变量可以换掉），这样每一步大多落在同一家，缓存也能连着命中。哪些服务商能用，还要看账户的数据政策：现在的设置排除了「可能用数据训练」的服务商，DeepSeek 官方因此不在其中。
 
 2026-11-06 实测（10 道评测）：
 
@@ -381,6 +308,4 @@ node --env-file=… node_modules/.bin/tsx scripts/studio-eval.ts flange mug --th
 | fp8+，按价格（默认） | 10/10 | $0.013 | 30 秒 | Morph |
 | fp8+，按吞吐（5 题） | 4/5 | $0.036 | 25 秒 | Parasail、Morph 混着，缓存常断 |
 | 直连 DeepSeek（对照） | 10/10 | $0.019 | 15 秒 | DeepSeek |
-- Caddy：`/api/*` 反代到 18914，其余是静态文件。事件流（text/event-stream）不在压缩列表里，避免缓冲。wasm 等大文件构建时预压缩成 `.br` / `.gz`，由 `file_server { precompressed br gzip }` 直接发。
 
-装配实例区固定在侧边栏底部，仅打开装配时展开；上方项目文件列表保持原顺序及独立滚动。桌面视口默认统一浅灰白模并关闭变更着色，浅青色表示悬浮、蓝色表示持续选中；悬浮其他零件不清除已有选择。开启「查看变更」后，新增面显示绿色、修改面显示橙色，交互高亮优先。

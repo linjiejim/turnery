@@ -1,6 +1,6 @@
 # 部署
 
-Arbor 是纯静态站：`app/dist/` 加上烘焙好的 `app/public/models/`（构建时会一起拷进 `dist/models/`）。不需要服务端，也不在浏览器里跑 CAD 内核。
+网站是纯静态站：`app/dist/` 加上烘焙好的 `app/public/models/`（构建时会一起拷进 `dist/models/`）。没有后端：工作台的 CAD 内核在浏览器里跑；2026-11-22 去掉网页上的对话和分享以后，服务器上也不再跑 API（见下面的「去掉工作台 API」）。
 
 ## 构建
 
@@ -17,10 +17,9 @@ npm run build     # 产出 app/dist，最后一步生成每个页面的 HTML、s
 
 站点在 <https://turnery.linjiejim.com>，和 design.linjiejim.com 用同一套静态站做法：
 
-- push 到 `main`（改了 `app/**` 或工作流本身）时，`.github/workflows/deploy.yml` 在 GitHub Actions 里跑 `npm ci` → `npm run check` → `npm run build` → `npm run build:api` → 冒烟测试（`npm run e2e`），全部通过才上线。
+- push 到 `main`（改了 `app/**` 或工作流本身）时，`.github/workflows/deploy.yml` 在 GitHub Actions 里跑 `npm ci` → `npm run check` → `npm run build` → 冒烟测试（`npm run e2e`），全部通过才上线。
 - 静态产物 rsync 到 `/srv/turnery/releases/<sha7>`（`--link-dest` 复用上一版没变的文件），再原子地切换 `/srv/turnery/current` 软链；保留最近 5 个版本。
-- 工作台 API 上传到 `/root/turnery/api/releases/<sha7>`，切换 `current` 后 `pm2 startOrReload`（进程 `turnery-api`，见 `docs/dev/studio.md`）。
-- 最后检查首页、一个深层路由、模型索引和 `/api/health` 都返回 200。
+- 最后检查首页、一个深层路由和模型索引都返回 200。
 - 需要仓库 environment `jim-server` 里的 `DEV_SERVER_HOST / PORT / USERNAME / SSH_KEY`（专用 CI 密钥，不是个人密钥）。
 
 回滚：
@@ -63,7 +62,6 @@ ssh jim-server 'ln -sfn /srv/turnery/releases/<sha7> /srv/turnery/current'
 ```caddyfile
 turnery.linjiejim.com {
 	import logging
-	# No text/event-stream here: the studio chat streams and must not be buffered.
 	encode {
 		zstd
 		gzip
@@ -78,9 +76,6 @@ turnery.linjiejim.com {
 			header Content-Type image/svg+xml*
 			header Content-Type model/gltf-binary*
 		}
-	}
-	handle /api/* {
-		reverse_proxy 127.0.0.1:18914
 	}
 	handle {
 		root * /srv/turnery/current
@@ -102,7 +97,7 @@ turnery.linjiejim.com {
 
 ### 旧域名 arbor.linjiejim.com 和 featuretree.linjiejim.com
 
-项目改过两次名：2026-11-08 从 FeatureTree 改成 Arbor，2026-11-10 改成 Turnery。站点现在在 `turnery.linjiejim.com`，静态站在 `/srv/turnery`，API 在 `/root/turnery/api`，进程是 `turnery-api`（端口没变，18914），密钥在 `/root/turnery/shared/.env`。
+项目改过两次名：2026-11-08 从 FeatureTree 改成 Arbor，2026-11-10 改成 Turnery。站点现在在 `turnery.linjiejim.com`，静态站在 `/srv/turnery`。当时还有工作台 API（`/root/turnery/api`，进程 `turnery-api`，端口 18914），2026-11-22 去掉了。
 
 服务器上的搬迁写在 `app/scripts/move-to-turnery.sh` 里，分两步，都可以重复运行，改 Caddy 前先备份、校验通过才重载：
 
@@ -112,12 +107,12 @@ ssh jim-server 'sh -s switch' < app/scripts/move-to-turnery.sh    # 那个 PR �
 ```
 
 - `prepare`：建新目录，复制密钥，把线上版本硬链接成新目录的第一个版本，在 Caddy 里加上新域名（和旧域名并存）。
-- 改路径后的第一次部署会停掉旧进程 `arbor-api`（同一个端口），把分享数据复制到新目录，再启动 `turnery-api`。
+- 改路径后的第一次部署停掉了旧进程 `arbor-api`（同一个端口），把分享数据复制到新目录，再启动 `turnery-api`。
 - `switch`：两个旧域名改成只做交接，watchtower 的健康检查改到新域名。
 
 旧域名切换后：
 
-- `/api/*` 用 308 转到新域名，静态文件用 301。
+- `/api/*` 用 308 转到新域名（API 去掉以后，那边只剩网站本身），静态文件用 301。
 - 页面一律返回 `moved.html`（`app/public/moved.html`）。浏览器的本地存储按域名分开，所以这一页先读出这个浏览器在旧域名上的学习进度和工作台模型，放在网址片段 `#arbor-move=…` 里，打开新域名的同一个路径；新域名启动时合并进来，再把片段从地址里去掉（`src/lib/moved.ts`）。存储的键名两次改名都没变（`arbor:progress` 等），所以合并逻辑是同一套。
 - 片段不会发给服务器。自己填的 DeepSeek key 和对话记录不带过去。
 
@@ -128,6 +123,21 @@ ssh jim-server 'rm -rf /srv/featuretree /root/featuretree /srv/arbor /root/arbor
 ```
 
 Caddy 默认不认识 `.glb`，不给 Content-Type 也就不压缩；上面显式设了 `model/gltf-binary` 并加进压缩列表。网格数据压缩率很高，例如一个 276 KB 的齿轮 GLB 用 zstd 传输只有 45 KB。
+
+### 去掉工作台 API（2026-11-22）
+
+网页工作台原来有对话建模和分享链接，由 `app/server` 这个小服务转发对话、存分享（进程 `turnery-api`，Caddy 把 `/api/*` 转给 `127.0.0.1:18914`，托管 key 在 `/root/turnery/shared/.env`）。这些都去掉了（`docs/specs/2026-11-22-web-without-chat.md`），部署流程也不再上传、重启 API。服务器上剩下的东西由 `app/scripts/retire-api.sh` 清理，在去掉 `app/server` 的 PR 部署完成以后运行一次：
+
+```bash
+ssh jim-server 'sh -s' < app/scripts/retire-api.sh
+```
+
+- 从 `turnery.linjiejim.com` 的站点块里去掉 `handle /api/*`，改前先备份 Caddyfile，校验通过才重载，不通过就恢复原样。
+- `pm2 delete turnery-api`，再 `pm2 save`。
+- 把 `/root/turnery/api/data`（分享和每日花费）打包成 `/root/turnery/api-data-<日期>.tgz`，再删掉 `/root/turnery/api` 和 `/root/turnery/shared/.env`。
+- 每一步已经做过就跳过，可以重复运行。
+
+删掉 `.env` 不会让 key 失效：托管的 OpenRouter / DeepSeek key 由 Jim 到服务商后台吊销，脚本最后会提醒。旧的分享链接不迁移，`/studio/s/:id` 现在落到 404。
 
 ## 体积参考
 

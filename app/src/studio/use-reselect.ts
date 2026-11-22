@@ -2,7 +2,7 @@ import * as React from "react"
 import { t } from "../lib/i18n"
 import { setFieldAt } from "./apply"
 import type { DisplayData } from "./kernel/build"
-import type { Studio } from "./use-studio"
+import type { Studio } from "./studio"
 
 export type ReselectState = {
   feature: string
@@ -16,6 +16,8 @@ export type ReselectState = {
   hashes: number[]
   /** The selector for the picks; null = none fits, undefined = still working it out. */
   result?: { selector: Record<string, unknown>; count: number } | null
+  /** A form's pick box: the selector goes back to the form instead of into the tree. */
+  onApply?: (selector: Record<string, unknown>) => void
 }
 
 /**
@@ -39,12 +41,17 @@ export function useReselect(studio: Studio) {
     [studio],
   )
 
+  /**
+   * `opts.index`: the place the feature has (or will have, a new one) in the tree, when it isn't in it yet;
+   * `opts.onApply`: a form's pick box, which takes the selector itself.
+   */
   const start = React.useCallback(
-    async (feature: string, field: (string | number)[], kind: "face" | "edge", current: unknown) => {
-      const index = studio.treeRef.current.features.findIndex((f) => f.id === feature)
+    async (feature: string, field: (string | number)[], kind: "face" | "edge", current: unknown, opts?: { index?: number; onApply?: (selector: Record<string, unknown>) => void }) => {
+      const found = studio.treeRef.current.features.findIndex((f) => f.id === feature)
+      const index = found >= 0 ? found : (opts?.index ?? -1)
       if (index < 0) return
       const [display, hashes] = await Promise.all([studio.stepInput(index), current ? studio.locateBefore(kind, current, index) : Promise.resolve([])])
-      await resolve({ feature, field, kind, index, display, hashes: hashes ?? [] })
+      await resolve({ feature, field, kind, index, display, hashes: hashes ?? [], onApply: opts?.onApply })
     },
     [studio, resolve],
   )
@@ -70,6 +77,11 @@ export function useReselect(studio: Studio) {
   const apply = React.useCallback(async () => {
     const s = ref.current
     if (!s?.result) return t("还没有选中能描述的面或边", "Nothing selected that can be described yet")
+    if (s.onApply) {
+      s.onApply(s.result.selector)
+      setState(null)
+      return null
+    }
     const err = await studio.editTree((tree) => setFieldAt(tree, s.feature, s.field, s.result!.selector))
     if (!err) setState(null)
     return err

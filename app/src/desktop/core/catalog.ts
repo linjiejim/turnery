@@ -422,6 +422,15 @@ function build(): CommandSpec[] {
       }),
     },
     {
+      name: "edit_tree",
+      audience: "user",
+      description: ta(
+        "窗口里的人改特征树（新建、编辑一步）：整体替换。group 相同的连续修改合成一步撤销（一张表单一个 group）；改回到这一组开始前的样子（取消表单）就不留这一步。",
+        "The person's edit in the window (making or editing a step): replaces the whole tree. Consecutive edits with the same group undo as one step (one group per form); changing it back to how it was before the group (a cancelled form) leaves no step.",
+      ),
+      input: z.object({ tree: Tree, base_rev: z.number().int().optional(), group: z.string().max(100).optional() }),
+    },
+    {
       name: "update_note",
       audience: "user",
       description: ta("改备注的文字，或删除、重开、标为已处理。", "Change a note's text, or delete, reopen or resolve it."),

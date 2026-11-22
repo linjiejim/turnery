@@ -1,68 +1,112 @@
 import { PRACTICE } from "../src/content/practice"
+import type { Page } from "@playwright/test"
 import { expect, expectRendered, test } from "./fixtures"
 
 /**
- * The AI studio against the scripted model (STUDIO_MOCK=1): the whole loop —
- * stream, tool calls executed in the browser kernel, feature tree, look — plus
- * a ready-made tree that needs no model at all.
+ * The workbench, built by hand: the feature form (＋ on the timeline), editing and moving steps,
+ * the practices, and a ready-made tree. No server: everything runs in the page.
  */
 test.describe("工作台", () => {
   test.setTimeout(120_000)
 
-  test("/studio 对话建模（脚本模型）", async ({ page }) => {
-    await page.goto("/studio")
-    const example = page.getByRole("button", { name: /80×50×30/ })
-    await expect(example, "kernel loads and enables the examples").toBeEnabled({ timeout: 90_000 })
-    await example.click()
-    await expect(page.getByText(/^做好了/), "the scripted turn finishes").toBeVisible({ timeout: 90_000 })
-    await expect(page.getByRole("img", { name: "助教看到的视图" }).first(), "look renders views for the model").toBeVisible()
-    await expectRendered(page.locator("canvas").first(), "/studio model")
-    // The feature tree sits over the 3D view; pointing at a step shows a small card of what it is.
-    const tree = page.getByRole("navigation", { name: "特征树" })
-    await expect(tree.getByText("5 个特征")).toBeVisible()
-    await tree.locator("[data-step]").nth(2).hover()
-    await expect(page.getByRole("tooltip"), "pointing at a step says which it is").toContainText(/第 \d 步/)
-    await expect(page.getByRole("status"), "the turn's status line is gone once it's done").toHaveCount(0)
-    await page.getByRole("button", { name: "更多" }).click()
-    await page.getByRole("menuitem", { name: "代码" }).click()
-    await expect(page.getByRole("dialog", { name: "代码" }).getByText(/extrude\(sk_sk1, amount=H\)/).first()).toBeVisible()
-    await page.keyboard.press("Escape")
+  /** ＋ on the timeline, then one kind of step. */
+  async function newStep(page: Page, name: string) {
+    await page.getByRole("navigation", { name: "特征树" }).getByRole("button", { name: /^新建一步/ }).click()
+    await page.getByRole("menuitem", { name, exact: true }).click()
+  }
 
-    // The requirements, measured by the kernel: a card in the chat, a live list on the parameters tab.
-    await page.getByRole("tab", { name: "对话" }).click()
-    await expect(page.getByRole("button", { name: "核对要求 · 3/3" })).toBeVisible()
-    await page.getByRole("tab", { name: "参数" }).click()
-    const list = page.getByRole("region", { name: "要求核对" })
-    await expect(list.getByText("3/3")).toBeVisible()
-    // The learner's own edit moves a requirement: 「已偏离」, not a red failure.
-    await page.getByLabel("t", { exact: true }).fill("3")
-    await page.getByLabel("t", { exact: true }).press("Enter")
-    await expect(list.getByText(/已偏离：要求 2 mm，现在 3 mm/)).toBeVisible()
+  test("/studio 手动建模：草图、拉伸、孔，练习完成；取消回到打开表单之前", async ({ page }) => {
+    const p = PRACTICE.find((x) => x.id === "sketch-to-solid-1")!
+    await page.goto(`/studio?practice=${p.id}`)
+    const card = page.getByRole("region", { name: "练习" })
+    await expect(card.getByText(`0/${p.checks.length}`)).toBeVisible({ timeout: 90_000 })
+    const tree = page.getByRole("navigation", { name: "特征树" })
+
+    // The empty part starts from a sketch: a rectangle on the top plane, built as soon as the form opens.
+    await page.getByRole("button", { name: "从草图开始" }).click()
+    const sketch = page.getByRole("dialog", { name: "新建草图" })
+    await sketch.getByRole("textbox", { name: "宽（x）" }).fill("60")
+    await sketch.getByRole("textbox", { name: "高（y）" }).fill("40")
+    await expect(sketch.getByText("上视基准面 · 矩形 60×40")).toBeVisible()
+    await sketch.getByRole("button", { name: "完成" }).click()
+    await expect(tree.getByText("1 个特征")).toBeVisible()
+
+    // Cancel takes the form back as a whole: the tree is as it was before ＋.
+    await newStep(page, "拉伸")
+    const extrude = page.getByRole("dialog", { name: "新建拉伸" })
+    await expect(tree.getByText("2 个特征")).toBeVisible()
+    await extrude.getByRole("textbox", { name: "距离" }).fill("25")
+    await expect(extrude.getByText("加料 25 mm")).toBeVisible()
+    await extrude.getByRole("button", { name: "取消" }).first().click()
+    await expect(tree.getByText("1 个特征")).toBeVisible()
+
+    await newStep(page, "拉伸")
+    await page.getByRole("dialog", { name: "新建拉伸" }).getByRole("textbox", { name: "距离" }).fill("20")
+    await expect(page.getByRole("dialog", { name: "新建拉伸" }).getByText("加料 20 mm")).toBeVisible()
+    await page.getByRole("dialog", { name: "新建拉伸" }).getByRole("button", { name: "完成" }).click()
+    await expect(card.getByText(`1/${p.checks.length}`), "60×40×20").toBeVisible()
+
+    // A hole on the top face, in the middle: every requirement ticks.
+    await newStep(page, "孔")
+    const hole = page.getByRole("dialog", { name: "新建孔" })
+    await hole.getByRole("textbox", { name: "直径" }).fill("16")
+    await expect(card.getByText(`${p.checks.length}/${p.checks.length}`)).toBeVisible()
+    await expect(card.getByText("练习完成")).toBeVisible()
+    await hole.getByRole("button", { name: "完成" }).click()
+    await expectRendered(page.locator("canvas").first(), "/studio built by hand")
+
+    // One form, one step to undo: the hole goes, the block stays.
+    await page.getByRole("button", { name: "撤销上一步" }).click()
+    await expect(tree.getByText("2 个特征")).toBeVisible()
   })
 
-  test("/studio 在模型上标注（脚本模型）", async ({ page }) => {
-    await page.goto("/studio?start=flange")
-    await expect(page.getByText("5 个特征").first()).toBeVisible({ timeout: 90_000 })
-    await expectRendered(page.locator("canvas").first(), "/studio annotate")
-    // Click around the disc until a face card opens.
+  test("/studio 倒角：在模型上点顶面，选它的一圈边", async ({ page }) => {
+    const p = PRACTICE.find((x) => x.id === "fillet-chamfer-1")!
+    await page.goto(`/studio?practice=${p.id}`)
+    const card = page.getByRole("region", { name: "练习" })
+    await expect(card.getByText(`1/${p.checks.length}`)).toBeVisible({ timeout: 90_000 })
+    await expectRendered(page.locator("canvas").first(), "/studio chamfer")
+
+    // A chamfer's edge box is on from the start; a click on a face picks the edges around it.
+    await newStep(page, "倒角")
+    const form = page.getByRole("dialog", { name: "新建倒角" })
+    await expect(page.getByRole("status").filter({ hasText: "这一步开始时的样子" })).toBeVisible()
     const box = (await page.locator("canvas").first().boundingBox())!
-    const card = page.getByRole("dialog")
-    for (const [fx, fy] of [[0.62, 0.42], [0.66, 0.5], [0.4, 0.42], [0.55, 0.35], [0.7, 0.45], [0.35, 0.5]]) {
-      await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy)
-      if (await card.getByText(/^① 面 ·/).isVisible().catch(() => false)) break
+    // The top face's four edges, however the kernel words them.
+    const picked = form.getByText(/· 4 条$/)
+    for (const [fx, fy] of [[0.45, 0.4], [0.4, 0.36], [0.5, 0.33], [0.35, 0.42], [0.55, 0.38], [0.45, 0.3]]) {
+      const at = { x: box.x + box.width * fx, y: box.y + box.height * fy }
+      await page.mouse.click(at.x, at.y)
+      if (await picked.waitFor({ timeout: 3000 }).then(() => true, () => false)) break
+      // Another face: click it again to drop it.
+      if (await form.getByText(/条|个面/).isVisible().catch(() => false)) await page.mouse.click(at.x, at.y)
     }
-    await expect(card.getByText(/^① 面 ·/), "a click on the model opens the note card").toBeVisible()
-    await card.getByLabel("标注备注").fill("在这里加一个 ⌀6 的通孔")
-    await card.getByRole("button", { name: "加到消息" }).click()
-    const pins = page.locator(".scene-labels .bg-primary")
-    await expect(pins, "the annotation stays on the model as pin 1").toHaveCount(1)
-    await page.getByRole("tab", { name: "对话" }).click()
-    await expect(page.getByLabel("要随消息发出的标注").getByText("在这里加一个 ⌀6 的通孔")).toBeVisible()
-    await page.getByRole("button", { name: "发送" }).click()
-    await expect(page.getByText(/^做好了/), "the scripted turn finishes").toBeVisible({ timeout: 90_000 })
-    await expect(page.getByRole("img", { name: "标注截图" }), "the annotated view went with the message").toBeVisible()
-    await expect(page.getByRole("button", { name: /① 在这里加一个 ⌀6 的通孔/ }), "the sent message keeps its chip").toBeVisible()
-    await expect(pins, "pins clear once the reply is done").toHaveCount(0)
+    await expect(picked, "the top face's loop of edges").toBeVisible()
+    await form.getByRole("button", { name: "用这些" }).click()
+    await expect(form.getByText(/^C1 · 4 条边/)).toBeVisible()
+    await form.getByRole("button", { name: "完成" }).click()
+    const row = card.getByRole("listitem").filter({ hasText: "顶面一圈倒 1 的倒角" })
+    await expect(row.getByLabel("做到了")).toBeVisible()
+  })
+
+  test("/studio 调整特征顺序：外圆角上移一步，练习完成；看参考做法", async ({ page }) => {
+    const p = PRACTICE.find((x) => x.id === "fillet-shell-order-1")!
+    await page.goto(`/studio?practice=${p.id}`)
+    const card = page.getByRole("region", { name: "练习" })
+    await expect(card.getByText(p.title)).toBeVisible({ timeout: 90_000 })
+    await expect(card.getByText("练习完成")).toHaveCount(0)
+    const tree = page.getByRole("navigation", { name: "特征树" })
+    await tree.getByRole("button", { name: /外圆角/ }).click()
+    await page.getByRole("dialog", { name: "「外圆角」" }).getByRole("button", { name: "上移一步（往前）" }).click()
+    await expect(card.getByText("练习完成")).toBeVisible()
+
+    // Another practice's reference answer: a part of its own, replayed from its first step.
+    await page.goto("/studio?practice=revolve-1")
+    await page.getByRole("region", { name: "练习" }).getByRole("button", { name: "看参考做法" }).click({ timeout: 90_000 })
+    await expect(page.getByRole("navigation", { name: "位置" }).getByText("参考：车一根阶梯轴")).toBeVisible()
+    await expect(tree.getByRole("button", { name: "暂停" }), "it replays").toBeVisible()
+    await page.getByRole("button", { name: "回到练习" }).click()
+    await expect(page.getByRole("region", { name: "练习" }).getByText("车一根阶梯轴")).toBeVisible()
   })
 
   test("/studio 不用 AI：特征卡片、参数说明、测量、剖视", async ({ page }) => {
@@ -80,10 +124,12 @@ test.describe("工作台", () => {
     await card.getByRole("textbox", { name: "螺栓孔直径" }).fill("10")
     await card.getByRole("textbox", { name: "螺栓孔直径" }).press("Enter")
     await expect(card.getByRole("button", { name: /⌀10（bolt）/ }), "the edit rebuilt the hole").toBeVisible()
-    // 「让助教改这一步」 starts a message about this step.
-    await card.getByRole("button", { name: /让助教改这一步/ }).click()
-    await expect(page.getByLabel("给建模助教的消息")).toHaveValue("改「螺栓孔」（h1）：")
-    await expect(card, "the details make way for the message").toHaveCount(0)
+    // 「编辑」: the same step in the form, its numbers filled in; 取消 leaves it as it was.
+    await card.getByRole("button", { name: "编辑" }).click()
+    const form = page.getByRole("dialog", { name: "编辑「螺栓孔」" })
+    await expect(form.getByRole("textbox", { name: "直径" })).toHaveValue("bolt")
+    await form.getByRole("button", { name: "取消" }).first().click()
+    await expect(page.getByRole("dialog", { name: "「螺栓孔」" })).toBeVisible()
 
     // Re-pick on the model: the view goes back to what a fillet-like step starts from.
     await page.goto("/studio?start=box-fillet-first")
@@ -100,7 +146,6 @@ test.describe("工作台", () => {
     await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
 
     // Parameters say what they are and where they're used.
-    await page.getByRole("tab", { name: "参数" }).click()
     await expect(page.getByText("螺栓孔所在圆的直径（节圆）")).toBeVisible()
     await expect(page.getByText("用在：螺栓孔 · 位置")).toBeVisible()
 
@@ -127,7 +172,6 @@ test.describe("工作台", () => {
     await page.goto("/studio?start=flange")
     const tree = page.getByRole("navigation", { name: "特征树" })
     await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
-    await page.getByRole("tab", { name: "参数" }).click()
 
     // Pointing at pcd: the pitch circle on the model, joined to the row by a line.
     await page.getByText("螺栓孔所在圆的直径（节圆）").hover()
@@ -219,64 +263,6 @@ test.describe("工作台", () => {
     await expect(page.getByRole("menuitem", { name: "导出 STL（zip，每个零件一个文件）" })).toBeVisible()
   })
 
-  test("/studio 分享链接：另一个浏览器打开、试参数、复制到工作台、撤销", async ({ page, browser }) => {
-    await page.goto("/studio?start=flange")
-    await expect(page.getByText("5 个特征").first()).toBeVisible({ timeout: 90_000 })
-    await page.getByRole("button", { name: "分享", exact: true }).click()
-    const dialog = page.getByRole("dialog", { name: "分享模型" })
-    await dialog.getByLabel("标题").fill("法兰盘")
-    await dialog.getByLabel("说明").fill("第三课作业")
-    await dialog.getByRole("button", { name: "生成链接" }).click()
-    const link = dialog.getByLabel("分享链接")
-    await expect(link).toHaveValue(/\/studio\/s\/[0-9A-Za-z]{10}$/)
-    const url = await link.inputValue()
-
-    // Someone else: a fresh context shares nothing with the sharer's browser.
-    const other = await browser.newContext({ locale: "zh-CN", viewport: { width: 1440, height: 900 } })
-    const viewer = await other.newPage()
-    const problems: string[] = []
-    viewer.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`))
-    viewer.on("console", (m) => m.type() === "error" && problems.push(`console.error: ${m.text()}`))
-    await viewer.goto(url)
-    await expect(viewer.getByRole("heading", { name: "法兰盘" })).toBeVisible()
-    await expect(viewer.getByText("第三课作业")).toBeVisible()
-    await expect(viewer.locator('meta[name="robots"]'), "kept out of search results").toHaveAttribute("content", "noindex")
-    const tree = viewer.getByRole("navigation", { name: "特征树" })
-    await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
-    await expectRendered(viewer.locator("canvas").first(), "/studio/s shared model")
-
-    // Parameters keep their notes; trying one rebuilds the model, a reload puts it back.
-    await viewer.getByRole("tab", { name: "参数" }).click()
-    await expect(viewer.getByText("螺栓孔所在圆的直径（节圆）")).toBeVisible()
-    await viewer.getByLabel("n", { exact: true }).fill("4")
-    await viewer.getByLabel("n", { exact: true }).press("Enter")
-    // A step's details open on a click (look only here).
-    await tree.getByRole("button", { name: /孔阵列/ }).click()
-    await expect(viewer.getByRole("dialog", { name: /孔阵列/ }).getByText(/^×4/), "the tried parameter rebuilt the pattern").toBeVisible()
-    await viewer.reload()
-    await expect(tree.getByText("5 个特征")).toBeVisible({ timeout: 90_000 })
-    await tree.getByRole("button", { name: /孔阵列/ }).click()
-    await expect(viewer.getByRole("dialog", { name: /孔阵列/ }).getByText(/^×6/), "nothing was saved").toBeVisible()
-    await viewer.keyboard.press("Escape")
-
-    // Copy: into this browser's (empty) part, undoably.
-    await viewer.getByRole("button", { name: "复制到我的工作台" }).first().click()
-    await expect(viewer).toHaveURL(/\/studio$/)
-    await expect(viewer.getByText("已打开「法兰盘」")).toBeVisible({ timeout: 90_000 })
-    await expect(tree.getByText("5 个特征")).toBeVisible()
-    await viewer.getByRole("button", { name: "撤销上一步" }).click()
-    await expect(tree, "undo brings back the empty model").toHaveCount(0)
-    expect(problems, "viewer page errors / console.error").toEqual([])
-    await other.close()
-
-    // The sharer can take the link back.
-    await dialog.getByRole("button", { name: "删除这个链接" }).click()
-    await page.getByRole("alertdialog").getByRole("button", { name: "删除链接" }).click()
-    await expect(page.getByText("已删除链接")).toBeVisible()
-    const id = url.split("/").pop()
-    expect((await page.request.get(`/api/studio/share/${id}`)).status()).toBe(404)
-  })
-
   test("/studio 导入特征树 JSON：成为项目里的新零件，可撤销；坏的在原处说明", async ({ page }) => {
     await page.goto("/studio?start=flange")
     const tree = page.getByRole("navigation", { name: "特征树" })
@@ -345,7 +331,6 @@ test.describe("工作台", () => {
     await page.goto("/studio?start=flange")
     await expect(page.getByText("5 个特征").first()).toBeVisible({ timeout: 90_000 })
     await expectRendered(page.locator("canvas").first(), "/studio flange")
-    await page.getByRole("tab", { name: "参数" }).first().click()
     // A centre hole wider than the disc: the sketch has nothing left, the tree shows the failure…
     const d0 = page.getByLabel("d0", { exact: true })
     await d0.fill("130")
@@ -353,7 +338,6 @@ test.describe("工作台", () => {
     const tree = page.getByRole("navigation", { name: "特征树" })
     await expect(tree.getByRole("button", { name: /（失败）$/ }).first(), "the failing step is marked, and read as failed").toBeVisible()
     // …and putting it back rebuilds cleanly.
-    await page.getByRole("tab", { name: "参数" }).first().click()
     await page.getByLabel("d0", { exact: true }).fill("40")
     await page.getByLabel("d0", { exact: true }).press("Enter")
     await expect(tree.getByRole("button", { name: /（失败）$/ })).toHaveCount(0)
@@ -555,7 +539,7 @@ test.describe("工作台", () => {
 test.describe("工作台 · 项目和装配", () => {
   test.setTimeout(180_000)
 
-  test("/studio 新建装配项目：加新零件、「直接做」建形状、放 STEP 参考件、导出零件清单", async ({ page }) => {
+  test("/studio 新建装配项目：加新零件、亲手建形状、放 STEP 参考件、导出零件清单", async ({ page }) => {
     await page.goto("/studio")
     const files = page.getByRole("navigation", { name: "文件" })
     await expect(files.getByRole("button", { name: /^零件/ }), "the first visit starts 「我的模型」 with one part").toBeVisible({ timeout: 90_000 })
@@ -580,13 +564,13 @@ test.describe("工作台 · 项目和装配", () => {
     await expect(page.getByText("在装配里", { exact: true })).toBeVisible({ timeout: 30_000 })
     await expect(files.getByRole("button", { name: /^笔杆/ })).toBeVisible()
 
-    // 「直接做」: the desktop assistant's commands, run by the engine in this page (the scripted model builds a box).
-    await page.getByRole("radio", { name: "直接做" }).click()
-    await page.getByRole("textbox", { name: "给建模助教的消息" }).fill("做一个小盒子")
-    await page.keyboard.press("Enter")
-    await expect(page.getByText(/^做好了/), "the scripted turn finishes").toBeVisible({ timeout: 90_000 })
-    await expect(page.getByRole("button", { name: "核对要求 · 3/3" })).toBeVisible()
-    await expect(page.getByRole("navigation", { name: "特征树" }).getByText("5 个特征")).toBeVisible()
+    // The new part, by hand: a sketch and an extrude, the assembly's other parts around it.
+    await page.getByRole("button", { name: "新建草图" }).click()
+    await page.getByRole("dialog", { name: "新建草图" }).getByRole("button", { name: "完成" }).click()
+    await page.getByRole("navigation", { name: "特征树" }).getByRole("button", { name: /^新建一步/ }).click()
+    await page.getByRole("menuitem", { name: "拉伸", exact: true }).click()
+    await page.getByRole("dialog", { name: "新建拉伸" }).getByRole("button", { name: "完成" }).click()
+    await expect(page.getByRole("navigation", { name: "特征树" }).getByText("2 个特征")).toBeVisible()
 
     // Back to the assembly: a STEP reference uploaded from the computer goes in beside the part.
     await page.getByRole("button", { name: /^回到装配/ }).click()

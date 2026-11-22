@@ -5,10 +5,8 @@ import { installBridge } from "@/desktop/bridge"
 import { useDesktopStudio, useEngine } from "@/desktop/use-desktop"
 import type { Check } from "../dsl"
 import { takeKernel } from "../boot"
-import type { Pin } from "../look"
 import { withPinned } from "../pinned"
-import type { ToolRun } from "../apply"
-import type { KernelState, Studio } from "../use-studio"
+import type { KernelState, Studio } from "../studio"
 import { ta } from "@/lib/agent-lang"
 import { WebHost, webBridge } from "./web-host"
 
@@ -65,8 +63,7 @@ export function useWebHost(): HostState {
 
 /**
  * The open file as the site's components take it (`Studio`): the desktop window's adapter on the
- * engine, plus what the site adds: the kernel's download progress, the tutor's tool calls as the
- * assistant's, a practice's fixed requirements, the learner's pins in `look`.
+ * engine, plus what the site adds: the kernel's download progress and a practice's fixed requirements.
  */
 export function useWebStudio(host: WebHost) {
   const engine = useEngine()
@@ -77,17 +74,6 @@ export function useWebStudio(host: WebHost) {
   const [loadedMB, setLoadedMB] = React.useState(0)
   React.useEffect(() => host.kernel.onChange?.(() => setLoadedMB((host.kernel as { loadedMB?: number }).loadedMB ?? 0)), [host])
   const kernel: KernelState = base.kernel.phase === "loading" ? { phase: "loading", loadedMB } : base.kernel
-
-  // The learner's numbered pins: drawn in the pictures `look` makes for the tutor.
-  const pins = React.useRef<Pin[]>([])
-  const { setPins: setBasePins } = base
-  const setPins = React.useCallback(
-    (p: Pin[]) => {
-      pins.current = p
-      setBasePins(p)
-    },
-    [setBasePins],
-  )
 
   // A practice's requirements stay as given: put back after any change that dropped or edited them.
   const pinned = React.useRef<Check[] | null>(null)
@@ -107,26 +93,8 @@ export function useWebStudio(host: WebHost) {
     [restore],
   )
 
-  const runTool = React.useCallback(
-    async (name: string, input: Record<string, unknown>): Promise<ToolRun> => {
-      const output = await host.assistant(name, input)
-      const report = pinned.current ? await restore() : null
-      if (report && pinned.current) {
-        const ids = pinned.current.map((x) => x.id).join(ta("、", ", "))
-        const rows = (report.checks ?? []).filter((r) => (pinned.current ?? []).some((p) => p.id === r.id))
-        const note = ta(
-          `练习的要求（${ids}）是固定的，不能改或删，已经恢复原样。核对结果以恢复后的为准：${rows.map((r) => `${r.said} ${r.pass ? "✓" : `✗（要求 ${r.expected}，实际 ${r.actual}）`}`).join("；")}`,
-          `The practice's requirements (${ids}) are fixed: they can't be changed or deleted, and have been put back as they were. The check results that count are those after the restore: ${rows.map((r) => `${r.said} ${r.pass ? "✓" : `✗ (required ${r.expected}, actual ${r.actual})`}`).join("; ")}`,
-        )
-        return { tree: base.treeRef.current, output: { ...output, text: `${output.text}\n${note}` } }
-      }
-      return { tree: base.treeRef.current, output }
-    },
-    [host, restore, base.treeRef],
-  )
-
   const { editTree: baseEdit } = base
-  const editTree = React.useCallback((change: Parameters<Studio["editTree"]>[0]) => baseEdit((t) => withPinned(change(t), pinned.current)), [baseEdit])
+  const editTree = React.useCallback<Studio["editTree"]>((change, opts) => baseEdit((t) => withPinned(change(t), pinned.current), opts), [baseEdit])
 
   const load = React.useCallback(
     async (tree: Parameters<Studio["load"]>[0], name?: string) => {
@@ -137,6 +105,6 @@ export function useWebStudio(host: WebHost) {
   )
 
   const exportBody = base.exportBody
-  const studio: Studio = { ...base, kernel, runTool, editTree, load, setPins, pinChecks, exportBody }
-  return { ...engine, studio, path, pins }
+  const studio: Studio = { ...base, kernel, editTree, load, pinChecks, exportBody }
+  return { ...engine, studio, path }
 }

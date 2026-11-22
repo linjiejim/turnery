@@ -393,6 +393,7 @@ export function DesktopApp() {
                 cameras={cameras}
               />
               <TreeOverlay
+                key={doc?.path}
                 studio={studio}
                 busy={Boolean(loading)}
                 onHover={setTreeHover}

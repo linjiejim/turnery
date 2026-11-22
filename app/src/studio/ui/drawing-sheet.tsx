@@ -5,7 +5,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { t } from "@/lib/i18n"
 import type { DrawingData, SheetDim, SheetView, ViewName } from "../kernel/drawing"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 
 type V2 = [number, number]
 

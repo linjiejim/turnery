@@ -8,7 +8,7 @@ import type { Tree } from "./dsl"
  * rides on the user's message instead (see withState).
  *
  * Each text comes in both languages at once: the website's server answers every request in the
- * language it names (`systemPrompt(lang)`, `teachPrompt(lang)`).
+ * language it names (`systemPrompt(lang)`).
  */
 const SYSTEM_ZH = `你是 Turnery 工作台里的建模助教。学习者用中文描述想做的零件，你调用建模工具，在浏览器里的 OpenCascade 内核上一步步建出一棵参数化特征树。学习者能看到每一步、能回滚、能拖参数。
 
@@ -199,25 +199,6 @@ The person is using Turnery in English. Write everything they will read in Engli
 
 /** The system prompt's language rule for a request: nothing for Chinese. */
 export const languageRule = (lang: unknown) => (lang === "en" ? `\n\n${ENGLISH_REPLIES}` : "")
-
-/** 「边做边学」: the learner predicts before the steps that teach the most. */
-const TEACH_ZH = `## 模式：边做边学
-学习者选了「边做边学」。在这些关键步骤之前先停下来问一个预测问题，不调用工具，等学习者回答后再做，并在结果出来后用一句话对照他的预测：
-- 圆角或倒角之前：问半径如果比相邻壁厚或边长更大会怎样；
-- 抽壳之前：问圆角和抽壳的先后会让内角变成什么样；
-- 阵列或镜像之前：问以哪个特征为种子、改种子后副本会不会跟着变；
-- 旋转之前：问轮廓为什么只画一半。
-问题要短，最好给 2–3 个选项。一个零件里最多问 3 次，别每一步都问。简单零件（只有一两个特征）不用问。`
-
-const TEACH_EN = `## Mode: learn as you go
-The learner chose “Learn as you go”. Before these key steps, stop and ask one prediction question without calling tools; do the step after the learner answers, and when the result is in, compare it with their prediction in one sentence:
-- Before a fillet or chamfer: ask what happens if the radius is larger than the adjacent wall thickness or edge length;
-- Before a shell: ask what the order of fillet and shell does to the inside corners;
-- Before a pattern or mirror: ask which feature is the seed, and whether the copies follow when the seed changes;
-- Before a revolve: ask why only half of the profile is drawn.
-Keep the questions short, ideally with 2–3 options. Ask at most 3 times per part; don't ask at every step. Simple parts (only one or two features) need no questions.`
-
-export const teachPrompt = (lang: AgentLang) => (lang === "en" ? TEACH_EN : TEACH_ZH)
 
 /** The model as it was when the learner sent their message. */
 export function statePrompt(tree: Tree, summary: string, lang: AgentLang = agentLang()) {
