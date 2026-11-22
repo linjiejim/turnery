@@ -479,8 +479,10 @@ test.describe("工作台", () => {
       await page.waitForTimeout(600)
       await expect(tips, "no name left over to press Esc on").toHaveCount(0)
     }
-    // From the keyboard, with a swatch focused (its name showing).
+    // From the keyboard, with a swatch focused (its name showing). The tree shows as soon as the part
+    // opens; the dot works once the model is drawn.
     await count.hover()
+    await expect(dot).toBeEnabled({ timeout: 90_000 })
     await dot.focus()
     await page.keyboard.press("Enter")
     await expect(panel).toBeVisible()
