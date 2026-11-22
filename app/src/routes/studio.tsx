@@ -230,11 +230,12 @@ function Workbench({ host }: { host: WebHost }) {
       replayWanted.current = path
       setReference(path)
     })
+  // Runs again once `reference` is set too: the part may be open and drawn before `newFile` comes back.
   React.useEffect(() => {
     if (!replayWanted.current || doc?.path !== replayWanted.current || !studio.tree.features.length || !studio.display) return
     replayWanted.current = null
     timeline.current?.replay()
-  }, [doc?.path, studio.tree, studio.display])
+  }, [doc?.path, studio.tree, studio.display, reference])
 
   // ------------------------------------------------------------ import, export
 
