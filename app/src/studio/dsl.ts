@@ -440,8 +440,8 @@ export const Feature = z.discriminatedUnion("op", [
       .max(200)
       .describe(
         ta(
-          "STEP 文件，相对零件文件所在的文件夹，例如 \"board.step\"。只在桌面版 Turnery 里能读文件",
-          "STEP file, relative to the part file's folder, e.g. \"board.step\". Files can only be read in the Turnery desktop app",
+          "STEP 文件，相对零件文件所在的文件夹，例如 \"board.step\"。文件要在项目里（桌面版是电脑上的文件夹，网页工作台是这个浏览器里的项目）",
+          "STEP file, relative to the part file's folder, e.g. \"board.step\". The file must be in the project (a folder on the computer in the desktop app, the project kept in the browser in the website's workbench)",
         ),
       ),
     mode: z

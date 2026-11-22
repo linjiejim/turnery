@@ -56,7 +56,7 @@ const structureHeight = (structureH: number) => (p: Panels): Panels => ({ ...p, 
  * parts; under them, what the open file is made of. Clicking a file opens it (and makes it the agent's
  * default); double-clicking renames it.
  */
-export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, structure, selected = NO_NAMES, onSelect, onPoint, onLook, onRenameFile }: {
+export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, structure, selected = NO_NAMES, onSelect, onPoint, onLook, onRenameFile, head, tools, filesHint, onDeleteFile }: {
   snapshot: Snapshot | null
   /** 收起左栏 (⌘B): the button at its top. */
   onCollapse: () => void
@@ -72,6 +72,14 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
   onLook?: (names: string[], change: LookChange, here: boolean) => void
   /** Rename a file on disk (its references follow); false when it wasn't. */
   onRenameFile?: (path: string, name: string) => Promise<boolean>
+  /** The website's workbench: its own top row (the project menu), in place of the brand. */
+  head?: ReactNode
+  /** The website's workbench: its own buttons beside the search, in place of 新建 / 打开. */
+  tools?: ReactNode
+  /** What 「文件」's ⓘ says, where it differs from the app's. */
+  filesHint?: string[]
+  /** The website's workbench: a file can be deleted (its row's ⋯), in place of closing it. */
+  onDeleteFile?: (path: string) => void
 }) {
   const [query, setQuery] = useState("")
   const box = useRef<HTMLElement>(null)
@@ -130,7 +138,7 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
         onValueCommit={(w) => onPanels(leftWidth(w))}
       />
       {/* The top of the window: on a Mac the traffic lights sit here, and the row drags the window. */}
-      <div className={cn("flex h-12 shrink-0 items-center gap-1 pr-1.5 select-none [-webkit-app-region:drag]", mac ? "pl-22" : "pl-2.5")}>
+      {head ?? <div className={cn("flex h-12 shrink-0 items-center gap-1 pr-1.5 select-none [-webkit-app-region:drag]", mac ? "pl-22" : "pl-2.5")}>
         <button
           type="button"
           title={t("回到首页（⇧⌘H）", "Back to start (⇧⌘H)")}
@@ -144,29 +152,35 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
         <IconButton label={t("收起左栏（⌘B）", "Hide left panel (⌘B)")} size="icon-sm" className="ml-auto text-muted-foreground [-webkit-app-region:no-drag]" onClick={onCollapse}>
           <PanelLeft />
         </IconButton>
-      </div>
+      </div>}
       <div className="mx-2 mb-2 flex items-center gap-0.5">
         <div className="relative min-w-0 flex-1">
           <Input type="search" aria-label={t("搜索零件", "Search parts")} placeholder={t("搜索零件、文件、步骤", "Search")} value={query} className="pr-8 [&::-webkit-search-cancel-button]:hidden"
             onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setQuery("") } }} />
           {query && <IconButton label={t("清空搜索", "Clear search")} size="icon-sm" className="absolute top-1 right-1" onClick={() => setQuery("")}><X /></IconButton>}
         </div>
-        <IconButton label={t("新建零件（⌘N）", "New part (⌘N)")} size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.newPart()}>
-          <Plus />
-        </IconButton>
-        <IconButton label={t("打开（⌘O）", "Open (⌘O)")} size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.openPart()}>
-          <FolderOpen />
-        </IconButton>
+        {tools ?? (
+          <>
+            <IconButton label={t("新建零件（⌘N）", "New part (⌘N)")} size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.newPart()}>
+              <Plus />
+            </IconButton>
+            <IconButton label={t("打开（⌘O）", "Open (⌘O)")} size="icon-sm" className="text-muted-foreground" onClick={() => void turnery.openPart()}>
+              <FolderOpen />
+            </IconButton>
+          </>
+        )}
       </div>
       <SectionTitle
         title={t("文件", "Files")}
         folded={filesFolded}
         onFold={() => onPanels((p) => ({ ...p, filesFolded: !p.filesFolded }))}
-        hint={[
-          t("项目就是一个文件夹：里面的装配和零件都列在这里。", "A project is a folder: its assemblies and parts are listed here."),
-          t("多个零件的东西：文件 → 新建项目，再在装配里加零件。", "For something with several parts: File → New Project, then add parts in the assembly."),
-          t("点一个文件就打开它，agent 之后的命令也作用在它上面；双击改名。", "Click a file to open it; the agent’s next commands work on it too. Double-click to rename."),
-        ]}
+        hint={
+          filesHint ?? [
+            t("项目就是一个文件夹：里面的装配和零件都列在这里。", "A project is a folder: its assemblies and parts are listed here."),
+            t("多个零件的东西：文件 → 新建项目，再在装配里加零件。", "For something with several parts: File → New Project, then add parts in the assembly."),
+            t("点一个文件就打开它，agent 之后的命令也作用在它上面；双击改名。", "Click a file to open it; the agent’s next commands work on it too. Double-click to rename."),
+          ]
+        }
       />
       <nav aria-label={t("文件", "Files")} className={cn("min-h-0 overflow-y-auto px-1.5 pb-2", filesFolded ? "hidden" : "flex-1")}>
         {query.trim() && !assemblies.length && !files.length && !others.length && <p className="px-2 py-2 text-small text-faint-foreground">{t("没有匹配的项目文件", "No matching project files")}</p>}
@@ -175,14 +189,14 @@ export function PartsSidebar({ snapshot, width, panels, onPanels, onCollapse, st
         {assemblies.length > 0 && (
           <Group title={t("装配", "Assemblies")}>
             {assemblies.map((f) => (
-              <FileRow key={f.path} file={f} active={f.path === active} onRename={onRenameFile} />
+              <FileRow key={f.path} file={f} active={f.path === active} onRename={onRenameFile} onDelete={onDeleteFile} />
             ))}
           </Group>
         )}
         {files.length > 0 && (
           <Group title={assemblies.length ? t("零件", "Parts") : undefined}>
             {files.map((f) => (
-              <FileRow key={f.path} file={f} active={f.path === active} onRename={onRenameFile} />
+              <FileRow key={f.path} file={f} active={f.path === active} onRename={onRenameFile} onDelete={onDeleteFile} />
             ))}
           </Group>
         )}
@@ -598,8 +612,8 @@ function Renamable({ path, onRename, children }: { path: string; onRename?: (pat
   return <>{children(onRename ? { onDoubleClick: () => setRenaming(true), onKeyDown: (e) => { if (e.key === "F2") { e.preventDefault(); setRenaming(true) } } } : {})}</>
 }
 
-/** A file of the project: open or not. */
-function FileRow({ file: f, active, onRename }: { file: ProjectFile; active: boolean; onRename?: (path: string, name: string) => Promise<boolean> }) {
+/** A file of the project: open or not. `onDelete` (the website): a ⋯ with 改名 and 删除 instead of closing it. */
+function FileRow({ file: f, active, onRename, onDelete }: { file: ProjectFile; active: boolean; onRename?: (path: string, name: string) => Promise<boolean>; onDelete?: (path: string) => void }) {
   const unit = f.kind === "assembly" ? t("个零件", "parts") : t("个特征", "features")
   return (
     <Renamable path={f.path} onRename={onRename}>
@@ -610,12 +624,12 @@ function FileRow({ file: f, active, onRename }: { file: ProjectFile; active: boo
           {f.kind === "assembly" && <Boxes className="size-3.5 shrink-0 text-faint-foreground" />}
           <span className="truncate">{f.name}</span>
         </span>
-        <span className={cn("ml-auto shrink-0 text-caption text-faint-foreground", f.open && "group-hover:invisible group-focus-within:invisible")}>
+        <span className={cn("ml-auto shrink-0 text-caption text-faint-foreground", (f.open || onDelete) && "group-hover:invisible group-focus-within:invisible group-has-data-[state=open]:invisible")}>
           {f.features === null ? t("读不了", "Unreadable") : `${f.features} ${unit}`}
           {f.openNotes > 0 && <span className="ml-1 text-warning">{t(`${f.openNotes} 条备注`, f.openNotes === 1 ? "1 note" : `${f.openNotes} notes`)}</span>}
         </span>
       </button>
-      {f.open && <CloseButton path={f.path} />}
+      {onDelete ? <FileMenu name={f.name} onRename={rename.onDoubleClick} onDelete={() => onDelete(f.path)} /> : f.open && <CloseButton path={f.path} />}
     </div>
       )}
     </Renamable>
@@ -643,6 +657,26 @@ function OpenRow({ part: p, active, onRename }: { part: PartSummary; active: boo
     </div>
       )}
     </Renamable>
+  )
+}
+
+/** The website's file actions: rename (as a double-click does) and delete. */
+function FileMenu({ name, onRename, onDelete }: { name: string; onRename?: () => void; onDelete: () => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton label={t(`「${name}」的操作`, `Actions for “${name}”`)} size="icon-sm" className="absolute right-1 bg-sunken opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100">
+          <Ellipsis />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {onRename && <DropdownMenuItem onSelect={onRename}>{t("改名", "Rename")}</DropdownMenuItem>}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem tone="danger" onSelect={onDelete}>
+          {t("删除", "Delete")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

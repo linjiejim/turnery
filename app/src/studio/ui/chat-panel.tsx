@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Check, ChevronDown, ChevronRight, CircleHelp, Eye, ImagePlus, ListChecks, Palette, Pencil, Search, SlidersHorizontal, Square, Trash2, TriangleAlert, X, type LucideIcon } from "lucide-react"
+import { ArrowUpDown, Boxes, Check, ChevronDown, ChevronRight, CircleHelp, Download, Eye, FileText, FolderOpen, ImagePlus, ListChecks, Palette, Pencil, Redo2, Ruler, Search, Share2, SlidersHorizontal, Square, Trash2, TriangleAlert, Undo2, X, type LucideIcon } from "lucide-react"
 import type { FileUIPart, UIMessage } from "ai"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
@@ -40,6 +40,21 @@ const EXAMPLES = [
   },
 ]
 
+/** The same, with an assembly open: parts placed together, standard screws, a board to fit around. */
+const ASSEMBLY_EXAMPLES = [
+  {
+    label: t("盒子 + 上盖 + 4 颗 M3", "Box + lid + 4 M3 screws"),
+    text: t(
+      "在这个装配里做一个 80×50×30 的盒子：底壳和上盖两个零件，共用尺寸参数；四角用 M3×10 螺钉把上盖固定在底壳上",
+      "In this assembly, make an 80×50×30 box as two parts, a base and a lid, sharing their dimensions; fix the lid to the base with M3×10 screws in the corners",
+    ),
+  },
+  {
+    label: t("带螺纹的瓶盖", "Threaded bottle cap"),
+    text: t("在这个装配里做一个瓶口和一个瓶盖：M28 螺纹，瓶盖拧在瓶口上", "In this assembly, make a bottle neck and a cap: an M28 thread, the cap screwed onto the neck"),
+  },
+]
+
 const TOOL_LABEL: Record<string, { label: string; op?: OpId; icon?: LucideIcon }> = {
   set_params: { label: t("参数", "Parameters"), icon: SlidersHorizontal },
   sketch: { label: t("草图", "Sketch"), op: "sketch" },
@@ -63,10 +78,25 @@ const TOOL_LABEL: Record<string, { label: string; op?: OpId; icon?: LucideIcon }
   look: { label: t("看一眼", "Look"), icon: Eye },
   check: { label: t("核对要求", "Check"), icon: ListChecks },
   set_appearance: { label: t("颜色", "Color"), icon: Palette },
+  // 「直接做」 runs the desktop app's commands (studio/web-agent.ts).
+  thread: { label: t("螺纹", "Thread"), icon: Pencil },
+  import: { label: t("导入 STEP", "Import STEP"), icon: Boxes },
+  component: { label: t("放零件", "Place part"), icon: Boxes },
+  open_part: { label: t("打开文件", "Open file"), icon: FolderOpen },
+  open_project: { label: t("打开项目", "Open project"), icon: FolderOpen },
+  list_parts: { label: t("看项目文件", "List files"), icon: Search },
+  get_state: { label: t("看模型状态", "Read state"), icon: Search },
+  set_tree: { label: t("整体改特征树", "Rewrite tree"), icon: FileText },
+  move_feature: { label: t("调整顺序", "Reorder"), icon: ArrowUpDown },
+  undo: { label: t("撤销", "Undo"), icon: Undo2 },
+  redo: { label: t("重做", "Redo"), icon: Redo2 },
+  measure: { label: t("测量", "Measure"), icon: Ruler },
+  export: { label: t("导出", "Export"), icon: Download },
+  share_params: { label: t("共享参数", "Share parameters"), icon: Share2 },
 }
 
 /** Tools that only look at the model. */
-const READ_TOOLS = new Set(["inspect", "look", "check"])
+const READ_TOOLS = new Set(["inspect", "look", "check", "measure", "get_state", "list_parts"])
 
 export function ChatPanel({
   chat,
@@ -76,6 +106,7 @@ export function ChatPanel({
   ready,
   model,
   practicing = false,
+  assembly = false,
 }: {
   chat: StudioChat
   annotations: Annotations
@@ -86,6 +117,8 @@ export function ChatPanel({
   model?: string
   /** A practice is on: its card says what to build, so no example prompts or starters. */
   practicing?: boolean
+  /** An assembly is open: its own example requests; the tutor (「边做边学」) builds single parts only. */
+  assembly?: boolean
 }) {
   const [text, setText] = React.useState("")
   const [files, setFiles] = React.useState<FileUIPart[]>([])
@@ -170,6 +203,7 @@ export function ChatPanel({
             <Intro
               model={model}
               practicing={practicing}
+              assembly={assembly}
               onPick={(t) => {
                 if (!ready) return
                 stick.current = true
@@ -230,6 +264,14 @@ export function ChatPanel({
           </div>
         )}
         {fileError && <p className="mb-2 text-small text-destructive">{fileError}</p>}
+        {assembly && chat.mode === "teach" && (
+          <div role="status" className="mb-2 flex items-center gap-2 text-small text-muted-foreground">
+            <span className="min-w-0 flex-1">{t("「边做边学」只教单个零件；放零件、标准件和 STEP 要用「直接做」。", "“Learn as you go” covers single parts; placing parts, standard parts and STEP models takes “Just build”.")}</span>
+            <Button size="sm" variant="secondary" onClick={() => chat.setMode("build")}>
+              {t("换成直接做", "Switch to Just build")}
+            </Button>
+          </div>
+        )}
         <Textarea
           ref={box}
           rows={2}
@@ -278,7 +320,7 @@ export function ChatPanel({
 }
 
 /** The empty conversation: one line, a few requests to start from, and the ready-made trees behind a menu. */
-function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: string) => void; onLoad: (t: Tree) => void; disabled: boolean; model?: string; practicing?: boolean }) {
+function Intro({ onPick, onLoad, disabled, model, practicing, assembly }: { onPick: (t: string) => void; onLoad: (t: Tree) => void; disabled: boolean; model?: string; practicing?: boolean; assembly?: boolean }) {
   return (
     <div className="flex flex-col items-center pb-8 text-center">
       <h2 className="flex items-center gap-1.5 text-heading font-semibold">
@@ -299,7 +341,7 @@ function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: st
       ) : (
         <>
           <div className="mt-4 flex max-w-72 flex-wrap justify-center gap-2">
-            {EXAMPLES.map((e) => (
+            {(assembly ? ASSEMBLY_EXAMPLES : EXAMPLES).map((e) => (
               <button
                 key={e.label}
                 type="button"
@@ -312,7 +354,7 @@ function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: st
               </button>
             ))}
           </div>
-          <DropdownMenu>
+          {!assembly && <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" className="mt-3 text-muted-foreground" disabled={disabled}>
                 {t("打开示例模型", "Open an example model")}
@@ -327,7 +369,7 @@ function Intro({ onPick, onLoad, disabled, model, practicing }: { onPick: (t: st
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
         </>
       )}
     </div>

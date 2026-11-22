@@ -4,23 +4,33 @@ import opencascade from "replicad-opencascadejs"
 import wasmUrl from "replicad-opencascadejs/wasm?url"
 import { setOC } from "replicad"
 import type { Tree } from "./dsl"
-import { Kernel } from "./kernel/build"
+import { Kernel, type BuildReport, type ComponentSource, type ContextSource } from "./kernel/build"
 import { ensureFonts } from "./kernel/fonts"
-import type { MeasureTarget } from "./kernel/measure"
+import type { MeasureSpec } from "./kernel/measure"
 
 export type WorkerRequest =
   | { id: number; type: "init" }
-  | { id: number; type: "rebuild"; tree: Tree }
+  | { id: number; type: "rebuild"; tree: Tree; options?: RebuildOptions }
+  | { id: number; type: "restyle"; tree: Tree }
+  | { id: number; type: "looks" }
+  | { id: number; type: "setAssets"; list: AssetSource[] }
+  | { id: number; type: "setComponents"; list: ComponentSource[] }
+  | { id: number; type: "setContext"; ctx: ContextSource | null }
   | { id: number; type: "display"; index?: number }
   | { id: number; type: "inspect"; what: "body" | "faces" | "edges"; selector?: unknown }
   | { id: number; type: "export"; format: "step" | "stl" | "3mf"; index?: number }
   | { id: number; type: "pick"; kind: "face" | "edge"; hash: number; point: [number, number, number] }
   | { id: number; type: "locate"; kind: "face" | "edge"; selector: unknown; before?: number }
-  | { id: number; type: "measure"; targets: MeasureTarget[] }
+  | { id: number; type: "measure"; targets: MeasureSpec[] }
   | { id: number; type: "dimensions" }
   | { id: number; type: "drawing"; iso: boolean }
   | { id: number; type: "selectorFor"; kind: "face" | "edge"; hashes: number[]; before: number }
   | { id: number; type: "faceEdges"; hash: number; before: number }
+
+/** What a rebuild may be told besides the tree (the desktop engine's options; hooks stay in the worker). */
+export type RebuildOptions = { deferChecks?: boolean; interferences?: BuildReport["interferences"] }
+/** A file an `import` feature reads, as the host hands it over. */
+export type AssetSource = { name: string; bytes: Uint8Array | null; error?: string }
 
 export type WorkerMessage =
   | { id: number; ok: true; result: unknown; heapMB: number }
@@ -75,6 +85,11 @@ const ready = (async () => {
   kernel = new Kernel()
 })()
 
+/** Every feature tree among an assembly's components, nested ones too. */
+function treesOf(list: ComponentSource[]): Tree[] {
+  return list.flatMap((c) => [...(c.tree ? [c.tree] : []), ...treesOf(c.components ?? [])])
+}
+
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const req = e.data
   try {
@@ -88,7 +103,25 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       case "rebuild":
         // A text whose font didn't arrive fails on its own step, with a message saying so.
         await ensureFonts(req.tree, fetchBuffer).catch(() => {})
-        result = k.rebuild(req.tree)
+        result = k.rebuild(req.tree, req.options ?? {})
+        break
+      case "restyle":
+        result = k.restyle(req.tree)
+        break
+      case "looks":
+        result = k.looks()
+        break
+      case "setAssets":
+        k.setAssets(req.list)
+        break
+      case "setComponents":
+        // The parts of an assembly may carry text of their own: their fonts too.
+        for (const tree of treesOf(req.list)) await ensureFonts(tree, fetchBuffer).catch(() => {})
+        k.setComponents(req.list)
+        break
+      case "setContext":
+        if (req.ctx) for (const tree of [req.ctx.tree, ...treesOf(req.ctx.components)]) await ensureFonts(tree, fetchBuffer).catch(() => {})
+        k.setContext(req.ctx)
         break
       case "display": {
         const d = k.display(req.index)

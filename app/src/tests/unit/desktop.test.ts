@@ -487,13 +487,13 @@ describe("turnery: importing STEP", () => {
     again.dispose()
   }, 60_000)
 
-  it("tells what's wrong with a missing file, and that the site can't read files at all", async () => {
+  it("tells what's wrong with a missing file, and that a kernel without a project can't read files at all", async () => {
     const { run } = await caseEngine()
     const missing = await run("import", { id: "nope", file: "nope.step" })
     expect(missing.text).toMatch(/找不到 \/work\/nope\.step/)
     const web = new DirectKernel()
     const r = await web.rebuild({ params: {}, features: [{ id: "i", op: "import", file: "board.step" }] })
-    expect(r.features[0].message).toMatch(/只能在桌面版 Turnery 里用/)
+    expect(r.features[0].message).toMatch(/要在项目里打开这个零件/)
     web.dispose()
   }, 60_000)
 })
