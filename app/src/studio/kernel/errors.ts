@@ -66,7 +66,10 @@ export function explain(op: string, e: KernelError): { message: string; hint?: s
     case "revolve":
       return {
         message: ta(`${op === "extrude" ? "拉伸" : "旋转"}失败（${raw}）`, `${op === "extrude" ? "Extrude" : "Revolve"} failed (${raw})`),
-        hint: ta("检查草图是否闭合、是否自相交；旋转时轮廓不能跨过旋转轴。", "Check that the sketch is closed and doesn't cross itself. For a revolve, the profile must not cross the axis."),
+        hint: ta(
+          "检查草图是否闭合、是否自相交；旋转时轮廓不能跨过旋转轴，旋转轴也要在草图平面里（绕 Z 轴转，草图画在前视 XZ 或右视 YZ 基准面上）。",
+          "Check that the sketch is closed and doesn't cross itself. For a revolve, the profile must not cross the axis, and the axis must lie in the sketch's plane (to revolve about Z, sketch on the front XZ or right YZ plane).",
+        ),
       }
     case "sweep":
       return {
