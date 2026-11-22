@@ -52,7 +52,7 @@ const STATIC_ZH: Record<string, PageMeta> = {
   },
   "/studio": {
     title: "工作台",
-    description: "用中文描述零件，AI 助教一步步建出可回滚、可改参数的特征树，并讲清每一步的设计意图。几何在浏览器里由 OpenCascade 算出，可导出 STEP 和 build123d 代码。",
+    description: "在浏览器里亲手建参数化零件：表单式的草图和特征，改一个数就实时重建，可以回滚、回放、调整顺序，课后练习也在这里做。几何由 OpenCascade 算出，可导出 STEP、STL、3MF 和 build123d 代码。",
   },
   "/desktop": {
     title: "桌面版",
@@ -83,7 +83,7 @@ const STATIC_EN: Record<string, PageMeta> = {
   },
   "/studio": {
     title: "Workbench",
-    description: "Describe a part and the AI tutor builds it as a feature tree you can roll back, replay and change by its parameters. OpenCascade runs in your browser; export STEP, STL and build123d code.",
+    description: "Build parametric parts by hand in your browser: form-style sketches and features that rebuild as you type, a feature tree you can roll back, replay and reorder, and the lessons’ practices. OpenCascade runs in your browser; export STEP, STL, 3MF and build123d code.",
   },
   "/desktop": {
     title: "Desktop app",

@@ -47,14 +47,6 @@ const routes = [
       return import("@/routes/studio")
     }, "StudioPage"),
   },
-  {
-    // A shared link: the same studio, read-only.
-    path: "/studio/s/:id",
-    lazy: lazy(() => {
-      void import("@/studio/boot").then((b) => b.startKernel())
-      return import("@/routes/studio-share")
-    }, "StudioSharePage"),
-  },
 ] satisfies Parameters<typeof createBrowserRouter>[0]
 
 /**

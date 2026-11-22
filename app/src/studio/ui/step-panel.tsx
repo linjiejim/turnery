@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Trash2, X } from "lucide-react"
+import { ArrowLeft, ArrowRight, Pencil, Trash2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button, IconButton } from "@/components/ui/button"
 import { OpIcon } from "@/components/op-icon"
@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { notify } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
-import { applyEdit, setFieldAt } from "../apply"
+import { applyEdit, moveFeature, setFieldAt } from "../apply"
+import { hasForm } from "../feature-forms"
 import { displayName, opLabel, type Feature, type Tree } from "../dsl"
 import { applyDimEdit } from "../dim-edit"
 import { fmtDim } from "../dim-source"
@@ -17,7 +18,7 @@ import type { FeatureResult } from "../kernel/build"
 import { selectorWords } from "../selector-words"
 import type { Annotations } from "../use-annotations"
 import type { Reselect } from "../use-reselect"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 import { useWords } from "./host-words"
 import { iconOf } from "../feature-icon"
 
@@ -36,14 +37,14 @@ const FIT: Record<string, string> = { clearance: t("过孔", "Clearance"), close
  * One step of the tree, in the panel above the timeline. Pointed at (`pinned`
  * off): a read-only preview of fixed height. Clicked (`pinned`): the same
  * layout, now live: dimensions edit in place, the picked faces or edges can be
- * re-picked on the model, delete, and 「让助教改这一步」 for anything structural.
+ * re-picked on the model, move it up or down, delete, 「编辑」 opens the feature form; in the desktop
+ * window a note hands the step to the agent.
  */
 export function StepPanel({
   studio,
   feature: f,
   result: r,
   pinned,
-  readOnly = false,
   reselect,
   annotations,
   busy = false,
@@ -51,13 +52,12 @@ export function StepPanel({
   onRenameStart,
   onClose,
   onPointDim,
+  onEdit,
 }: {
   studio: Studio
   feature: Feature
   result?: FeatureResult
   pinned: boolean
-  /** A shared link: look, don't change. */
-  readOnly?: boolean
   reselect?: Reselect
   annotations?: Annotations
   busy?: boolean
@@ -67,6 +67,8 @@ export function StepPanel({
   onRenameStart?: () => void
   onClose: () => void
   onPointDim: (id: string | null) => void
+  /** 「编辑」: open this step in the feature form (only steps the form covers). */
+  onEdit?: () => void
 }) {
   const words = useWords()
   const { tree } = studio
@@ -78,7 +80,7 @@ export function StepPanel({
   const shown = dims.filter((d) => d.source.type !== "derived")
   const derived = dims.filter((d) => d.source.type === "derived")
   const sel = selectionOf(f)
-  const live = pinned && !readOnly && reselect && annotations ? { reselect, annotations } : null
+  const live = pinned && reselect && annotations ? { reselect, annotations } : null
   const picking = live && reselect?.state?.feature === f.id ? reselect.state : null
   const kind = `${opLabel(f.op)}${"mode" in f && f.mode === "cut" ? t(" · 切除", " · cut") : ""}`
   const uses = usesOf(tree, f)
@@ -89,8 +91,16 @@ export function StepPanel({
     onClose()
     notify.undo(t(`已删除「${name}」`, `Deleted “${name}”`), studio.undo)
   }
+  const move = async (by: -1 | 1) => {
+    // The last step is shown as the latest model (no rollback); moved, it keeps being the step on view.
+    const last = tree.features.length - 1
+    if (index === last && by < 0) studio.showFeature(f.id)
+    const err = await studio.editTree((t) => moveFeature(t, f.id, by))
+    setError(err ? { text: err } : null)
+    if (!err && index + by === last) studio.showFeature(null)
+  }
   const askAssistant = () => {
-    // The person's own message, in their language (the tutor answers in it).
+    // The person's own message, in their language (the agent reads it).
     live?.annotations.startMessage(
       failed && r?.message
         ? t(`「${name}」（${f.id}）报错了：${r.message}。帮我改好。`, `“${name}” (${f.id}) failed: ${r.message}. Please fix it.`)
@@ -124,7 +134,7 @@ export function StepPanel({
         <h2 className="mt-1 flex items-center gap-2 text-title font-medium">
           <OpIcon op={iconOf(f)} className="size-5 shrink-0 text-muted-foreground" />
           {/* A part of an assembly is renamed in the parts list, where its notes and colours follow it. */}
-          {pinned && !readOnly && f.op !== "component" ? (
+          {pinned && f.op !== "component" ? (
             <StepName key={f.id} studio={studio} feature={f} name={name} rename={rename} onStart={onRenameStart} />
           ) : (
             <span className={cn("min-w-0 truncate", f.suppressed && "line-through")}>{name}</span>
@@ -212,14 +222,19 @@ export function StepPanel({
                     : picking.result
                       ? selectorWords(picking.result.selector, sel.kind, tree, true)
                       : picking.hashes.length
-                        ? t(
-                            `这 ${picking.hashes.length} ${sel.kind === "edge" ? "条边" : "个面"}找不到一句共同的描述：少选几个，或者${words.pickFor}`,
-                            `No single description fits these ${picking.hashes.length} ${sel.kind === "edge" ? "edges" : "faces"}. Pick fewer, or choose “${words.pickFor}”.`,
-                          )
+                        ? words.pickFor
+                          ? t(
+                              `这 ${picking.hashes.length} ${sel.kind === "edge" ? "条边" : "个面"}找不到一句共同的描述：少选几个，或者${words.pickFor}`,
+                              `No single description fits these ${picking.hashes.length} ${sel.kind === "edge" ? "edges" : "faces"}. Pick fewer, or choose “${words.pickFor}”.`,
+                            )
+                          : t(
+                              `这 ${picking.hashes.length} ${sel.kind === "edge" ? "条边" : "个面"}找不到一句共同的描述：少选几个，或者分成两步`,
+                              `No single description fits these ${picking.hashes.length} ${sel.kind === "edge" ? "edges" : "faces"}: pick fewer, or split it into two steps`,
+                            )
                         : t(`在模型上点要选的${sel.kind === "edge" ? "边" : "面"}`, `Click the ${sel.kind === "edge" ? "edges" : "faces"} to pick on the model`)}
                 </p>
                 <div className="mt-2 flex flex-wrap justify-end gap-2">
-                  {picking.result === null && picking.hashes.length > 0 && (
+                  {picking.result === null && picking.hashes.length > 0 && words.pickFor && (
                     <Button size="sm" variant="ghost" className="mr-auto" onClick={() => void askToPick(studio, live.reselect, live.annotations, f, name, sel.kind)}>
                       {words.pickFor}
                     </Button>
@@ -272,21 +287,37 @@ export function StepPanel({
       <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2.5">
         {live ? (
           <>
-            <Button size="sm" variant="ghost" className="-ml-2 text-muted-foreground" disabled={busy} onClick={() => void remove()}>
+            <IconButton label={t("删除这一步", "Delete this step")} size="icon-sm" className="-ml-1.5 text-muted-foreground" disabled={busy} onClick={() => void remove()}>
               <Trash2 />
-              {t("删除这一步", "Delete this step")}
-            </Button>
-            <Button size="sm" variant="primary" className="ml-auto" disabled={busy} onClick={askAssistant}>
-              {failed ? words.fixStep : words.askStep}
-            </Button>
+            </IconButton>
+            {f.op !== "component" && (
+              <>
+                <IconButton label={t("上移一步（往前）", "Move up a step (earlier)")} size="icon-sm" className="text-muted-foreground" disabled={busy || index <= 0} onClick={() => void move(-1)}>
+                  <ArrowLeft />
+                </IconButton>
+                <IconButton label={t("下移一步（往后）", "Move down a step (later)")} size="icon-sm" className="text-muted-foreground" disabled={busy || index >= tree.features.length - 1} onClick={() => void move(1)}>
+                  <ArrowRight />
+                </IconButton>
+              </>
+            )}
+            <span className="flex-1" />
+            {words.askStep && (
+              <Button size="sm" variant={onEdit && hasForm(f.op) ? "ghost" : "primary"} disabled={busy} onClick={askAssistant}>
+                {failed ? words.fixStep : words.askStep}
+              </Button>
+            )}
+            {onEdit && hasForm(f.op) && (
+              <Button size="sm" variant="primary" disabled={busy} onClick={onEdit}>
+                <Pencil />
+                {t("编辑", "Edit")}
+              </Button>
+            )}
           </>
         ) : (
           <span className="text-caption text-faint-foreground">
             {pinned
               ? t("再点一次这一步、或按 Esc，回到最新", "Click this step again or press Esc to go back to latest")
-              : readOnly
-                ? t("单击这一步：在这一步查看", "Click to view the model at this step")
-                : t("单击这一步：在这一步查看，改尺寸和选择", "Click to view this step and edit its dimensions and selections")}
+              : t("单击这一步：在这一步查看，改尺寸和选择", "Click to view this step and edit its dimensions and selections")}
           </span>
         )}
       </footer>

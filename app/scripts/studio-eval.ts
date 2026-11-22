@@ -1,6 +1,7 @@
 // Run the studio's evaluation prompts against the real model, headless.
 //   node --env-file=~/.config/turnery/openrouter.env node_modules/.bin/tsx scripts/studio-eval.ts [ids…] [--thinking=disabled] [--model=…]
-// Same route as the hosted studio: OpenRouter when OPENROUTER_API_KEY is set, else DeepSeek (DEEPSEEK_API_KEY).
+// The system prompt and tools are the ones the desktop app's built-in assistant uses.
+// Model routes (scripts/eval-models.ts): OpenRouter when OPENROUTER_API_KEY is set, else DeepSeek (DEEPSEEK_API_KEY).
 // Tools execute directly against the kernel (no browser), so `look` is unavailable here.
 import fs from "node:fs"
 import { generateText, isStepCount, tool, type ModelMessage, type ToolSet } from "ai"
@@ -12,7 +13,7 @@ import { initNodeKernel } from "../src/studio/kernel/node"
 import { SYSTEM_PROMPT, statePrompt, withState } from "../src/studio/prompt"
 import { annotationText, type Annotation } from "../src/studio/annotations"
 import { STUDIO_TOOLS } from "../src/studio/tools"
-import { deepseekRoute, openrouterRoute, OPENROUTER_MODEL } from "../server/models"
+import { deepseekRoute, openrouterRoute, OPENROUTER_MODEL } from "./eval-models"
 
 const args = process.argv.slice(2)
 const flag = (k: string) => args.find((a) => a.startsWith(`--${k}=`))?.split("=")[1]
@@ -44,8 +45,8 @@ for (const c of cases) {
   let calls = 0
   let failedCalls = 0
   const log: { name: string; input: unknown; ok: boolean; text: string }[] = []
-  // The SDK runs a step's tool calls concurrently; the browser runs them one
-  // at a time in order (use-studio's queue), so do the same here.
+  // The SDK runs a step's tool calls concurrently; the desktop assistant runs
+  // them one at a time in order (its queue in desktop/core/assistant.ts), so do the same here.
   let queue: Promise<unknown> = Promise.resolve()
   const tools = Object.fromEntries(
     Object.entries(STUDIO_TOOLS).map(([name, def]) => [
@@ -69,7 +70,7 @@ for (const c of cases) {
     ]),
   ) as ToolSet
   const t0 = performance.now()
-  // Same shape as the server: state on the user message, stable system prompt.
+  // Same shape as the desktop assistant: state on the user message, stable system prompt.
   const content = notes.length ? [{ type: "text" as const, text: c.prompt }, { type: "text" as const, text: annotationText(notes) }] : c.prompt
   const messages: ModelMessage[] = withState([{ role: "user", content }], statePrompt(tree, summary))
   let text = ""

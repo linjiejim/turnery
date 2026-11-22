@@ -21,7 +21,7 @@ import type { MeasureResult, MeasureTarget } from "../kernel/measure"
 import type { Pin } from "../look"
 import { applyStyle, applyView, edgeHighlight, regionStrokes, facesBox, groupAt, faceTarget, hasLooks, hasMoves, partOffset, partsBox, partVisible, modelObject, NO_PARTS_VIEW, repaint, withoutMoves, type Hover, type Paint, type PartsView } from "../scene"
 import type { Annotations, FocusRegion } from "../use-annotations"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 import type { Reselect } from "../use-reselect"
 import { wholeNames } from "../part-selection"
 import { displayName } from "../dsl"
@@ -166,12 +166,12 @@ export function StudioViewport({
   hover: Hover | null
   annotations: Annotations
   busy: boolean
-  /** 「在模型上重选」 (none on a shared link). */
+  /** 「在模型上重选」 and a form's pick box. */
   reselect?: Reselect
   /** A split body: explode amount and hidden parts. */
   parts?: PartsView
   onParts?: (v: PartsView) => void
-  /** A shared link: measure and section, but no annotating (there is no chat to send it to). */
+  /** Off on the site: measure and section, but no annotating (there is nobody to send notes to). */
   annotation?: boolean
   onAnnotation?: (on: boolean) => void
   /** `piece`: just the piece under the pointer (⌥), not the whole part it belongs to. */
@@ -673,7 +673,8 @@ export function StudioViewport({
   // ---------------------------------------------------------------- clicking
 
   const words = useWords()
-  const busyText = copy?.busy ?? t(`${words.helper}正在改模型，这一轮结束后再标注`, `The ${words.helper} is changing the model. Add notes once this turn ends.`)
+  // On the site nobody else changes the model: busy is a rebuild, said in the host's own words.
+  const busyText = copy?.busy ?? (words.helper ? t(`${words.helper}正在改模型，这一轮结束后再标注`, `The ${words.helper} is changing the model. Add notes once this turn ends.`) : words.busy)
   const latest = React.useRef({ studio, busy, busyText, display, open: annotations.open, cancel: annotations.cancel, measuring, plane, reselect, readOnly, annotation, onPointFeature, onSelectFeature, view, onOpenPart, sketching })
   const pickRevision = React.useRef(0)
   React.useEffect(() => { pickRevision.current++ }, [annotation, measuring, display, view, busy])
@@ -1050,7 +1051,10 @@ export function StudioViewport({
       )}
       {rs && (
         <div role="status" className="pointer-events-none absolute top-3 left-1/2 max-w-[calc(100%-12rem)] -translate-x-1/2 rounded-md border border-primary bg-background/95 px-2.5 py-1 text-center text-caption text-foreground">
-          {t(`现在显示的是「${displayName(studio.tree, studio.tree.features[rs.index])}」之前的样子：`, `Showing the model before “${displayName(studio.tree, studio.tree.features[rs.index])}”: `)}
+          {/* A step being made by hand isn't in the tree yet: the model it will start from. */}
+          {studio.tree.features[rs.index]?.id === rs.feature
+            ? t(`现在显示的是「${displayName(studio.tree, studio.tree.features[rs.index])}」之前的样子：`, `Showing the model before “${displayName(studio.tree, studio.tree.features[rs.index])}”: `)
+            : t("现在显示的是这一步开始时的样子：", "Showing the model this step starts from: ")}
           {rs.kind === "edge"
             ? t("点要选的边，再点一次取消；点一个面等于选它的一圈边", "click edges to pick, click again to drop; clicking a face picks the edges around it")
             : t("点要选的面，再点一次取消", "click faces to pick, click again to drop")}

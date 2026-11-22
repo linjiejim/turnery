@@ -55,9 +55,14 @@ test.describe("English pages", () => {
 
   test("/en/studio: the workbench in English, an example model and its replay", async ({ page }) => {
     await page.goto("/en/studio")
-    await expect(page.getByRole("heading", { name: "Model by describing it" })).toBeVisible()
-    await expect(page.getByRole("button", { name: /80×50×30 box/ })).toBeEnabled({ timeout: 90_000 })
-    await page.getByRole("button", { name: "Open an example model" }).click()
+    await expect(page.getByRole("heading", { name: "Start from a sketch" })).toBeVisible({ timeout: 90_000 })
+    // The feature form speaks English too.
+    await page.getByRole("button", { name: "New sketch" }).click()
+    const form = page.getByRole("dialog", { name: "New sketch" })
+    await expect(form.getByRole("textbox", { name: "Width (x)" })).toHaveValue("40")
+    await form.getByRole("button", { name: "Cancel" }).first().click()
+    await expect(form).toHaveCount(0)
+    await page.getByRole("button", { name: "Open an example" }).click()
     await page.getByRole("menuitem", { name: "Flange" }).click()
     const tree = page.getByRole("navigation", { name: "Feature tree" })
     await expect(tree.getByText("5 features")).toBeVisible({ timeout: 90_000 })

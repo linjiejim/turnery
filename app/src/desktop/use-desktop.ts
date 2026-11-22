@@ -7,7 +7,6 @@ import * as THREE from "three"
 import { notify } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
 import type { PickInfo } from "@/studio/annotations"
-import { treeText, type ToolRun } from "@/studio/apply"
 import { EMPTY_TREE, type Tree } from "@/studio/dsl"
 import type { DisplayData } from "@/studio/kernel/build"
 import type { Dim } from "@/studio/kernel/dims"
@@ -15,7 +14,7 @@ import type { DrawingData } from "@/studio/kernel/drawing"
 import type { MeasureResult, MeasureTarget } from "@/studio/kernel/measure"
 import type { Pin } from "@/studio/look"
 import type { Annotations, Focus, Note } from "@/studio/use-annotations"
-import type { KernelState, Studio } from "@/studio/use-studio"
+import type { EditOptions, KernelState, Studio } from "@/studio/studio"
 import { turnery } from "./bridge"
 import type { DocState, NoteAbout, PartNote, PickRequest, ShowRequest, Snapshot } from "./core/protocol"
 import { pinned } from "./core/notes"
@@ -70,13 +69,15 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
   const report = doc?.report ?? null
   const treeRef = React.useRef<Tree>(tree)
   const revRef = React.useRef(rev)
+  const pathRef = React.useRef(path)
   const pinsRef = React.useRef<Pin[]>([])
   const [display, setDisplay] = React.useState<DisplayData | null>(null)
   const [rollback, setRollback] = React.useState<string | null>(null)
   React.useEffect(() => {
     treeRef.current = tree
     revRef.current = rev
-  }, [tree, rev])
+    pathRef.current = path
+  }, [tree, rev, path])
 
   // Another part: forget the rollback and the old mesh.
   const [shownPath, setShownPath] = React.useState(path)
@@ -122,7 +123,7 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
   }, [path, rev, ready])
 
   // Which requirements held after the agent's (or the file's) last change: one the person's own edit
-  // then moved shows as 「已偏离」, not as the agent's error — the site's rule for its assistant.
+  // then moved shows as 「已偏离」, not as the agent's error.
   const [checkBaseline, setCheckBaseline] = React.useState<Record<string, boolean>>({})
   const [baselineAt, setBaselineAt] = React.useState<string | null>(null)
   const versionKey = `${path}#${rev}`
@@ -140,17 +141,12 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
     tree,
     treeRef,
     report,
-    summary: report ? treeText(tree, report) : "",
     display,
     dims,
     checkBaseline,
     kernel: kernelState(snapshot),
     rollback: at,
-    canUndo: Boolean(doc?.canUndo),
-    // The engine keeps the history: every change is undoable already.
-    checkpoint: React.useCallback(() => {}, []),
     undo: React.useCallback(() => void call("undo", {}), [call]),
-    reset: React.useCallback(() => void call("set_tree", { tree: EMPTY_TREE }), [call]),
     load: React.useCallback(
       async (t: Tree) => {
         await call("set_tree", { tree: t })
@@ -158,16 +154,11 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
       },
       [call],
     ),
-    runTool: React.useCallback(
-      async (name: string, input: Record<string, unknown>): Promise<ToolRun> => {
-        const output = await call(name, input)
-        return { tree: treeRef.current, output }
-      },
-      [call],
-    ),
     setParam: React.useCallback(async (name: string, value: number | string) => errorOf(await call("set_params", { set: { [name]: value } })), [call]),
     editTree: React.useCallback(
-      async (change: (t: Tree) => Tree) => {
+      async (change: (t: Tree) => Tree, opts?: EditOptions) => {
+        // Made for a part that is no longer the one shown (a form's last edit as the part switched): its tree and rev are the other part's.
+        if (pathRef.current !== path) return t("已经换到别的零件，这次修改没有写进去。", "Another part is open now, so this change wasn’t made.")
         let next: Tree
         try {
           next = change(treeRef.current)
@@ -175,11 +166,11 @@ export function useDesktopStudio(doc: DocState | null, snapshot: Snapshot | null
           return (e as Error).message
         }
         // Based on the version on screen: if the agent changed it meanwhile, the engine refuses rather than overwrite.
-        const r = await call("set_tree", { tree: next, base_rev: revRef.current })
+        const r = await call("edit_tree", { tree: next, base_rev: revRef.current, ...(opts?.group ? { group: opts.group } : {}) })
         // The engine's refusal starts the same way in both of the agent's languages (engine.ts, set_tree).
-        return /^✗ (模型已经是|The model is already at version )/.test(r.text) ? t("Agent 刚改过模型，你的改动没有生效：看一眼最新的模型再改。", "The agent just changed the model, so your change didn’t apply. Look at the latest model and try again.") : errorOf(r)
+        return /^✗ (模型已经是|The model is already at version )/.test(r.text) ? t("模型刚被改过（agent 或另一处修改），你的改动没有生效：看一眼最新的模型再改。", "The model just changed (the agent, or another edit), so your change didn’t apply. Look at the latest model and try again.") : errorOf(r)
       },
-      [call],
+      [call, path],
     ),
     showFeature: React.useCallback((id: string | null) => setRollback(id), []),
     exportBody: React.useCallback(
@@ -264,7 +255,7 @@ export function useDesktopNotes(
   locateNote: (n: PartNote) => void
 } {
   const [draft, setDraft] = React.useState<PickInfo | null>(null)
-  /** A note about the part, some parts or a step being written (the site's 「让助教改」 becomes one). */
+  /** A note about the part, some parts or a step being written (a step's 「给 agent 留备注」 starts one). */
   const [compose, setCompose] = React.useState<Compose | null>(null)
   const [focus, setFocus] = React.useState<Focus | null>(null)
   const viewDir = React.useRef(new THREE.Vector3(1, -1.1, 0.85).normalize())

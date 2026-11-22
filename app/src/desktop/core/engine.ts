@@ -157,7 +157,11 @@ export type EngineOptions = {
 
 /** A file this change rewrote besides the part's own (a component's part file, given a colour from its assembly). */
 type FileEdit = { path: string; before: string; after: string }
-type Entry = { tree: Tree; summary: string; files?: FileEdit[] }
+/**
+ * `group`: the window's form that made it, and `wrote`: the tree that form's last edit left. The form's
+ * next edit, while the part is still at `wrote`, joins this entry instead of pushing another.
+ */
+type Entry = { tree: Tree; summary: string; files?: FileEdit[]; group?: string; wrote?: Tree }
 
 type Doc = {
   path: string
@@ -569,12 +573,14 @@ export class Engine {
     switch (name) {
       case "get_state":
         return { ok: true, text: await this.stateText(doc, readerOf(ctx.actor)) }
-      case "set_tree": {
+      case "set_tree":
+      case "edit_tree": {
         const base = input.base_rev as number | undefined
         // The window tells this one from other failures by its start (use-desktop.ts): 「模型已经是」 / "The model is already at version".
         if (base !== undefined && base !== doc.rev)
           return fail(ta(`模型已经是第 ${doc.rev} 版了（你基于第 ${base} 版）：先用 get_state 看最新的，再改。`, `The model is already at version ${doc.rev} (you based this on version ${base}): call get_state to see the latest, then change it.`))
-        await this.adopt(doc, await this.stripShared(doc, input.tree as Tree, ctx), ctx.actor)
+        const group = name === "edit_tree" ? (input.group as string | undefined) : undefined
+        await this.adopt(doc, await this.stripShared(doc, input.tree as Tree, ctx), ctx.actor, { group })
         return { ok: this.allOk(doc), text: `${ta(`已替换特征树（第 ${doc.rev} 版）。`, `Replaced the feature tree (version ${doc.rev}).`)}\n${treeText(doc.tree, doc.report!)}` }
       }
       case "move_feature": {
@@ -1391,12 +1397,31 @@ export class Engine {
   // ---------------------------------------------------------- tree changes
 
   /** Make `tree` the part's current tree: rebuild, record who did what, save, tell the window. Undoable. */
-  private async adopt(doc: Doc, tree: Tree, actor: CallContext["actor"], opts: { report?: BuildReport; save?: boolean; summary?: string; undoable?: boolean; files?: FileEdit[] } = {}) {
-    const summary = opts.summary ?? (describeTreeChange(doc.tree, tree) || ta("重新保存（内容没变）", "saved again (no change)"))
-    if (opts.undoable !== false) {
-      doc.undo = [...doc.undo, { tree: doc.tree, summary, ...(opts.files?.length ? { files: opts.files } : {}) }].slice(-MAX_UNDO)
+  private async adopt(
+    doc: Doc,
+    tree: Tree,
+    actor: CallContext["actor"],
+    opts: { report?: BuildReport; save?: boolean; summary?: string; undoable?: boolean; files?: FileEdit[]; group?: string } = {},
+  ) {
+    // A form's later edit, nothing having changed the tree since its last one: one undo step back to
+    // before the form. Back where the form started (it was cancelled): no step at all.
+    const top = doc.undo[doc.undo.length - 1]
+    const same = Boolean(opts.group) && opts.undoable !== false && top?.group === opts.group && top.wrote === doc.tree
+    const undone = same && JSON.stringify(top.tree) === JSON.stringify(tree)
+    const summary = opts.summary ?? (describeTreeChange(same && !undone ? top.tree : doc.tree, tree) || ta("重新保存（内容没变）", "saved again (no change)"))
+    if (undone) {
+      doc.undo = doc.undo.slice(0, -1)
+      doc.redo = []
+    } else if (same) {
+      doc.undo = [...doc.undo.slice(0, -1), { ...top, summary, wrote: tree }]
+      doc.redo = []
+    } else if (opts.undoable !== false) {
+      const group = opts.group ? { group: opts.group, wrote: tree } : {}
+      doc.undo = [...doc.undo, { tree: doc.tree, summary, ...(opts.files?.length ? { files: opts.files } : {}), ...group }].slice(-MAX_UNDO)
       doc.redo = []
     }
+    // The form's line in the activity, if nothing (a note) came after it: replaced, or dropped when undone.
+    const line = same && doc.changes[0]?.group === opts.group
     const prev = doc.tree
     const usesChanged = doc.tree.uses !== tree.uses
     doc.tree = tree
@@ -1405,7 +1430,8 @@ export class Engine {
     if (usesChanged) await this.refreshShared(doc)
     if (opts.report && this.slot === doc.path && this.built.get(doc.path) === tree) doc.report = opts.report
     else if (!(await this.restyle(doc, prev))) await this.ensureKernel(doc, true)
-    doc.changes = [{ rev: doc.rev, actor, at: Date.now(), summary, seq: ++doc.seq }, ...doc.changes].slice(0, MAX_CHANGES)
+    const earlier = doc.changes.slice(line ? 1 : 0)
+    doc.changes = (undone && line ? earlier : [{ rev: doc.rev, actor, at: Date.now(), summary, seq: ++doc.seq, ...(opts.group ? { group: opts.group } : {}) }, ...earlier]).slice(0, MAX_CHANGES)
     if (opts.save !== false && !(await this.save(doc, actor))) {
       // Someone saved the file while this ran: theirs wins, ours stays one undo away.
       doc.conflict = true

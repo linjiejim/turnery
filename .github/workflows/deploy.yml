@@ -2,8 +2,8 @@
 # Static site: built here, rsynced to /srv/turnery/releases/<sha7> on jim-server,
 # then /srv/turnery/current is flipped atomically. Last 5 releases kept for rollback:
 #   ssh jim-server 'ls -t /srv/turnery/releases'  → ln -sfn <release> /srv/turnery/current
-# Studio API (app/server): bundled here, uploaded to /root/turnery/api/releases/<sha7>,
-# `current` flipped, PM2 process `turnery-api` reloaded. Secrets: /root/turnery/shared/.env.
+# No backend: the studio API (chat, shared links) was removed on 2026-11-22;
+# app/scripts/retire-api.sh takes it off the server.
 # Requires environment `jim-server` with DEV_SERVER_HOST / PORT / USERNAME / SSH_KEY.
 name: Deploy
 
@@ -40,7 +40,6 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: npm run build:api
       # Smoke tests gate the deploy: a failing lesson or teardown never ships.
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
@@ -65,34 +64,17 @@ jobs:
           SSH="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
           SHA=${GITHUB_SHA::7}
           REL="/srv/turnery/releases/$SHA"
-          API="/root/turnery/api/releases/$SHA"
-          $SSH "$USER@$HOST" "mkdir -p $REL $API"
+          $SSH "$USER@$HOST" "mkdir -p $REL"
           # Hard-link files unchanged since the live release: only what changed crosses the wire.
           rsync -az --delete --link-dest=/srv/turnery/current/ -e "$SSH" dist/ "$USER@$HOST:$REL/"
-          rsync -az -e "$SSH" dist-server/index.mjs server/ecosystem.config.cjs "$USER@$HOST:$API/"
           $SSH "$USER@$HOST" "set -e
-            ln -sfn $API /root/turnery/api/current.tmp && mv -Tf /root/turnery/api/current.tmp /root/turnery/api/current
-            mkdir -p /root/turnery/api/logs /root/turnery/api/data
-            # The move from /root/arbor (2026-11-10): the old process holds the same port, so it
-            # stops first and its share data comes along. It is forgotten only after the copy, so a
-            # run that broke off in between copies again. Nothing to do once it is gone.
-            # app/scripts/move-to-turnery.sh prepare puts the secrets in place; without them stop here.
-            test -f /root/turnery/shared/.env
-            source ~/.nvm/nvm.sh >/dev/null
-            if pm2 describe arbor-api >/dev/null 2>&1; then
-              pm2 stop arbor-api >/dev/null
-              cp -an /root/arbor/api/data/. /root/turnery/api/data/
-              pm2 delete arbor-api >/dev/null
-            fi
-            source ~/.nvm/nvm.sh >/dev/null && pm2 startOrReload $API/ecosystem.config.cjs --update-env && pm2 save >/dev/null
             ln -sfn $REL /srv/turnery/current.tmp && mv -Tf /srv/turnery/current.tmp /srv/turnery/current
-            cd /srv/turnery/releases && ls -1t | tail -n +6 | xargs -r rm -rf
-            cd /root/turnery/api/releases && ls -1t | tail -n +6 | xargs -r rm -rf"
+            cd /srv/turnery/releases && ls -1t | tail -n +6 | xargs -r rm -rf"
 
       - name: Verify
         run: |
           SITE=https://turnery.linjiejim.com
-          for url in / /lesson/revolve /models/index.json /api/health; do
+          for url in / /lesson/revolve /models/index.json; do
             for i in 1 2 3 4 5; do
               S=$(curl -sL -o /dev/null -w '%{http_code}' "$SITE$url")
               echo "$url attempt $i: HTTP $S"; [ "$S" = "200" ] && continue 2; sleep 3

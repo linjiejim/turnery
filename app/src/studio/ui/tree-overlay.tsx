@@ -1,20 +1,23 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
-import { ChevronLast, ChevronLeft, ChevronRight, CircleAlert, CircleDashed, Eye, EyeOff, Pause, Play } from "lucide-react"
+import { ChevronLast, ChevronLeft, ChevronRight, CircleAlert, CircleDashed, Eye, EyeOff, Pause, Play, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { byLocale, t } from "@/lib/i18n"
 import { IconButton } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { OpIcon } from "@/components/op-icon"
 import { displayName, type Feature } from "../dsl"
 import type { Dim } from "../kernel/dims"
 import { NO_PARTS_VIEW, type Hover, type PartsView } from "../scene"
 import { cardDims, labelLeft, namedStep, replayFrom, rollbackFor, shownStep, stepLabel, stepLine } from "../step-timeline"
 import { StepPanel } from "./step-panel"
+import { FeatureForm, type FormRequest } from "./feature-form"
+import { insertAt, menuGroups, whyNot, type MenuItem } from "../feature-forms"
 import { iconOf } from "../feature-icon"
 import type { Annotations } from "../use-annotations"
 import type { Reselect } from "../use-reselect"
-import type { Studio } from "../use-studio"
+import type { Studio } from "../studio"
 import { Hint } from "@/components/hint"
 import { setPartLook, type LookChange } from "../appearance"
 import { LookDot, LookPicker } from "./look-picker"
@@ -34,7 +37,7 @@ const REPLAY_WAIT = 4000
  * and its details open in the side panel (`detailsIn`), live (dimensions, re-pick, delete); click it
  * again, 关闭 or Esc to come back to the latest. ‹ ▶ › on its left replay the modelling: one step at a
  * time, or all of them from the first, each held a moment once drawn, its new faces lit.
- * `readOnly` (a shared link): look only. `timeline` off
+ * 「＋」 at its end and 「编辑」 on a step open the feature form in the details' place. `timeline` off
  * (an assembly, whose parts are listed elsewhere): only the details of the selected step.
  *
  * Its height is published on the parent as `--timeline-h`, so what sits above it (the selected
@@ -48,7 +51,6 @@ export function TreeOverlay({
   busy = false,
   parts = NO_PARTS_VIEW,
   onParts,
-  readOnly = false,
   selectedFeature,
   locateStep,
   onSelectFeature,
@@ -57,6 +59,7 @@ export function TreeOverlay({
   detailsIn,
   timeline = true,
   onDetails,
+  control,
 }: {
   studio: Studio
   onHover: (h: Hover | null) => void
@@ -65,8 +68,6 @@ export function TreeOverlay({
   busy?: boolean
   parts?: PartsView
   onParts?: (v: PartsView) => void
-  /** A shared link: a click rolls back to that step; nothing to change. */
-  readOnly?: boolean
   selectedFeature?: string | null
   locateStep?: { id: string; request: number } | null
   onSelectFeature?: (id: string | null) => void
@@ -78,8 +79,10 @@ export function TreeOverlay({
   detailsIn: HTMLElement | null
   /** Off: no strip of steps, only the selected step's details (an assembly). */
   timeline?: boolean
-  /** Which step's details are open (pinned or selected), so the host can show its panel. */
+  /** Which step's details are open (pinned or selected; `form:…` for the feature form), so the host can show its panel. */
   onDetails?: (id: string | null) => void
+  /** Filled in with what the host may ask of the timeline: a new step (the empty part's 「新建草图」), a replay. */
+  control?: React.Ref<TimelineControl>
 }) {
   const { tree, report, rollback } = studio
   const list = React.useRef<HTMLOListElement>(null)
@@ -99,8 +102,29 @@ export function TreeOverlay({
   const last = tree.features.at(-1)?.id ?? null
   /** Replaying the steps one after another (▶). */
   const [playing, setPlaying] = React.useState(false)
+  const canBuild = timeline
+  /** A step being made or edited by hand: the form takes the details' place. `rollback`: where the view was when it opened. */
+  const [form, setForm] = React.useState<(FormRequest & { n: string; rollback: string | null }) | null>(null)
+  const openForm = (req: FormRequest) => {
+    setPlaying(false)
+    if (reselect?.state) reselect.cancel()
+    setForm({ ...req, n: Math.random().toString(36).slice(2), rollback })
+  }
+  const newStep = (item: MenuItem) => {
+    // After the step rolled back to (or open); the latest one means the end.
+    const after = pinned ?? rollback ?? null
+    openForm({ mode: "new", item, after: after && after !== last ? after : null })
+  }
+  const formDone = (req: NonNullable<typeof form>, id: string | null) => {
+    setForm(null)
+    const latest = studio.treeRef.current.features.at(-1)?.id ?? null
+    if (id) {
+      setPinned(id)
+      studio.showFeature(id === latest ? null : id)
+    } else studio.showFeature(req.rollback && studio.treeRef.current.features.some((f) => f.id === req.rollback) ? req.rollback : null)
+  }
 
-  // The view went elsewhere (「回到最新」, a link in the chat, the step deleted): let go of the pinned step.
+  // The view went elsewhere (「回到最新」, a link in the agent's reply, the step deleted): let go of the pinned step.
   if (pinned && rollback !== pinned && !(rollback === null && pinned === last)) setPinned(null)
 
   // A new step (the helper building) scrolls the timeline to the end; a rollback brings its step into view.
@@ -141,6 +165,8 @@ export function TreeOverlay({
   }, [reselect, studio])
   const pin = (f: Feature) => {
     setPlaying(false)
+    // Another step clicked while a form is open: the form keeps what it made and closes.
+    if (form) setForm(null)
     if (pinned === f.id) return unpin()
     if (reselect?.state) reselect.cancel()
     setPinned(f.id)
@@ -150,7 +176,7 @@ export function TreeOverlay({
 
   // Esc lets go of the pinned step, or stops a replay (not while typing, re-picking or in a dialog).
   React.useEffect(() => {
-    if (!pinned && !selectedFeature && !playing) return
+    if (form || (!pinned && !selectedFeature && !playing)) return
     const onKey = (e: KeyboardEvent) => {
       // Taken already (the card or a popover closing on this Esc): one Esc closes one thing.
       if (e.key !== "Escape" || e.defaultPrevented || reselect?.state || (e.target as HTMLElement)?.closest?.("input, textarea, select, [role=menu], [role=alertdialog]")) return
@@ -160,7 +186,7 @@ export function TreeOverlay({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [pinned, selectedFeature, playing, onSelectFeature, reselect?.state, unpin])
+  }, [form, pinned, selectedFeature, playing, onSelectFeature, reselect?.state, unpin])
 
   // ‹ ›: one step back or on. With a step open, its details follow; else only the model goes there.
   const shown = shownStep(rollbackIndex, count)
@@ -188,6 +214,17 @@ export function TreeOverlay({
     studio.showFeature(rollbackFor(tree.features, replayFrom(rollbackIndex, count)))
     setPlaying(true)
   }
+  React.useImperativeHandle(control, () => ({
+    newStep: (key) => {
+      const item = menuGroups()
+        .flatMap((g) => g.items)
+        .find((x) => x.key === key)
+      if (item && canBuild) newStep(item)
+    },
+    replay: () => {
+      if (!playing && count > 1) play()
+    },
+  }))
   // The latest of what the replay reads, so a host re-rendering doesn't restart its clock.
   const live = React.useRef({ features: tree.features, showFeature: studio.showFeature, onHover })
   React.useLayoutEffect(() => {
@@ -232,7 +269,8 @@ export function TreeOverlay({
 
   const panelId = pinned ?? selectedFeature ?? null
   const panelIndex = panelId ? tree.features.findIndex((f) => f.id === panelId) : -1
-  const detailsId = panelIndex >= 0 ? panelId : null
+  // A form open counts as details too: the desktop window brings its details tab to the front for it.
+  const detailsId = form ? `form:${form.n}` : panelIndex >= 0 ? panelId : null
   React.useEffect(() => onDetails?.(detailsId), [onDetails, detailsId])
 
   // What sits above the strip keeps clear of it: its height (it never grows), on the parent.
@@ -254,7 +292,7 @@ export function TreeOverlay({
   const named = namedStep({ pointed: peek, pinned, selected: selectedFeature ?? null, rollback: rollback ?? playingAt })
   const namedFeature = named ? tree.features.find((f) => f.id === named) : undefined
   const namedText = namedFeature ? displayName(tree, namedFeature) : ""
-  const hasSteps = timeline && tree.features.length > 0
+  const hasSteps = timeline && (tree.features.length > 0 || canBuild)
   const place = React.useCallback(() => {
     const el = label.current
     const box = strip.current
@@ -284,15 +322,17 @@ export function TreeOverlay({
 
   const details =
     detailsIn &&
-    panelIndex >= 0 &&
+    (form || panelIndex >= 0) &&
     createPortal(
+      form ? (
+        <FeatureForm key={form.n} studio={studio} request={form} reselect={reselect} busy={busy} onDone={(id) => formDone(form, id)} />
+      ) : (
       <StepPanel
         key={pinned ? `pin-${pinned}` : `sel-${panelId}`}
         studio={studio}
         feature={tree.features[panelIndex]}
         result={report?.features[panelIndex]}
         pinned
-        readOnly={readOnly}
         reselect={reselect}
         annotations={annotations}
         busy={busy}
@@ -300,7 +340,9 @@ export function TreeOverlay({
         onRenameStart={() => setRenaming(null)}
         onClose={() => { unpin(); onSelectFeature?.(null) }}
         onPointDim={(id) => onHover(id ? { ids: [], label: "", dim: id } : null)}
-      />,
+        onEdit={canBuild ? () => openForm({ mode: "edit", id: tree.features[panelIndex].id }) : undefined}
+      />
+      ),
       detailsIn,
     )
   if (!hasSteps) return details || null
@@ -316,9 +358,9 @@ export function TreeOverlay({
   const splitParts = partsList && studio.display?.parts && studio.display.parts.length > 1 ? studio.display.parts : null
   // Colours are a tree edit like any other: undoable, and only restyled (nothing rebuilds).
   const setLook = (parts: string[] | undefined, change: LookChange) => void studio.editTree((t) => setPartLook(t, parts, change))
-  const canColor = looks && !readOnly
+  const canColor = looks
   // Lit up while something on it is open or it is replaying; otherwise only while pointed at or focused.
-  const open = Boolean(rollback || pinned || selectedFeature || playing)
+  const open = Boolean(rollback || pinned || selectedFeature || playing || form)
 
   return (
     <nav ref={nav} aria-label={t("特征树", "Feature tree")} className="pointer-events-none absolute right-3 bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
@@ -454,7 +496,7 @@ export function TreeOverlay({
                         onClick={(e) => e.detail < 2 && pin(f)}
                         onDoubleClick={() => {
                           // A part of an assembly is renamed in the parts list.
-                          if (readOnly || f.op === "component") return
+                          if (f.op === "component") return
                           if (pinned !== f.id) pin(f)
                           setRenaming(f.id)
                         }}
@@ -515,8 +557,47 @@ export function TreeOverlay({
             </span>
           )}
         </div>
+        {canBuild && <NewStepMenu studio={studio} at={insertAt(tree, (pinned ?? rollback) === last ? null : (pinned ?? rollback ?? null))} disabled={busy} onPick={newStep} />}
       </div>
     </nav>
+  )
+}
+
+/** What the host may ask of the timeline (`control`). */
+export type TimelineControl = { newStep: (key: MenuItem["key"]) => void; replay: () => void }
+
+/** 「＋」 at the end of the timeline: the steps that can be made by hand, grouped; those that can't yet say why. */
+function NewStepMenu({ studio, at, disabled, onPick }: { studio: Studio; at: number; disabled: boolean; onPick: (item: MenuItem) => void }) {
+  const groups = menuGroups()
+  const middle = at < studio.tree.features.length
+  return (
+    <div className="flex shrink-0 items-center border-l border-transparent px-1 timeline-lit:border-border">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <IconButton label={middle ? t(`新建一步（插在第 ${at} 步后面）`, `New step (after step ${at})`) : t("新建一步", "New step")} size="icon-sm" disabled={disabled} className="size-8">
+            <Plus />
+          </IconButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="end" className="min-w-52">
+          {groups.map((g, i) => (
+            <React.Fragment key={g.label}>
+              {i > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel>{g.label}</DropdownMenuLabel>
+              {g.items.map((item) => {
+                const why = whyNot(studio.tree, studio.report, item.op, at)
+                return (
+                  <DropdownMenuItem key={item.key} disabled={Boolean(why)} onSelect={() => onPick(item)}>
+                    <OpIcon op={item.key === "cut" ? "cut" : item.op === "linear_pattern" || item.op === "circular_pattern" ? "pattern" : item.op} className="size-4 text-muted-foreground" />
+                    <span className="flex-1">{item.label}</span>
+                    {why && <span className="text-caption text-faint-foreground">{why}</span>}
+                  </DropdownMenuItem>
+                )
+              })}
+            </React.Fragment>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
 

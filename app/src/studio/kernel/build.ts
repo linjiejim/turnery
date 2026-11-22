@@ -1375,6 +1375,13 @@ export class Kernel {
       if (out.threads) step.threads = out.threads
       if (out.geom) step.geom = out.geom
       if (out.body) {
+        // Nothing left (a cut through the whole solid) or a body the kernel can't measure (a profile
+        // revolved about an axis outside its plane): this step's error, not the whole rebuild's.
+        if (!faceIds(out.body).length)
+          throw new InputError(
+            ta("这一步之后什么都不剩了：切除把整个实体都去掉了。改小切除的范围，或者换一个草图", "Nothing is left after this step: the cut removed the whole solid. Make the cut smaller, or use another sketch"),
+          )
+        stats(out.body)
         this.commitBody(step, prev, out.body, f.id)
         // A component's faces are its part file's: its slivers are reported there, not in the assembly.
         const sliver = this.componentOnly || f.op === "sketch" || f.op === "import" || f.op === "component" ? null : this.slivers(step)

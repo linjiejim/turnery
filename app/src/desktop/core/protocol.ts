@@ -15,7 +15,8 @@ export type V3 = [number, number, number]
 export type Actor = "agent" | "assistant" | "user" | "file"
 
 /** One line of the activity list. `note`: about a note, not the tree (no new version). */
-export type Change = { rev: number; actor: Actor; at: number; summary: string; note?: "added" | "changed"; seq?: number }
+/** `group`: made by one form in the window (its edits are one line, see engine `adopt`). */
+export type Change = { rev: number; actor: Actor; at: number; summary: string; note?: "added" | "changed"; seq?: number; group?: string }
 
 /** A note the person pinned on a face or edge, for the agent to pick up. */
 export type PartNote = {

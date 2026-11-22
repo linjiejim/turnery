@@ -1,33 +1,26 @@
 import * as React from "react"
-import { useLocation, useNavigate } from "react-router"
-import { ArrowLeft, CircleAlert, Download, Ellipsis, PanelLeft, Redo2, Share2, Undo2, X } from "lucide-react"
-import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog"
+import { Link, useNavigate } from "react-router"
+import { ArrowLeft, CircleAlert, Download, Ellipsis, PanelLeft, Redo2, Undo2, X } from "lucide-react"
 import { Drawer, DrawerBody, DrawerContent, DrawerHeader } from "@/components/ui/drawer"
 import { practiceById, type Practice } from "@/content/practice"
 import { PracticeCard } from "@/studio/ui/practice-card"
 import { Button, IconButton } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { Kbd } from "@/components/ui/kbd"
 import { ResizeHandle } from "@/components/ui/resize-handle"
 import { StateView } from "@/components/ui/state"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { notify } from "@/components/ui/toast"
 import { usePanels } from "@/desktop/panels"
 import { AddPartMenu } from "@/desktop/ui/assembly"
 import { ModelLoading } from "@/desktop/ui/model-loading"
 import { PartsSidebar } from "@/desktop/ui/parts-sidebar"
 import { fileStem } from "@/desktop/ui/words"
-import { ChatPanel } from "@/studio/ui/chat-panel"
 import { EMPTY_TREE, type Tree } from "@/studio/dsl"
-import { figurePicture } from "@/studio/figure"
+import { forgetChat } from "@/studio/forget-chat"
 import { readTreeFile } from "@/studio/import"
-import { checkTree } from "@/studio/limits"
-import { renderShots, renderViews } from "@/studio/look"
 import { PANEL_DEFAULT, PANEL_MIN, usePanelWidth } from "@/studio/ui/panel-width"
 import { AddFileMenu, NameDialog, NewProjectDialog, PickFileDialog, ProjectMenu, type ProjectActions } from "@/studio/ui/project-ui"
-import { ShareDialog } from "@/studio/ui/share-dialog"
 import { CodePanel, ParamsPanel } from "@/studio/ui/side-panels"
 import type { Hover } from "@/studio/scene"
 import { STARTERS } from "@/studio/starters"
@@ -36,18 +29,12 @@ import { ConnectorOverlay } from "@/studio/ui/connector-overlay"
 import { DesktopBanner } from "@/studio/ui/desktop-banner"
 import { DrawingSheet } from "@/studio/ui/drawing-sheet"
 import { useReselect } from "@/studio/use-reselect"
-import { TreeOverlay } from "@/studio/ui/tree-overlay"
+import { TreeOverlay, type TimelineControl } from "@/studio/ui/tree-overlay"
 import { useAnnotations } from "@/studio/use-annotations"
-import { dropChat, KEY_STORE, moveChat, useStudioChat } from "@/studio/use-studio-chat"
 import { useOtherTab, useWebHost, useWebStudio } from "@/studio/web-host/use-web-host"
 import { useWebStructure } from "@/studio/web-host/use-web-structure"
 import { cleanName, type NewKind, type WebHost, type WebProject } from "@/studio/web-host/web-host"
 import { t } from "@/lib/i18n"
-
-type Status = { model: string; via?: "deepseek" | "openrouter" | "mock"; hostedKey: boolean; budgetExhausted: boolean }
-
-/** What 「复制到我的工作台」 on a shared link hands over (router state, so it never touches storage). */
-export type Incoming = { tree: Tree; title: string }
 
 /** Files the page takes in: feature trees, assemblies, shared parameters, STEP models, project archives. */
 const IMPORTABLE = ".json,.step,.stp,.zip,application/json,application/zip"
@@ -58,6 +45,7 @@ const errorText = (e: unknown) => String((e as Error)?.message ?? e)
 const modelName = (title: string) => title.split(/[：:]/)[0].trim() || title
 
 export function StudioPage() {
+  React.useEffect(() => forgetChat(), [])
   const { host, error } = useWebHost()
   if (!host)
     return (
@@ -73,59 +61,30 @@ export function StudioPage() {
 
 function Workbench({ host }: { host: WebHost }) {
   const navigate = useNavigate()
-  const location = useLocation()
   const web = useWebStudio(host)
-  const { snapshot, doc, studio, pins } = web
+  const { snapshot, doc, studio } = web
   const project = snapshot?.project ?? null
   const root = project?.root ?? null
-  const state = React.useCallback(async () => (await host.assistant("get_state", {})).text.replace(/^✗ /, ""), [host])
-  const chat = useStudioChat(studio, { scope: root, state })
+  // Nothing to send notes to on the site: these only light up what a step or a check points at.
   const annotations = useAnnotations(studio)
-  // Pins of a sent message stay on the model until the reply is done.
-  const { clearSent } = annotations
-  React.useEffect(() => {
-    if (!chat.busy) clearSent()
-  }, [chat.busy, clearSent])
   const [treeHover, setTreeHover] = React.useState<Hover | null>(null)
   const [stepSlot, setStepSlot] = React.useState<HTMLDivElement | null>(null)
   const reselect = useReselect(studio)
-  const [tab, setTab] = React.useState("chat")
   /** 「工程图」: the drawing sheet over the 3D view; the side panel stays, so parameters can be changed while looking at it. */
   const [sheet, setSheet] = React.useState(false)
-  const [seenPrefill, setSeenPrefill] = React.useState(annotations.prefill)
-  if (seenPrefill !== annotations.prefill) {
-    setSeenPrefill(annotations.prefill)
-    if (annotations.prefill) setTab("chat")
-  }
-  const [sharing, setSharing] = React.useState(false)
   const [codeOpen, setCodeOpen] = React.useState(false)
-  const [keyOpen, setKeyOpen] = React.useState(false)
-  const [status, setStatus] = React.useState<Status | null>(null)
+  /** The timeline's form (the empty part's 「新建草图」) and replay (「看参考做法」). */
+  const timeline = React.useRef<TimelineControl | null>(null)
+  /** 「看参考做法」: the reference part, replayed from its first step once it's on screen. */
+  const replayWanted = React.useRef<string | null>(null)
+  /** The reference part made for the practice (its page offers the way back). */
+  const [reference, setReference] = React.useState<string | null>(null)
   const ready = studio.kernel.phase === "ready"
   const panel = usePanelWidth()
   const panels = usePanels()
   const sidebarOpen = panels.panels.left.open
   /** Where the camera was left in each file, for coming back to it. */
   const [cameras] = React.useState(() => new Map<string, ViewCamera>())
-
-  React.useEffect(() => {
-    fetch("/api/studio/status")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => s && setStatus(s))
-      .catch(() => setStatus(null))
-  }, [])
-
-  // `look` for the assistant: the views it asked for, drawn here (with the learner's pins on them).
-  React.useEffect(
-    () =>
-      host.onLook(async (req) => {
-        const pinsNow = req.pins.length ? req.pins : pins.current
-        if (req.figure) return [figurePicture(req.display, req.figure) ?? ""]
-        if (req.shots) return renderShots(req.display, req.shots, { highlight: req.highlight, pins: pinsNow, section: req.section, hide: req.hide, size: req.size, plain: req.plain })
-        return renderViews(req.display, req.views, req.highlight, { pins: pinsNow })
-      }),
-    [host, pins],
-  )
 
   // ------------------------------------------------------------------ projects
 
@@ -165,7 +124,7 @@ function Workbench({ host }: { host: WebHost }) {
   const actions: ProjectActions = {
     projects,
     current: root,
-    busy: chat.busy,
+    busy: false,
     files: project?.files.map((f) => ({ path: f.path, name: f.name, kind: f.kind })),
     active: doc?.path ?? null,
     openFile: (path) => void run(() => host.call("open_part", { path })),
@@ -196,27 +155,28 @@ function Workbench({ host }: { host: WebHost }) {
 
   // ------------------------------------------------------- ready-made models
 
-  /** A model from elsewhere (an example, a lesson, a shared link): into the open part when it's empty, else a new part. */
-  const { addDivider } = chat
+  /** A model from elsewhere (an example, a lesson): into the open part when it's empty, else a new part. */
   const { reset: resetAnnotations } = annotations
   const openModel = React.useCallback(
-    async (tree: Tree, name: string, divider: string, say = true) => {
+    async (tree: Tree, name: string, say = true) => {
       const d = host.engine.docState()
       resetAnnotations()
       if (d && d.kind === "part" && !d.context && !d.tree.features.length) {
         await studio.load(tree)
-        addDivider(divider)
         // Into an empty part, what was asked for is in view: said only when it came from elsewhere (a link, a practice).
         if (say) notify.undo(t(`已打开「${name}」`, `Opened “${name}”`), studio.undo)
         return d.path
       }
       const path = await host.newFile("part", name, tree)
-      addDivider(divider)
       notify.undo(t(`已新建零件「${fileStem(path)}」`, `Created part “${fileStem(path)}”`), () => void host.deleteFile(path))
       return path
     },
-    [host, studio, addDivider, resetAnnotations],
+    [host, studio, resetAnnotations],
   )
+  const openStarter = (tree: Tree) => {
+    const title = STARTERS.find((x) => x.tree === tree)?.title ?? t("示例", "Example")
+    void run(() => openModel(tree, modelName(title), false))
+  }
 
   // /studio?start=<id> opens a ready-made tree (from a teardown, or the menu of examples).
   const booted = Boolean(doc) && ready
@@ -229,14 +189,18 @@ function Workbench({ host }: { host: WebHost }) {
     startTaken.current = true
     url.searchParams.delete("start")
     window.history.replaceState(null, "", url)
-    if (starter) void run(() => openModel(starter.tree, modelName(starter.title), t(`打开了「${starter.title}」`, `Opened “${starter.title}”`), false))
+    if (starter) void run(() => openModel(starter.tree, modelName(starter.title), false))
   }, [booted, openModel, run])
 
   // A practice from a lesson (/studio?practice=<id>): its own part, its checks pinned while that part is open.
   const [arriving] = React.useState(() => new URL(window.location.href).searchParams.get("practice"))
   const [practice, setPractice] = React.useState<Practice | null>(() => practiceById(arriving ?? localStorage.getItem(PRACTICE_STORE) ?? "") ?? null)
   const [practicePart, setPracticePart] = React.useState<string | null>(() => localStorage.getItem(PRACTICE_PART))
-  const practicing = Boolean(practice) && (!practicePart || doc?.path === practicePart)
+  /** The practice from the address whose part is made: until then its card waits. */
+  const [settled, setSettled] = React.useState<string | null>(null)
+  // A practice arriving from a lesson counts once its own part is made and open, not on the part a
+  // previous practice left behind (its card would act on the wrong part meanwhile).
+  const practicing = Boolean(practice) && (practicePart ? doc?.path === practicePart && (!arriving || practice?.id === settled) : !arriving)
   const { pinChecks } = studio
   React.useEffect(() => pinChecks(practicing ? (practice?.checks ?? null) : null), [practicing, practice, pinChecks])
   const exitPractice = React.useCallback(() => {
@@ -256,24 +220,27 @@ function Workbench({ host }: { host: WebHost }) {
     if (!p) return void notify.error(t("没有找到这道练习", "Practice not found"))
     localStorage.setItem(PRACTICE_STORE, p.id)
     void run(async () => {
-      const path = await openModel({ ...(p.start ?? EMPTY_TREE), checks: p.checks }, p.title, t(`开始练习「${p.title}」`, `Started practice “${p.title}”`))
+      const path = await openModel({ ...(p.start ?? EMPTY_TREE), checks: p.checks }, p.title)
       setPractice(p)
       setPracticePart(path)
+      setSettled(p.id)
       localStorage.setItem(PRACTICE_PART, path)
     })
   }, [booted, arriving, openModel, run])
 
-  // 「复制到我的工作台」 from a shared link: once the model can be built, then drop the state so a reload doesn't do it again.
-  const incoming = (location.state as { incoming?: Incoming } | null)?.incoming
-  const took = React.useRef(false)
+  // 「看参考做法」: the reference answer in a part of its own, replayed from its first step; the practice part stays as it is.
+  const showSolution = (p: Practice) =>
+    void run(async () => {
+      const path = await host.newFile("part", t(`参考：${p.title}`, `Reference: ${p.title}`), p.solution)
+      replayWanted.current = path
+      setReference(path)
+    })
+  // Runs again once `reference` is set too: the part may be open and drawn before `newFile` comes back.
   React.useEffect(() => {
-    if (!booted || !incoming || took.current) return
-    took.current = true
-    navigate(".", { replace: true, state: null })
-    const checked = checkTree(incoming.tree)
-    if (!checked.ok) return void notify.error(t(`没能复制这个模型：${checked.message}`, `Couldn’t copy this model: ${checked.message}`))
-    void run(() => openModel(checked.tree, incoming.title, t(`换成了分享的模型「${incoming.title}」`, `Switched to the shared model “${incoming.title}”`)))
-  }, [booted, incoming, navigate, openModel, run])
+    if (!replayWanted.current || doc?.path !== replayWanted.current || !studio.tree.features.length || !studio.display) return
+    replayWanted.current = null
+    timeline.current?.replay()
+  }, [doc?.path, studio.tree, studio.display, reference])
 
   // ------------------------------------------------------------ import, export
 
@@ -283,7 +250,6 @@ function Workbench({ host }: { host: WebHost }) {
     setImportError(null)
     const names = files.map((f) => f.name).join(t("、", ", "))
     if (!files.length) return
-    if (chat.busy) return setImportError({ file: names, message: t("助手正在改模型，这一轮结束后再导入", "The assistant is changing the model. Import once it’s done.") })
     // During a practice, a feature tree goes into the practice's part (its requirements stay).
     const one = files.length === 1 ? files[0] : null
     if (practicing && one && /\.json$/i.test(one.name) && !/(-asm|\.params)\.json$/i.test(one.name) && !uploadFor.current) {
@@ -344,8 +310,8 @@ function Workbench({ host }: { host: WebHost }) {
 
   const projectName = project?.name ?? t("工作台", "Workbench")
   const context = doc?.context
-  const busy = chat.busy || Boolean(loading)
-  const canShare = Boolean(doc && doc.kind === "part" && studio.tree.features.length)
+  const busy = Boolean(loading)
+  const emptyPart = Boolean(doc && doc.kind === "part" && ready && !studio.tree.features.length)
   const filesForPick =
     picking?.kind === "step"
       ? host.stepFiles().map((path) => ({ path, folder: root ? path.slice(root.length + 1).split("/").slice(0, -1).join("/") : "" }))
@@ -397,10 +363,10 @@ function Workbench({ host }: { host: WebHost }) {
           <span className="flex-1" />
         )}
         <div className="flex items-center gap-1">
-          <IconButton label={t("撤销上一步", "Undo last step")} disabled={!doc?.canUndo || chat.busy} onClick={studio.undo}>
+          <IconButton label={t("撤销上一步", "Undo last step")} disabled={!doc?.canUndo} onClick={studio.undo}>
             <Undo2 />
           </IconButton>
-          <IconButton label={t("重做", "Redo")} disabled={!doc?.canRedo || chat.busy} onClick={() => void host.call("redo", {}, doc?.path)}>
+          <IconButton label={t("重做", "Redo")} disabled={!doc?.canRedo} onClick={() => void host.call("redo", {}, doc?.path)}>
             <Redo2 />
           </IconButton>
           <DropdownMenu>
@@ -420,13 +386,6 @@ function Workbench({ host }: { host: WebHost }) {
               <DropdownMenuItem onSelect={actions.exportProject}>{t("导出整个项目（.zip）", "Export whole project (.zip)")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <IconButton
-            label={doc?.kind === "assembly" ? t("分享（装配还不能分享：导出整个项目发给别人）", "Share (assemblies can’t be shared yet: export the whole project and send it)") : t("分享", "Share")}
-            disabled={!canShare || chat.busy}
-            onClick={() => setSharing(true)}
-          >
-            <Share2 />
-          </IconButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <IconButton label={t("更多", "More")}>
@@ -441,10 +400,7 @@ function Workbench({ host }: { host: WebHost }) {
                 {t("代码", "Code")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={chat.busy} onSelect={() => fileInput.current?.click()}>
-                {t("导入文件…", "Import files…")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setKeyOpen(true)}>{t("使用自己的 key…", "Use your own key…")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => fileInput.current?.click()}>{t("导入文件…", "Import files…")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -505,7 +461,7 @@ function Workbench({ host }: { host: WebHost }) {
               filesHint={[
                 t("项目就是一个文件夹，存在这个浏览器里：里面的装配和零件都列在这里。", "A project is a folder kept in this browser: its assemblies and parts are listed here."),
                 t("几个零件的东西：新建一个装配，在它的「结构」里用 ＋ 加零件。", "For something with several parts: create an assembly and add parts with ＋ in its 「Structure」."),
-                t("点一个文件打开它，助手之后也改它；双击改名，⋯ 里能删除。", "Click a file to open it; the assistant works on it next. Double-click to rename; ⋯ deletes it."),
+                t("点一个文件打开它；双击改名，⋯ 里能删除。", "Click a file to open it. Double-click to rename; ⋯ deletes it."),
               ]}
             />
           </div>
@@ -536,6 +492,7 @@ function Workbench({ host }: { host: WebHost }) {
                 studio={studio}
                 hover={viewHover}
                 annotations={annotations}
+                annotation={false}
                 busy={busy}
                 reselect={reselect}
                 parts={s.partsView}
@@ -550,6 +507,7 @@ function Workbench({ host }: { host: WebHost }) {
                 cameras={cameras}
               />
               <TreeOverlay
+                key={doc?.path}
                 studio={studio}
                 onHover={setTreeHover}
                 reselect={reselect}
@@ -563,6 +521,7 @@ function Workbench({ host }: { host: WebHost }) {
                 looks={!assembly}
                 timeline={!assembly}
                 detailsIn={stepSlot}
+                control={timeline}
               />
             </>
           ) : (
@@ -620,9 +579,8 @@ function Workbench({ host }: { host: WebHost }) {
         </main>
         <ConnectorOverlay param={viewHover?.param ?? null} row={viewHover?.row ?? null} />
 
-        <Tabs
-          value={tab}
-          onValueChange={setTab}
+        <aside
+          aria-label={t("参数和练习", "Parameters and practice")}
           style={{ "--panel-w": `${panel.width}px` } as React.CSSProperties}
           className="relative flex shrink-0 flex-col border-l lg:w-(--panel-w) max-lg:h-[55dvh] max-lg:w-full max-lg:border-t max-lg:border-l-0"
         >
@@ -637,44 +595,33 @@ function Workbench({ host }: { host: WebHost }) {
             onValueCommit={(w) => panel.resize(w, true)}
             className="max-lg:hidden"
           />
-          <TabsList className="shrink-0 px-3">
-            <TabsTrigger value="chat">{t("对话", "Chat")}</TabsTrigger>
-            <TabsTrigger value="params">{t("参数", "Parameters")}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden" forceMount>
-            {status && !status.hostedKey && !hasOwnKey() && (
-              <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-small text-muted-foreground">
-                {t("这里没有公共额度，要用自己的 DeepSeek key", "No shared quota here. Use your own DeepSeek key.")}
-                <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setKeyOpen(true)}>
-                  {t("填 key", "Add key")}
-                </Button>
-              </div>
-            )}
-            {practice && practicing && <PracticeCard practice={practice} results={studio.report?.checks} rolledBack={Boolean(studio.rollback)} onExit={exitPractice} />}
-            <ChatPanel
-              chat={chat}
-              annotations={annotations}
-              ready={ready && Boolean(doc)}
-              onSelectFeature={studio.showFeature}
-              onLoad={(tree) => {
-                const title = STARTERS.find((x) => x.tree === tree)?.title ?? t("示例", "Example")
-                void run(() => openModel(tree, modelName(title), t(`打开了「${title}」`, `Opened “${title}”`), false))
-              }}
-              model={status?.model}
-              practicing={practicing}
-              assembly={assembly}
-            />
-          </TabsContent>
-          <TabsContent value="params" className="min-h-0 flex-1 overflow-y-auto">
-            <ParamsPanel studio={studio} onHover={setTreeHover} annotations={annotations} />
-          </TabsContent>
+          {practice && practicing && (
+            <PracticeCard practice={practice} results={studio.report?.checks} rolledBack={Boolean(studio.rollback)} onExit={exitPractice} onSolution={() => showSolution(practice)} />
+          )}
+          {practice && practicePart && reference && doc?.path === reference && (
+            <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3 text-small">
+              <span className="min-w-0 flex-1 text-muted-foreground">{t(`这是「${practice.title}」的参考做法，▶ 可以再放一遍。`, `This is a reference answer to “${practice.title}”; ▶ replays it.`)}</span>
+              <Button size="sm" variant="secondary" onClick={() => void run(() => host.call("open_part", { path: practicePart }))}>
+                {t("回到练习", "Back to the practice")}
+              </Button>
+            </div>
+          )}
+          {emptyPart && !practicing && <StartHere onSketch={() => timeline.current?.newStep("sketch")} onStarter={openStarter} />}
+          {emptyPart && practicing && (
+            <div className="shrink-0 border-b px-4 py-3">
+              <Button size="sm" variant="primary" onClick={() => timeline.current?.newStep("sketch")}>
+                {t("从草图开始", "Start with a sketch")}
+              </Button>
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ParamsPanel studio={studio} onHover={setTreeHover} />
+          </div>
           {/* A step's details from the timeline cover this panel while shown. */}
           <div ref={setStepSlot} className="pointer-events-none absolute inset-0 z-20" />
-        </Tabs>
+        </aside>
       </div>
 
-      <ShareDialog open={sharing} onOpenChange={setSharing} tree={studio.tree} messages={chat.messages} />
-      <KeyDialog open={keyOpen} onOpenChange={setKeyOpen} status={status} />
       <Drawer open={codeOpen} onOpenChange={setCodeOpen}>
         <DrawerContent size="lg">
           <DrawerHeader title={t("代码", "Code")} description={t("和特征树等价的 build123d 代码", "build123d code equivalent to the feature tree")} />
@@ -706,8 +653,7 @@ function Workbench({ host }: { host: WebHost }) {
         confirmLabel={t("改名", "Rename")}
         onSubmit={async (name) => {
           if (!root) return null
-          const to = await host.renameProject(root, name)
-          if (to !== root) moveChat(root, to)
+          await host.renameProject(root, name)
           return null
         }}
       />
@@ -744,10 +690,7 @@ function Workbench({ host }: { host: WebHost }) {
         tone="danger"
         onConfirm={() => {
           if (!root) return
-          void run(async () => {
-            await host.deleteProject(root)
-            dropChat(root)
-          })
+          void run(() => host.deleteProject(root))
         }}
       />
     </div>
@@ -758,42 +701,41 @@ const PRACTICE_STORE = "arbor:practice"
 /** The part a practice is done in (its checks are pinned while it is open). */
 const PRACTICE_PART = "turnery:practice-part"
 
-const hasOwnKey = () => Boolean(localStorage.getItem(KEY_STORE))
-
-function KeyDialog({ open, onOpenChange, status }: { open: boolean; onOpenChange: (o: boolean) => void; status: Status | null }) {
-  const [key, setKey] = React.useState(() => localStorage.getItem(KEY_STORE) ?? "")
-  const save = () => {
-    const k = key.trim()
-    if (k) localStorage.setItem(KEY_STORE, k)
-    else localStorage.removeItem(KEY_STORE)
-    notify(k ? t("已保存，之后的对话用你自己的 key", "Saved. Chats from now on use your own key.") : t("已清除，改用公共额度", "Cleared. Using the shared quota."))
-    onOpenChange(false)
-  }
+/** An empty part, outside a practice: how to start, the ready-made examples, a lesson to learn it from. */
+function StartHere({ onSketch, onStarter }: { onSketch: () => void; onStarter: (tree: Tree) => void }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm">
-        <DialogHeader title={t("使用自己的 DeepSeek key", "Use your own DeepSeek key")} />
-        <DialogBody>
-        <p className="text-small text-muted-foreground">
-          {status?.hostedKey
-            ? t(
-                `不填就用本站的公共额度（${status.via === "openrouter" ? "经 OpenRouter 调用同一个模型，" : ""}每天有上限）。`,
-                `Leave it empty to use this site’s shared quota (${status.via === "openrouter" ? "the same model through OpenRouter, " : ""}with a daily limit). `,
-              )
-            : t("本站没有配置公共额度，需要填自己的 key。", "This site has no shared quota, so you need your own key. ")}
+    <section aria-label={t("从这里开始", "Start here")} className="shrink-0 space-y-3 border-b px-4 py-4">
+      <div>
+        <h2 className="text-body font-semibold">{t("从一张草图开始", "Start from a sketch")}</h2>
+        <p className="mt-1 text-small text-muted-foreground">
           {t(
-            "key 只保存在这个浏览器里，随请求经本站服务器转发给 DeepSeek，服务器不保存。",
-            "The key stays in this browser. It goes through this site’s server to DeepSeek with each request and is never stored there.",
+            "零件是一步步特征叠出来的：先画草图，再拉伸成实体，然后打孔、倒圆角。每一步都用时间线末尾的 ＋ 加；点一步可以改尺寸、编辑或调顺序。",
+            "A part is built up one feature at a time: sketch first, extrude it into a solid, then add holes and fillets. Add each step with ＋ at the end of the timeline; click a step to change its dimensions, edit it or move it.",
           )}
         </p>
-        <Input className="mt-3 font-mono" type="password" autoComplete="off" placeholder="sk-…" value={key} onChange={(e) => setKey(e.target.value)} aria-label="DeepSeek API key" />
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="primary" onClick={save}>
-            {t("保存", "Save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="primary" onClick={onSketch}>
+          {t("新建草图", "New sketch")}
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="secondary">
+              {t("打开示例", "Open an example")}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {STARTERS.map((x) => (
+              <DropdownMenuItem key={x.id} onSelect={() => onStarter(x.tree)}>
+                {x.title}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button size="sm" variant="ghost" asChild>
+          <Link to="/learn">{t("先学一节课", "Learn a lesson first")}</Link>
+        </Button>
+      </div>
+    </section>
   )
 }

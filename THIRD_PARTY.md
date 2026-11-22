@@ -31,13 +31,12 @@ Turnery 自己的代码用 MIT（[`LICENSE`](LICENSE)），课程文字和文档
 | IBM Plex Mono（经 `@fontsource/ibm-plex-mono` 打包） | 5.3.0 | SIL OFL 1.1 | 等宽字体 | <https://github.com/IBM/plex> |
 | IBM Plex Sans SC（Medium、SemiBold 的子集，改名 Turnery Sans SC：`app/src/styles/fonts/turnery-sans-sc-*.woff2`，取自 `@ibm/plex-sans-sc` 1.1.0） | 1.1.0 | SIL OFL 1.1；保留字体名「Plex」，所以子集改了名。许可全文在 `app/src/styles/fonts/OFL.txt` | 标题和按钮里的中文 | <https://github.com/IBM/plex> |
 | **planegcs**（`@salusoft89/planegcs`） | 1.3.0 | **LGPL-2.1**，见下 | 「几何约束与自由度」课的草图求解器 | <https://github.com/Salusoft89/planegcs> |
-| replicad | 1.2.0 | MIT | AI 建模工作台的建模 API（浏览器里的 Web Worker） | <https://github.com/sgenoud/replicad> |
+| replicad | 1.2.0 | MIT | 工作台的建模 API（浏览器里的 Web Worker） | <https://github.com/sgenoud/replicad> |
 | opentype.js（replicad 依赖） | 2.0.0 | MIT | 读取字体轮廓，做草图文字 | <https://github.com/opentypejs/opentype.js> |
 | 思源黑体 SC（Noto Sans SC Regular 的子集：`app/src/studio/fonts/text-*.ttf`，取自 `@expo-google-fonts/noto-sans-sc` 0.4.4） | 2.004 | SIL OFL 1.1，许可全文在 `app/src/studio/fonts/OFL.txt` | 工作台草图文字（刻字、凸字）的字形 | <https://github.com/notofonts/noto-cjk> |
 | **replicad-opencascadejs** | 1.1.0 | **LGPL-2.1-only**，见下 | 工作台的几何内核：OpenCascade 编译成的 WebAssembly | <https://github.com/sgenoud/replicad> |
-| AI SDK（`ai`、`@ai-sdk/react`） | 7.0 / 4.0 | Apache-2.0 | 工作台的对话与工具调用 | <https://github.com/vercel/ai> |
+| AI SDK（`ai`） | 7.0 | Apache-2.0 | 工作台引擎里的工具定义（和桌面版共用） | <https://github.com/vercel/ai> |
 | Zod | 4.6.7 | MIT | 工作台特征树和工具参数的 schema | <https://github.com/colinhacks/zod> |
-| react-markdown、remark-gfm | 10.1.0 / 4.0.1 | MIT | 工作台对话里的 Markdown 渲染 | <https://github.com/remarkjs/react-markdown> |
 
 `package.json` 里还有 cmdk 和 vaul（都是 MIT），目前没有页面用到，构建时被摇树去掉了，不在产物里。
 
@@ -62,21 +61,10 @@ Turnery 自己的代码用 MIT（[`LICENSE`](LICENSE)），课程文字和文档
 
 - **是什么**：replicad 作者为它定制编译的 OpenCascade（OCCT）WebAssembly 版本。OCCT 本身是 LGPL-2.1 加 OCCT 例外条款。
 - **怎么分发**：
-  - 只在 AI 建模工作台（`/studio`）里由 Web Worker 加载，胶水代码在工作台的 Worker 分块里，wasm 是单独的文件（`assets/replicad_single-*.wasm`，构建时另存一份 `.br` / `.gz` 压缩版）。
+  - 只在工作台（`/studio`）里由 Web Worker 加载，胶水代码在工作台的 Worker 分块里，wasm 是单独的文件（`assets/replicad_single-*.wasm`，构建时另存一份 `.br` / `.gz` 压缩版）。
   - 换成自己编译的版本，替换这个 wasm 文件（需与胶水代码版本匹配），或改 `app/package.json` 里的版本后重新构建。
 - **源码**：npm 包 `replicad-opencascadejs` 1.1.0 由 <https://github.com/sgenoud/replicad>（`packages/replicad-opencascadejs`）构建；上游 OCCT 在 <https://github.com/Open-Cascade-SAS/OCCT>。我们没有修改它。
 - **许可证全文**：安装依赖后在 `app/node_modules/replicad-opencascadejs/LICENSE`。
-
-### 工作台的服务端（不随网站下载）
-
-`app/server/` 是一个只转发对话的小服务，部署在服务器上，不发给浏览器：
-
-| 组件 | 版本 | 许可证 | 链接 |
-| --- | --- | --- | --- |
-| Hono、`@hono/node-server` | 4.13 / 2.1 | MIT | <https://github.com/honojs/hono> |
-| `@ai-sdk/deepseek` | 3.0.80 | Apache-2.0 | <https://github.com/vercel/ai> |
-| `@openrouter/ai-sdk-provider` | 3.1.0 | Apache-2.0 | <https://github.com/OpenRouterTeam/ai-sdk-provider> |
-| AI SDK（`ai`）、Zod | 同上 | Apache-2.0 / MIT | 同上 |
 
 ### 桌面版 Turnery（`desktop/`，随安装包分发）
 
@@ -87,6 +75,8 @@ Turnery 的窗口和网站共用上面「随网站发布」的前端组件（Rea
 | Electron（含 Chromium、Node.js） | 45.2.3 | MIT；Chromium 各组件的许可见安装包里的 `LICENSES.chromium.html` | 桌面应用外壳 | <https://github.com/electron/electron> |
 | `@modelcontextprotocol/sdk` | 1.32.2 | MIT | `turnery mcp` 的 MCP 服务 | <https://github.com/modelcontextprotocol/typescript-sdk> |
 | `@ai-sdk/openai-compatible`、`@ai-sdk/anthropic`、`@ai-sdk/deepseek`、`ai` | 3.0.87 / 4.0.99 / 3.0.80 / 7.0 | Apache-2.0 | 内置助手调用模型（`turnery ask`） | <https://github.com/vercel/ai> |
+| `@ai-sdk/react` | 4.0 | Apache-2.0 | 内置助手的对话面板 | <https://github.com/vercel/ai> |
+| react-markdown、remark-gfm | 10.1.0 / 4.0.1 | MIT | 内置助手回复里的 Markdown 渲染 | <https://github.com/remarkjs/react-markdown> |
 | replicad-opencascadejs | 1.1.0 | LGPL-2.1-only | 几何内核，见上一节 | 同上 |
 
 - **OpenCascade 的 wasm 怎么分发**：和网站一样是单独的文件，在 `Turnery.app/Contents/Resources/app/dist/vendor/opencascade/`（`replicad_single.js` + `replicad_single.wasm`，旁边附 `LICENSE`）。安装包不打 asar，替换这两个文件就能换成自己编译的版本。
@@ -112,6 +102,8 @@ Turnery 的窗口和网站共用上面「随网站发布」的前端组件（Rea
 | Oxlint | MIT | <https://github.com/oxc-project/oxc> |
 | Vitest | MIT | <https://github.com/vitest-dev/vitest> |
 | culori（对比度测试） | MIT | <https://github.com/Evercoder/culori> |
+
+评测脚本（`npm run eval:studio`）只在开发者电脑上跑，调模型另用 `@openrouter/ai-sdk-provider`（Apache-2.0，<https://github.com/OpenRouterTeam/ai-sdk-provider>）和 `@ai-sdk/deepseek`。
 
 ## 3. 只在离线烘焙时用（不随网站发布）
 
