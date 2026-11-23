@@ -13,6 +13,10 @@ import { LESSONS } from "@/content/lessons"
 import { CARDS } from "@/content/cards"
 import { t } from "@/lib/i18n"
 
+/** How many topics there are, in words: 「七个主题」, "seven topics". */
+const TOPICS_ZH = "零一二三四五六七八九十"[TRACKS.length] ?? String(TRACKS.length)
+const TOPICS_EN = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][TRACKS.length] ?? String(TRACKS.length)
+
 export function LearnPage() {
   const progress = useProgress()
   const next = useContinue()
@@ -47,8 +51,8 @@ export function LearnPage() {
       />
       <p className="-mt-2 max-w-[44em] text-reading text-muted-foreground">
         {t(
-          `${COUNTS.lessons} 节 3D 互动课、${COUNTS.cards} 张图文卡和 ${models.length || 9} 个真实零件的拆解，按六个主题排好了顺序。不用一次看完：从下面五节开始，或者按你的背景挑起点。`,
-          `${COUNTS.lessons} hands-on 3D lessons, ${COUNTS.cards} cards and ${models.length || 9} teardowns of real parts, in six topics. No need to take it all in at once: start with the five below, or pick a starting point for your background.`,
+          `${COUNTS.lessons} 节 3D 互动课、${COUNTS.cards} 张图文卡和 ${models.length || 9} 个真实零件的拆解，按${TOPICS_ZH}个主题排好了顺序。不用一次看完：从下面五节开始，或者按你的背景挑起点。`,
+          `${COUNTS.lessons} hands-on 3D lessons, ${COUNTS.cards} cards and ${models.length || 9} teardowns of real parts, in ${TOPICS_EN} topics. No need to take it all in at once: start with the five below, or pick a starting point for your background.`,
         )}
         {finished > 0 && <span className="ml-1 font-medium text-foreground">{t(`你已学完 ${finished} / ${all.length}。`, `You've finished ${finished} of ${all.length}.`)}</span>}
       </p>
@@ -65,7 +69,7 @@ export function LearnPage() {
         <StartingPoints />
       </Section>
 
-      <h2 className="mt-14 text-title font-semibold">{t("六个主题", "Six topics")}</h2>
+      <h2 className="mt-14 text-title font-semibold">{t(`${TOPICS_ZH}个主题`, `${TOPICS_EN[0].toUpperCase()}${TOPICS_EN.slice(1)} topics`)}</h2>
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-small text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <Box className="size-3.5 text-primary" />

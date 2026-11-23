@@ -1073,6 +1073,296 @@
      ]
     }
    ]
+  },
+  {
+   "id": "T6",
+   "title": "产品设计：造型、人机、CMF 与产品结构",
+   "note": "工业设计轨的另一半，约 20–30 小时；曲面轨管面怎么做顺，这条轨管做成什么样、给谁用、怎么装起来",
+   "modules": [
+    {
+     "id": "M6.0",
+     "title": "设计流程",
+     "note": "读懂就够",
+     "lessons": [
+      {
+       "id": "6.0.1",
+       "title": "设计流程：发散与收敛",
+       "en": "Double Diamond",
+       "goal": "知道每个阶段该产出什么、什么时候该收敛",
+       "prereq": "无",
+       "interactive": 0,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.0.2",
+       "title": "用户研究方法",
+       "en": "User research",
+       "goal": "为要回答的问题选对方法：访谈、观察、问卷、可用性测试",
+       "prereq": "6.0.1",
+       "interactive": 0,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.0.3",
+       "title": "写设计任务书",
+       "en": "Design brief",
+       "goal": "把目标用户、使用场景、约束和成功标准写成一页",
+       "prereq": "6.0.2",
+       "interactive": 0,
+       "interactiveNote": null
+      }
+     ]
+    },
+    {
+     "id": "M6.1",
+     "title": "造型",
+     "note": "",
+     "lessons": [
+      {
+       "id": "6.1.1",
+       "title": "视觉减薄",
+       "en": "Visual thinning",
+       "goal": "用收边、倒角和分型线的位置控制产品看起来的厚度",
+       "prereq": "0.2.1",
+       "interactive": 2,
+       "interactiveNote": "从用户视角量看起来的厚度"
+      },
+      {
+       "id": "6.1.2",
+       "title": "圆角的层级与角落",
+       "en": "Fillet hierarchy、corner blends",
+       "goal": "安排大中小圆角的顺序，收好三条边交汇的角落",
+       "prereq": "1.2.6",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.1.3",
+       "title": "特征线与高光",
+       "en": "Character lines、highlights",
+       "goal": "用硬折线、软折线和渐消面控制高光的走向",
+       "prereq": "5.3.1",
+       "interactive": 2,
+       "interactiveNote": "转动灯光看高光线"
+      },
+      {
+       "id": "6.1.4",
+       "title": "比例、体块与尺度",
+       "en": "Proportion、massing、scale",
+       "goal": "用主次体块、视觉重心和人手尺度判断比例",
+       "prereq": "6.1.1",
+       "interactive": 2,
+       "interactiveNote": null
+      }
+     ]
+    },
+    {
+     "id": "M6.2",
+     "title": "人机工程",
+     "note": "",
+     "lessons": [
+      {
+       "id": "6.2.1",
+       "title": "人体尺寸与百分位",
+       "en": "Anthropometry、percentiles",
+       "goal": "按 P5–P95 选尺寸，知道「平均人」并不存在",
+       "prereq": "无",
+       "interactive": 2,
+       "interactiveNote": "百分位滑杆"
+      },
+      {
+       "id": "6.2.2",
+       "title": "握持与把手",
+       "en": "Grip、handle",
+       "goal": "按握法选把手的直径和截面",
+       "prereq": "6.2.1",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.2.3",
+       "title": "按键手感：力–行程曲线",
+       "en": "Force–travel curve",
+       "goal": "读懂力–行程曲线，用结构调出「咔嗒感」",
+       "prereq": "6.2.1",
+       "interactive": 2,
+       "interactiveNote": "按下按键，同步画出曲线"
+      },
+      {
+       "id": "6.2.4",
+       "title": "视线与可达范围",
+       "en": "Sight lines、reach envelope",
+       "goal": "把屏幕和按键放进看得清、够得着的区域",
+       "prereq": "6.2.1",
+       "interactive": 2,
+       "interactiveNote": null
+      }
+     ]
+    },
+    {
+     "id": "M6.3",
+     "title": "CMF：颜色、材料与表面处理",
+     "note": "",
+     "lessons": [
+      {
+       "id": "6.3.1",
+       "title": "材质与表面处理",
+       "en": "Materials and finishes",
+       "goal": "看懂粗糙度、金属度和常见表面处理的效果",
+       "prereq": "无",
+       "interactive": 2,
+       "interactiveNote": "同一模型切换表面"
+      },
+      {
+       "id": "6.3.2",
+       "title": "光面会放大缺陷",
+       "en": "Sink marks on gloss",
+       "goal": "知道高光面会暴露缩痕，按表面选筋厚和工艺",
+       "prereq": "4.4.1、6.3.1",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.3.3",
+       "title": "咬花与拔模",
+       "en": "Texture and draft",
+       "goal": "按纹理深度给足拔模角",
+       "prereq": "4.4.2、6.3.1",
+       "interactive": 2,
+       "interactiveNote": null
+      }
+     ]
+    },
+    {
+     "id": "M6.4",
+     "title": "表达",
+     "note": "",
+     "lessons": [
+      {
+       "id": "6.4.1",
+       "title": "透视与椭圆",
+       "en": "Perspective、ellipses",
+       "goal": "找到视平线和灭点，让椭圆的短轴对准回转轴",
+       "prereq": "0.2.1",
+       "interactive": 2,
+       "interactiveNote": "转动圆柱看椭圆"
+      },
+      {
+       "id": "6.4.2",
+       "title": "产品摄影的灯光",
+       "en": "Product lighting",
+       "goal": "用主光、辅光、轮廓光和焦距把形体表现清楚",
+       "prereq": "6.3.1",
+       "interactive": 2,
+       "interactiveNote": "拖动灯光"
+      },
+      {
+       "id": "6.4.3",
+       "title": "草图的线条与明暗",
+       "en": "Line weight、shading",
+       "goal": "用线条粗细和明暗层次表达体积",
+       "prereq": "6.4.1",
+       "interactive": 0,
+       "interactiveNote": null
+      }
+     ]
+    },
+    {
+     "id": "M6.5",
+     "title": "产品结构",
+     "note": "把造型变成装得起来的东西",
+     "lessons": [
+      {
+       "id": "6.5.1",
+       "title": "缝隙与段差",
+       "en": "Gap and flush",
+       "goal": "用公差叠加预测外观的缝隙和段差",
+       "prereq": "3.2.1",
+       "interactive": 2,
+       "interactiveNote": "模拟装配 1000 台"
+      },
+      {
+       "id": "6.5.2",
+       "title": "刚度直觉：壁厚与筋",
+       "en": "Stiffness、ribs",
+       "goal": "知道刚度和壁厚的三次方成正比，用筋代替加厚",
+       "prereq": "4.4.5",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.5.3",
+       "title": "密封与 O 形圈",
+       "en": "Seals、O-ring groove",
+       "goal": "按压缩率和填充率设计密封槽",
+       "prereq": "3.2.1",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.5.4",
+       "title": "活动铰链",
+       "en": "Living hinge",
+       "goal": "按材料和应变设计一体铰链",
+       "prereq": "6.5.2",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.5.5",
+       "title": "电子件布局与开孔公差",
+       "en": "PCB layout in a housing",
+       "goal": "摆放 PCB、电池和接口，算外壳开孔要留多少余量",
+       "prereq": "6.5.1",
+       "interactive": 2,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.5.6",
+       "title": "可拆解与回收",
+       "en": "Design for disassembly",
+       "goal": "减少紧固件和混用的材料，让产品拆得开、分得清",
+       "prereq": "2.1.1",
+       "interactive": 2,
+       "interactiveNote": null
+      }
+     ]
+    },
+    {
+     "id": "M6.6",
+     "title": "从原型到上市",
+     "note": "读懂就够",
+     "lessons": [
+      {
+       "id": "6.6.1",
+       "title": "原型的保真度",
+       "en": "Prototype fidelity",
+       "goal": "为要验证的问题选原型：外观、结构还是功能",
+       "prereq": "6.0.1",
+       "interactive": 0,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.6.2",
+       "title": "安全与认证",
+       "en": "Drop test、IP rating、small parts",
+       "goal": "知道跌落、IP 防护、小零件这些要求从哪来",
+       "prereq": "6.6.1",
+       "interactive": 0,
+       "interactiveNote": null
+      },
+      {
+       "id": "6.6.3",
+       "title": "包装与开箱",
+       "en": "Packaging",
+       "goal": "把包装和开箱当成产品的一部分来设计",
+       "prereq": "6.6.1",
+       "interactive": 0,
+       "interactiveNote": null
+      }
+     ]
+    }
+   ]
   }
  ],
  "projects": [
@@ -1116,7 +1406,7 @@
  "personas": [
   {
    "name": "产品/工业设计师",
-   "path": "T0 → M5.1–5.3 → M1.1–1.3（精简版）→ M5.4–5.6 → M4.4 → P3"
+   "path": "T0 → M5.1–5.3 → M6.1–6.4 → M1.1–1.3（精简版）→ M5.4–5.6 → M6.5 → M4.4 → P3"
   },
   {
    "name": "Makers",

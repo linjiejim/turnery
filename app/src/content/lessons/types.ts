@@ -54,7 +54,7 @@ export type LessonMeta = {
   id: string
   codes: string[]
   title: string
-  track: "T0" | "T1" | "T2" | "T3" | "T4" | "T5"
+  track: "T0" | "T1" | "T2" | "T3" | "T4" | "T5" | "T6"
   minutes: number
   gist: string
   load: () => Promise<{ default: LessonDef<any, any> }> // eslint-disable-line @typescript-eslint/no-explicit-any
