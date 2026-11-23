@@ -1,5 +1,3 @@
-import { isEn } from "@/lib/i18n"
-
 /**
  * Default UI copy for the kit. Projects with i18n call configureStrings()
  * once at boot with their translations; components read through s().
@@ -69,77 +67,25 @@ const zh = {
   copy: "复制",
   copied: "已复制",
   copyFailed: "复制失败",
+  previousItem: "上一条",
+  nextItem: "下一条",
+  itemPosition: (i: number, n: number) => `${i} / ${n}`,
+  whatsNew: "更新内容",
+  seeWhatsNew: "查看更新内容",
+  updatedTo: (version: string) => `已更新到 ${version}`,
+  allReleaseNotes: "全部更新记录",
+  releaseNotesEmpty: "还没有更新记录",
+  /** An ISO date (2026-11-20) under a version: this year 「11月20日」, other years 「2025年11月20日」. */
+  releaseDate: (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number)
+    return y === new Date().getFullYear() ? `${m}月${d}日` : `${y}年${m}月${d}日`
+  },
+  newVersionReady: "新版本已发布，刷新后生效",
+  reload: "刷新页面",
 }
 
 export type Strings = typeof zh
-
-const en: Strings = {
-  close: "Close",
-  cancel: "Cancel",
-  retry: "Retry",
-  undo: "Undo",
-  required: "Required",
-  moreInfo: "About this",
-  discardTitle: "Discard unsaved changes?",
-  discardBody: "If you close now, the changes you just made are lost.",
-  discardConfirm: "Discard changes",
-  discardKeep: "Keep editing",
-  selectPlaceholder: "Choose",
-  searchPlaceholder: "Search",
-  noOptions: "No matching options",
-  emptyTitle: "Nothing here yet",
-  noMatchTitle: "No results match",
-  noMatchAction: "Clear filters",
-  noPermissionTitle: "You don't have access",
-  noPermissionBody: "Ask an administrator if you need it.",
-  errorTitle: "Couldn't load",
-  errorBody: "Check your connection and try again.",
-  selectedCount: (n: number) => `${n} selected`,
-  clearSelection: "Clear selection",
-  totalCount: (n: number) => `${n} in total`,
-  pageOf: (p: number, total: number) => `${p} / ${total}`,
-  perPage: (n: number) => `${n} per page`,
-  prevPage: "Previous page",
-  nextPage: "Next page",
-  rowActions: "More actions",
-  all: "All",
-  yes: "Yes",
-  no: "No",
-  clear: "Clear",
-  unsaved: "Unsaved changes",
-  save: "Save",
-  discard: "Discard",
-  saved: "Saved",
-  openMenu: "Open menu",
-  collapseSidebar: "Collapse sidebar",
-  expandSidebar: "Expand sidebar",
-  back: "Back",
-  resizePanel: "Resize",
-  filters: "Filters",
-  andMore: (n: number) => ` and ${n} more`,
-  commandPlaceholder: "Search or type a command",
-  commandEmpty: "No results",
-  commandNavigate: "Select",
-  commandRun: "Open",
-  uploadTitle: "Upload",
-  uploadProgress: (done: number, total: number) => `Uploading · ${done}/${total}`,
-  uploadSummary: (added: number, exists: number, failed: number) =>
-    [added && `${added} added`, exists && `${exists} already there`, failed && `${failed} failed`].filter(Boolean).join(", "),
-  uploadWaiting: "Waiting",
-  uploadUploading: "Uploading",
-  uploadPercent: (p: number) => `Uploading ${p}%`,
-  uploadAdded: "Added",
-  uploadExists: "Already there",
-  uploadFailed: "Failed",
-  collapse: "Collapse",
-  expand: "Expand",
-  notifications: "Notifications",
-  copy: "Copy",
-  copied: "Copied",
-  copyFailed: "Couldn't copy",
-}
-
-let current: Strings = isEn ? en : zh
+let current: Strings = zh
 
 export function configureStrings(partial: Partial<Strings>) {
   current = { ...current, ...partial }

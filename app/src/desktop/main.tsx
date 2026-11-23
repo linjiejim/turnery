@@ -1,3 +1,5 @@
+// The kit's own copy in the window's language, before any of it renders.
+import "@/lib/kit-strings"
 import "@fontsource-variable/ibm-plex-sans"
 import "@fontsource/ibm-plex-mono/400.css"
 import "@fontsource/ibm-plex-mono/500.css"

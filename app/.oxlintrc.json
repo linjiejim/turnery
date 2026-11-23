@@ -23,6 +23,21 @@
       "files": ["src/components/ui/confirm-dialog.tsx"],
       "rules": { "react/set-state-in-effect": "off" }
     },
+    // Paging through a list keeps the order it had when the drawer opened in refs read while rendering.
+    {
+      "files": ["src/components/ui/drawer.tsx"],
+      "rules": { "react/refs": "off" }
+    },
+    // useNewVersionPrompt keeps the time of its last check in the effect, not in state.
+    {
+      "files": ["src/components/ui/release-notes.tsx"],
+      "rules": { "react/immutability": "off" }
+    },
+    // Vendored like the components: a heading's ⚠️ (two code points) is stripped with a character class.
+    {
+      "files": ["src/lib/changelog.ts"],
+      "rules": { "no-misleading-character-class": "off" }
+    },
     // TanStack Table's useReactTable cannot be memoised; the React Compiler already skips this component.
     {
       "files": ["src/components/ui/data-table.tsx"],
