@@ -44,6 +44,15 @@ describe("manifest", () => {
     assert.throws(() => assetFor(m, "darwin-arm64", UPDATE_PUBLIC_KEY), /签名不对/)
     assert.throws(() => assetFor(m, "darwin-x64", pub), /没有 darwin-x64/)
   })
+  it("carries the release notes outside the signature", () => {
+    const signed = manifestFor("0.2.0", bytes)
+    const notes = "### New\n\n- A\n\n---\n\n### 新增\n\n- 甲"
+    const m = parseManifest(JSON.parse(JSON.stringify({ ...signed, notes })))
+    assert.equal(m.notes, notes)
+    assert.equal(assetFor(m, "darwin-arm64", pub).size, bytes.length)
+    assert.equal(assetFor({ ...m, notes: "edited after signing" }, "darwin-arm64", pub).size, bytes.length)
+    assert.equal(parseManifest({ ...signed, notes: 42 }).notes, undefined)
+  })
   it("rejects a malformed manifest", () => {
     assert.throws(() => parseManifest({ version: "latest", platforms: {} }), /版本号/)
     assert.throws(() => parseManifest({ version: "0.2.0", platforms: { a: { url: "file:///x", sha256: "0".repeat(64), size: 1, signature: "s" } } }), /地址/)

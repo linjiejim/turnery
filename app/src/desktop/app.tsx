@@ -88,6 +88,8 @@ export function DesktopApp() {
     () =>
       turnery.onMenu((action) => {
         if (action === "agent-setup") return setSetupOpen(true)
+        // 查看更新内容…: WhatsNew, next to the Toaster, opens it.
+        if (action === "whats-new") return
         if (action === "toggle-left") return menuRef.current.toggleLeft()
         if (action === "toggle-right") return menuRef.current.toggleRight()
         if (action === "back") return menuRef.current.back?.()

@@ -23,6 +23,11 @@
       "files": ["src/components/ui/confirm-dialog.tsx"],
       "rules": { "react/set-state-in-effect": "off" }
     },
+    // Paging through a list keeps the order it had when the drawer opened in refs read while rendering.
+    {
+      "files": ["src/components/ui/drawer.tsx"],
+      "rules": { "react/refs": "off" }
+    },
     // TanStack Table's useReactTable cannot be memoised; the React Compiler already skips this component.
     {
       "files": ["src/components/ui/data-table.tsx"],

@@ -3,6 +3,8 @@
 # turnery-update.json (signed with the update key, secret TURNERY_UPDATE_KEY; the old name ARBOR_UPDATE_KEY is still read). Publish the draft by
 # hand: installed copies read turnery-update.json from this repository's latest published release,
 # so publishing is what ships the update. Keep "latest" for Turnery (the site has no releases).
+# The release notes are the version's section of desktop/CHANGELOG.md and CHANGELOG.zh-CN.md
+# (desktop/README.md, "Releasing"): the draft's body and the manifest's `notes`.
 name: Turnery release
 
 on:
@@ -22,6 +24,9 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
+        with:
+          # All of history and the tags: notes missing from the changelog are drafted from the commits since the last tag.
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -37,6 +42,16 @@ jobs:
         run: |
           version=$(node -p "require('./desktop/package.json').version")
           [ "$version" = "${TAG#turnery-v}" ] || { echo "::error::Tag $TAG, but desktop/package.json says $version"; exit 1; }
+      # This version's section, English then Chinese. A version the changelog doesn't have yet is drafted
+      # from the commits since the last tag, with a warning: write it up before publishing.
+      - name: Release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node desktop/scripts/release-notes.mjs notes "${TAG#turnery-v}" --fallback --tag-prefix turnery-v \
+            --package desktop/package.json --file desktop/CHANGELOG.md --also desktop/CHANGELOG.zh-CN.md \
+            > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
       - run: npm ci
         working-directory: app
       - run: npm ci
@@ -52,15 +67,22 @@ jobs:
           TURNERY_UPDATE_KEY: ${{ secrets.TURNERY_UPDATE_KEY || secrets.ARBOR_UPDATE_KEY }}
         run: |
           test -n "$TURNERY_UPDATE_KEY" || { echo "::error::secret TURNERY_UPDATE_KEY is not set"; exit 1; }
-          node scripts/release.mjs
+          node scripts/release.mjs --notes "$RUNNER_TEMP/notes.md"
       - name: Draft release
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+        # A release that already exists (a re-run) keeps its notes: they may have been edited by hand.
         run: |
           version="${TAG#turnery-v}"
-          gh release view "$TAG" >/dev/null 2>&1 \
-            || gh release create "$TAG" --draft --verify-tag --title "Turnery $version" \
-                 --notes "Turnery $version. Download the dmg for your Mac (arm64 = Apple silicon, x64 = Intel). Installed copies update themselves once this release is published."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already has a release: its notes stay as they are"
+          else
+            {
+              cat "$RUNNER_TEMP/notes.md"
+              printf '\n---\n\n%s\n' "Turnery $version. Download the dmg for your Mac (arm64 = Apple silicon, x64 = Intel). Installed copies update themselves once this release is published."
+            } > "$RUNNER_TEMP/body.md"
+            gh release create "$TAG" --draft --verify-tag --title "Turnery $version" --notes-file "$RUNNER_TEMP/body.md"
+          fi
           gh release upload "$TAG" release/upload/* --clobber

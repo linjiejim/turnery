@@ -10,7 +10,11 @@
 // only the dmg and zip are made. The manifest is checked against the public key built into the
 // app before it's written, so a wrong key fails here and not on every installed copy.
 //
-//   node scripts/release.mjs [--key ~/.arbor-release/update-key.pem] [--base-url <url>]
+// --notes <file>: this version's release notes (scripts/release-notes.mjs notes, as in CI), put in the
+// manifest's `notes`. The signatures don't cover them (manifest.ts `statement`), so they change nothing
+// an installed copy checks.
+//
+//   node scripts/release.mjs [--key ~/.arbor-release/update-key.pem] [--base-url <url>] [--notes notes.md]
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs"
@@ -30,6 +34,8 @@ const arg = (name) => {
 const keyFile = arg("--key")
 const key = process.env.TURNERY_UPDATE_KEY || (keyFile ? readFileSync(keyFile.replace(/^~(?=\/)/, os.homedir()), "utf8") : null)
 const baseUrl = arg("--base-url") ?? `https://github.com/linjiejim/turnery/releases/download/turnery-v${version}`
+const notesFile = arg("--notes")
+const notes = notesFile ? readFileSync(notesFile, "utf8").trim() : ""
 
 const out = path.join(root, "release/upload")
 rmSync(out, { recursive: true, force: true })
@@ -71,10 +77,10 @@ for (const { arch, dir } of builds) {
 }
 
 if (key) {
-  const manifest = parseManifest({ version, pub_date: new Date().toISOString(), platforms })
+  const manifest = parseManifest({ version, pub_date: new Date().toISOString(), ...(notes ? { notes } : {}), platforms })
   for (const platform of Object.keys(platforms)) assetFor(manifest, platform, UPDATE_PUBLIC_KEY)
   writeFileSync(path.join(out, "turnery-update.json"), `${JSON.stringify(manifest, null, 2)}\n`)
-  console.log(`turnery-update.json: ${version} for ${Object.keys(platforms).join(", ")}, signed and checked against the built-in key`)
+  console.log(`turnery-update.json: ${version} for ${Object.keys(platforms).join(", ")}${notes ? ", with notes" : ""}, signed and checked against the built-in key`)
 } else {
   console.log("no update key: made the dmg and zip only, no turnery-update.json")
 }

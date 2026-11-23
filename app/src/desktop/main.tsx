@@ -1,3 +1,5 @@
+// The kit's own copy in the window's language, before any of it renders.
+import "@/lib/kit-strings"
 import "@fontsource-variable/ibm-plex-sans"
 import "@fontsource/ibm-plex-mono/400.css"
 import "@fontsource/ibm-plex-mono/500.css"
@@ -9,6 +11,7 @@ import { LucideProvider } from "lucide-react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/toast"
 import { DesktopApp } from "./app"
+import { WhatsNew } from "./ui/whats-new"
 import { applyLocale, locale } from "@/lib/i18n"
 import "../index.css"
 
@@ -37,6 +40,7 @@ createRoot(document.getElementById("root")!).render(
         <DesktopApp />
         {/* Below the 48px title bar (its buttons sit top right); sonner resets any side left out to 24px. */}
         <Toaster offset={{ top: 56, right: 16 }} />
+        <WhatsNew />
       </TooltipProvider>
     </LucideProvider>
   </StrictMode>,

@@ -571,6 +571,7 @@ function refreshMenu() {
             submenu: [
               { role: "about" as const },
               { label: tm("检查更新…", "Check for updates…"), click: () => void updater.check(true) },
+              { label: tm("查看更新内容…", "What’s new…"), click: () => send("whats-new") },
               {
                 label: tm("自动检查更新", "Check for updates automatically"),
                 type: "checkbox" as const,

@@ -2,6 +2,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
 import type { TurneryBridge, EngineEvent, LookRequest, MenuAction, Notice, UpdateStatus } from "../../../app/src/desktop/core/protocol"
 
+declare const __TURNERY_VERSION__: string
+
 function listen<T extends unknown[]>(channel: string, cb: (...args: T) => void) {
   const fn = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as T))
   ipcRenderer.on(channel, fn)
@@ -59,6 +61,8 @@ const bridge: TurneryBridge = {
   onNotice: (cb) => listen<[Notice]>("turnery:notice", cb),
   restartToUpdate: () => ipcRenderer.invoke("turnery:restart-to-update"),
   platform: process.platform,
+  // package.json's, built in (scripts/build.mjs): the same as app.getVersion(), which the preload can't call.
+  version: __TURNERY_VERSION__,
 }
 
 contextBridge.exposeInMainWorld("turnery", bridge)

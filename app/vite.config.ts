@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -18,8 +19,32 @@ const desktopPage: Plugin = {
   },
 }
 
+/** The commit this build is made from: deploy.yml's, else the checkout's. */
+function commit() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+  } catch {
+    return "unknown"
+  }
+}
+const COMMIT = commit()
+
+/**
+ * /version.json names the live build. A tab open on an older one compares it with the commit in its bundle
+ * and offers a reload (components/new-version-prompt.tsx). Caddy serves it with `no-cache` (docs/deploy.md).
+ */
+const versionFile: Plugin = {
+  name: "turnery-version-file",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({ type: "asset", fileName: "version.json", source: `${JSON.stringify({ commit: COMMIT })}\n` })
+  },
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), desktopPage],
+  plugins: [react(), tailwindcss(), desktopPage, versionFile],
+  define: { __TURNERY_COMMIT__: JSON.stringify(COMMIT) },
   // Kernel tests (OpenCascade in wasm) run side by side: a busy machine can take seconds per build.
   test: { testTimeout: 30_000 },
   resolve: {
