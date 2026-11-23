@@ -55,6 +55,23 @@ CI runs the same steps; all of them have to pass.
 - The design guards (`app/src/tests/design`) stop raw colour values, font sizes under 12px and hand-rolled popovers.
 - The i18n guard stops a `t()` pair whose English half still has Chinese in it.
 
+### Screenshots and recordings
+
+Anything visual gets before/after screenshots in the pull request. If you can push to this repository:
+
+```bash
+node .github/scripts/pr-assets.mjs 12 before.png after.png demo.mp4   # 12 is the PR number; draft before the PR exists
+```
+
+The script commits the files to `refs/pr-assets/pr-12` in this repository and prints markdown to paste into the PR description: portrait images 240 wide, three to a row, landscape ones 460 wide, two to a row, file names as captions. The links are pinned to a commit SHA, so later uploads don't break them.
+
+- The ref isn't under `refs/heads`, so `git clone` and `git fetch` don't download it and the repository doesn't grow (`git clone --mirror` does fetch it). Your working tree and index are left alone. It needs only Node and git, no `npm ci`.
+- png, jpg, webp, gif, mp4 and mov, up to 50 MB each. Videos become an embedded GIF through ffmpeg (`brew install ffmpeg`) plus a link to the original; without ffmpeg there is only the link.
+- **Uploads are public forever.** Anyone with the link can open them, old refs aren't cleaned up, and deleting one doesn't guarantee the file stops loading. Nothing from real users, no keys, tokens or local paths in what you upload.
+- It needs push access to this repository. From a fork, drag the images into the pull request's text box on GitHub as usual.
+- Claude cloud sessions can only push `refs/heads/*`. When the push is refused, the script pushes a temporary branch `pr-assets-inbox/<PR number>-<random>` instead, and the [PR assets inbox](.github/workflows/pr-assets-inbox.yml) workflow moves the files to `refs/pr-assets/pr-<PR number>` and deletes the branch. CI ignores these branches. The printed links work as soon as the push is done, and after the move.
+- To list what a PR has uploaded: `git fetch origin refs/pr-assets/pr-12 && git ls-tree -r --name-only FETCH_HEAD`.
+
 ## Two languages
 
 The interface exists in Chinese and English: the website's English pages are under `/en/…`, and the desktop window follows the system language or the language menu in its title bar. How it works and what is and isn't translated: [`docs/i18n.md`](docs/i18n.md). The rules you'll meet most:

@@ -7,7 +7,9 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches-ignore: [main]
+    # pr-assets-inbox/* only carries PR screenshots: its tip has main's tree, and pr-assets-inbox.yml moves
+    # the screenshots to refs/pr-assets and deletes the branch (.github/scripts/pr-assets.mjs).
+    branches-ignore: [main, "pr-assets-inbox/**"]
 
 concurrency:
   group: ci-${{ github.ref }}

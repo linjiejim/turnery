@@ -211,6 +211,8 @@ npm run build && npm start     # the desktop app from source
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for checks, end-to-end tests, writing lessons, baking teardown models and the two languages, and [`README.zh-CN.md`](README.zh-CN.md) for the layout of the repository.
 
+Screenshots and recordings for a pull request: `node .github/scripts/pr-assets.mjs <PR number> before.png after.png` stores them on `refs/pr-assets/pr-<N>`, which `git clone` doesn't download, and prints the markdown for the description. Uploads are public forever, so nothing from real users, no keys or local paths. From a fork, drag the images into GitHub's editor instead. More in [`CONTRIBUTING.md`](CONTRIBUTING.md#screenshots-and-recordings).
+
 ## Community
 
 - Questions, bugs and ideas: [issues](https://github.com/linjiejim/turnery/issues). Corrections to course content need a source; the template asks for it.
