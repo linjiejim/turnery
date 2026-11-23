@@ -4,7 +4,7 @@
 
 ## How it was checked · 怎么验证的
 
-<!-- Which pages or steps you looked at; before/after screenshots for anything visual. · 在哪些页面、哪几步看过；有视觉改动请附前后截图。 -->
+<!-- Which pages or steps you looked at; before/after screenshots for anything visual. `node .github/scripts/pr-assets.mjs <PR number> before.png after.png` prints the markdown to paste here (CONTRIBUTING.md, "Screenshots and recordings"); uploads are public, so no user data or keys. From a fork, drag the images in. · 在哪些页面、哪几步看过；有视觉改动请附前后截图。`node .github/scripts/pr-assets.mjs <PR号> before.png after.png` 打印能贴在这里的 markdown（CONTRIBUTING.zh-CN.md「PR 里的截图和录屏」）；传上去就公开，别放用户数据和密钥。从 fork 提的 PR 直接把图拖进来。 -->
 
 ## Checklist · 检查
 

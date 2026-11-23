@@ -258,7 +258,15 @@ npm run e2e        # 冒烟测试：构建后在 http://127.0.0.1:4391 起 vite 
 - 第一次跑先装浏览器：`npx playwright install chromium`。本机下载慢时加 `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright`；还是装不上，用本机的 Google Chrome：`E2E_CHANNEL=chrome npm run e2e`。
 - 只跑一部分：`npx playwright test -g revolve`；看着跑：`npm run e2e:ui`。端口被占用时设 `E2E_PORT`。
 - WebGL 用 SwiftShader 软件渲染，不需要显卡。
-- CI（`.github/workflows/ci.yml`）在每个 PR 和非 main 分支的推送上跑 check、build 和 e2e；部署（`deploy.yml`）也先跑 e2e，不通过不发布。失败时报告作为 `playwright-report` 制品上传。
+- CI（`.github/workflows/ci.yml`）在每个 PR 和非 main 分支的推送上跑 check、build 和 e2e（只放截图的 `pr-assets-inbox/*` 分支除外，见下）；部署（`deploy.yml`）也先跑 e2e，不通过不发布。失败时报告作为 `playwright-report` 制品上传。
+
+PR 里的截图和录屏：
+
+```bash
+node .github/scripts/pr-assets.mjs 12 before.png after.png   # 12 是 PR 号；还没开 PR 就写 draft
+```
+
+文件提交到本仓库的 `refs/pr-assets/pr-12`，`git clone` 不拉，仓库不会变大；脚本打印一段 markdown，贴进 PR 描述。**传上去就永久公开**，截图里不能有真实用户的数据、密钥、token、本机路径。从 fork 提 PR 推不了，照旧把图拖进 GitHub 网页的输入框。视频转 GIF、Claude 云端会话的兜底分支见 [`CONTRIBUTING.zh-CN.md`](CONTRIBUTING.zh-CN.md#pr-里的截图和录屏)。
 
 改了 `models/` 才需要 Python：
 
