@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client"
 import { LucideProvider } from "lucide-react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/toast"
+import { NewVersionPrompt } from "@/components/new-version-prompt"
 import { App } from "./App"
 import { takeMovedFromAddress } from "./lib/moved"
 import { applyLocale } from "./lib/i18n"
@@ -26,6 +27,7 @@ if (!applyLocale()) {
           <App />
           {/* Below the 48 px top bar every page has (as the desktop's below its title bar): its actions stay clickable. */}
           <Toaster offset={{ top: 56, right: 16 }} />
+          <NewVersionPrompt />
         </TooltipProvider>
       </LucideProvider>
     </StrictMode>,

@@ -95,6 +95,8 @@ turnery.linjiejim.com {
 }
 ```
 
+`/version.json` 是构建时写下的提交号（`app/vite.config.ts`），落在「不是 assets / models」那一类，也是 `no-cache`。开着旧页面的标签页回到前台时（以及每 10 分钟）读它，和自己打包时的提交号不一样就提示「新版本已发布，刷新后生效 · 刷新页面」（`src/components/new-version-prompt.tsx`），不会自己刷新。改 Caddy 时别让它被缓存。
+
 ### 旧域名 arbor.linjiejim.com 和 featuretree.linjiejim.com
 
 项目改过两次名：2026-11-08 从 FeatureTree 改成 Arbor，2026-11-10 改成 Turnery。站点现在在 `turnery.linjiejim.com`，静态站在 `/srv/turnery`。当时还有工作台 API（`/root/turnery/api`，进程 `turnery-api`，端口 18914），2026-11-22 去掉了。
