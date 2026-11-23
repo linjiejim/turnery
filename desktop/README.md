@@ -40,6 +40,7 @@ Download `Turnery-<version>-arm64.dmg` from [GitHub Releases](https://github.com
 Once installed, Turnery updates itself: it checks 15 seconds after launch and then every 6 hours. It reads `turnery-update.json` from the latest release, downloads the zip for this machine in the background, verifies its size, SHA-256 and signature (the public key is built into the app, `desktop/src/update/public-key.ts`), and unpacks it into a hidden folder `.turnery-update/` next to the app. When the download is ready, the title bar shows “Restart to update to x.y.z” (重启以更新到 x.y.z). You don't have to click it: the new version goes in the next time you quit Turnery.
 
 - Menu Turnery → “Check for updates…” (检查更新…): checks now and tells you the result (up to date, downloading, or why it failed).
+- The first launch after an update says “Updated to x.y.z · See what’s new” (已更新到 x.y.z · 查看更新内容) for a few seconds; “See what’s new” lists what changed in every version since the one you had. Menu Turnery → “What’s new…” (查看更新内容…) shows all of it. The notes are built into the app (`desktop/CHANGELOG.md`, in the window's language); a first install says nothing.
 - Menu Turnery → “Check for updates automatically” (自动检查更新): untick it to stop the automatic checks. The setting is stored in `~/.turnery/settings.json`.
 - Only a Turnery.app in a writable location can update itself: not when it runs straight from the dmg, and not when macOS runs it in isolation (App Translocation). Checking for updates tells you why.
 - Downloads go through Chromium's network stack and follow the system proxy.
@@ -47,9 +48,20 @@ Once installed, Turnery updates itself: it checks 15 seconds after launch and th
 
 ### Releasing
 
-1. Change `version` in `desktop/package.json` (and the version at the top of `package-lock.json`), and merge into main.
-2. Push the tag `turnery-v<version>`. The workflow `.github/workflows/turnery-release.yml` checks that the tag matches the version, then builds the arm64 and x64 packages on macOS, signs and packages them, creates a draft release and uploads the dmgs, the zips and `turnery-update.json`.
-3. Check the draft, then publish it and mark it latest: `gh release edit turnery-v<version> --draft=false --latest`. Installed apps read only the latest published release, so the update goes out at this step. The latest release of this repository is reserved for Turnery.
+What changed is written once, in [`CHANGELOG.md`](CHANGELOG.md) and its Chinese twin [`CHANGELOG.zh-CN.md`](CHANGELOG.zh-CN.md): one section per version, the groups Heads-up / New / Improved / Fixed (注意 / 新增 / 改进 / 修复), the rules in jim-uiux's `references/patterns/updates.md`. The release page, the `notes` in `turnery-update.json` and the app's “What’s new” all come from there.
+
+1. Draft the next section from the commits since the last tag (`feat`, `fix`, `perf` and breaking changes go in; the version is worked out from them, or give `--version x.y.z`):
+   ```bash
+   cd desktop
+   node scripts/release-notes.mjs draft --write --tag-prefix turnery-v
+   node scripts/release-notes.mjs draft --write --tag-prefix turnery-v --file CHANGELOG.zh-CN.md
+   ```
+2. Edit both drafts into plain words for the people using the app: one thing per line, in the right group, nothing they wouldn't notice; no commit or PR numbers, module names or refactors. Changes only the website sees start with “Website:” (网站：) or go. The two files keep the same versions, groups and number of items (`app/src/tests/unit/release-notes.test.ts`).
+3. Change `version` in `desktop/package.json` (and the version at the top of `package-lock.json`) to the one drafted, commit it with the notes as `chore(turnery): <version>`, and merge into main. CI fails when the version in `package.json` has no section in either file.
+4. Push the tag `turnery-v<version>`. The workflow `.github/workflows/turnery-release.yml` checks that the tag matches the version, then builds the arm64 and x64 packages on macOS, signs and packages them, creates a draft release and uploads the dmgs, the zips and `turnery-update.json`. The draft's notes are the version's section, English then Chinese, then the download line; `turnery-update.json` carries the same notes (the signatures don't cover them). A version without a section is drafted from the commits, with a warning on the run: fix it before publishing. A release that already exists keeps its notes.
+5. Check the draft, then publish it and mark it latest: `gh release edit turnery-v<version> --draft=false --latest`. Installed apps read only the latest published release, so the update goes out at this step. The latest release of this repository is reserved for Turnery.
+
+Correct the notes in the changelog before tagging, not in the draft: the app shows what it was built with. A published section doesn't change afterwards; say what was wrong in the next version's notes.
 
 The repository was called `featuretree` (until 2026-11-08) and then `arbor` (until 2026-11-10), and the app was once called Arbor. The rename changed the bundle id (`com.linjiejim.arbor` → `com.linjiejim.turnery`), so Arbor 0.5.x and earlier do not update to Turnery on their own: download it once by hand. Don't create a repository named `featuretree` or `arbor` again, or GitHub's redirects from the old addresses break. Old files still work: `*.arbor.json` and `*.arbor-asm.json` still open and save, and new files are `*.turnery.json`. On Turnery's first launch, `~/.arbor` is renamed to `~/.turnery` as a whole (left alone while the old Arbor is still running).
 

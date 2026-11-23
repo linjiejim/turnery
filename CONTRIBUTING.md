@@ -112,6 +112,7 @@ docs: add the license and third-party notices
 - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`.
 - Scopes: `app` (website, workbench, window), `desktop` (Electron, MCP, CLI), `turnery` (the app as a whole, releases), `content` (lesson text, terms, curriculum), `models` (models and the baker), `ci`.
 - The body says why. For a content correction, the body carries the source.
+- `feat`, `fix` and `perf` subjects are the first draft of the desktop app's release notes ([`desktop/README.md`](desktop/README.md#releasing)), so say what changed for the people using Turnery, not which component you touched.
 
 ## Content corrections need a source
 

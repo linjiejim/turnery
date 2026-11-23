@@ -11,6 +11,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
+  // The window bundles the desktop app's release notes (desktop/CHANGELOG*.md, read by desktop/ui/whats-new.tsx):
+  // outside this folder, so the dev server has to be allowed to read them.
+  server: { fs: { allow: ['.', '../desktop/CHANGELOG.md', '../desktop/CHANGELOG.zh-CN.md'] } },
   // The site's public/ (baked teardown models, favicon) isn't part of the desktop window.
   publicDir: false,
   optimizeDeps: { exclude: ['replicad-opencascadejs'] },

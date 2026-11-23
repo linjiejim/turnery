@@ -50,7 +50,8 @@ jobs:
             app/test-results/
           retention-days: 14
 
-  # Turnery (desktop/): type check, the updater's tests, and a build of the bundles and the window.
+  # Turnery (desktop/): release notes for its version, type check, the updater's tests, and a build of the
+  # bundles and the window.
   desktop:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -63,6 +64,11 @@ jobs:
           cache-dependency-path: |
             app/package-lock.json
             desktop/package-lock.json
+      # A version bump comes with its section in both changelogs (desktop/README.md, "Releasing").
+      - name: Release notes for this version
+        run: |
+          node desktop/scripts/release-notes.mjs check --file desktop/CHANGELOG.md --package desktop/package.json
+          node desktop/scripts/release-notes.mjs check --file desktop/CHANGELOG.zh-CN.md --package desktop/package.json
       - run: npm ci
         working-directory: app
       # The checks don't start Electron: skip downloading it.

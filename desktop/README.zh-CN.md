@@ -40,6 +40,7 @@ npm start          # 打开 Turnery
 装好以后 Turnery 会自己更新：启动 15 秒后检查一次，之后每 6 小时检查一次。它读取最新 release 里的 `turnery-update.json`，在后台下载这台机器对应的 zip，校验大小、SHA-256 和签名（公钥内置在 App 里，`desktop/src/update/public-key.ts`），解压到 App 旁边的隐藏文件夹 `.turnery-update/`。下载好以后，标题栏出现「重启以更新到 x.y.z」；不点也没关系，下次退出 Turnery 时会换上新版本。
 
 - 菜单 Turnery → 检查更新…：立即检查，结果会提示出来（已是最新、正在下载、失败原因）。
+- 更新后第一次打开，右上角会说几秒「已更新到 x.y.z · 查看更新内容」；点「查看更新内容」列出从你原来那一版之后每一版改了什么。菜单 Turnery → 查看更新内容… 列出全部。更新内容打包在 App 里（`desktop/CHANGELOG.zh-CN.md`，跟随窗口的语言）；第一次安装不提示。
 - 菜单 Turnery → 自动检查更新：取消勾选后就不再自动检查，设置存在 `~/.turnery/settings.json`。
 - 只有放在可写位置的 Turnery.app 能自动更新：直接从 dmg 里运行不行，被 macOS 隔离运行（App Translocation）时也不行，检查更新会说明原因。
 - 下载走 Chromium 的网络栈，跟随系统代理。
@@ -47,9 +48,20 @@ npm start          # 打开 Turnery
 
 ### 发布
 
-1. 改 `desktop/package.json` 的 `version`（同时改 `package-lock.json` 顶部的版本），合并进 main。
-2. 推送 `turnery-v<版本>` tag。工作流 `.github/workflows/turnery-release.yml` 会核对 tag 和版本号是否一致，然后在 macOS 上构建 arm64 和 x64 两个包，签名并打包，建一个草稿 release，上传 dmg、zip 和 `turnery-update.json`。
-3. 检查草稿，然后发布，并设为 latest：`gh release edit turnery-v<版本> --draft=false --latest`。已安装的 App 只读最新一个已发布的 release，发布这一步才算推送了更新。这个仓库的 latest release 只留给 Turnery 用。
+改了什么只写一份：[`CHANGELOG.zh-CN.md`](CHANGELOG.zh-CN.md) 和英文的 [`CHANGELOG.md`](CHANGELOG.md)，每一版一节，分「注意 / 新增 / 改进 / 修复」（Heads-up / New / Improved / Fixed）四组，写法见 jim-uiux 的 `references/patterns/updates.md`。Release 页面的说明、`turnery-update.json` 里的 `notes`、App 里的「更新内容」都从这里来。
+
+1. 从上一个 tag 以来的提交起草下一节（`feat`、`fix`、`perf` 和破坏性改动会进来；版本号按改动推算，也可以用 `--version x.y.z` 指定）：
+   ```bash
+   cd desktop
+   node scripts/release-notes.mjs draft --write --tag-prefix turnery-v
+   node scripts/release-notes.mjs draft --write --tag-prefix turnery-v --file CHANGELOG.zh-CN.md
+   ```
+2. 把两份草稿改成用的人看得懂的话：一条说一件事，放进对的组，删掉用的人感觉不到的；不写提交号、PR 号、模块名、重构。只有网站才有的改动用「网站：」（Website:）开头，或者删掉。两份文件的版本、分组、条数一一对应（`app/src/tests/unit/release-notes.test.ts`）。
+3. 把 `desktop/package.json` 的 `version`（同时改 `package-lock.json` 顶部的版本）改成草稿的版本号，和更新内容一起提交为 `chore(turnery): <版本>`，合并进 main。`package.json` 的版本号在任一份文件里没有对应的一节，CI 就会失败。
+4. 推送 `turnery-v<版本>` tag。工作流 `.github/workflows/turnery-release.yml` 会核对 tag 和版本号是否一致，然后在 macOS 上构建 arm64 和 x64 两个包，签名并打包，建一个草稿 release，上传 dmg、zip 和 `turnery-update.json`。草稿的说明是这一版的那一节，先英文、后中文，最后是下载说明；`turnery-update.json` 带同样的 `notes`（签名不覆盖它）。这一版没有对应的一节时，从提交起草，运行记录里留一条警告：发布前改好。已经存在的 release 不覆盖它的说明。
+5. 检查草稿，然后发布，并设为 latest：`gh release edit turnery-v<版本> --draft=false --latest`。已安装的 App 只读最新一个已发布的 release，发布这一步才算推送了更新。这个仓库的 latest release 只留给 Turnery 用。
+
+更新内容要在打 tag 之前改在 CHANGELOG 里，不要只改草稿：App 里显示的是打包时的那一份。已经发布的那一节不再改，写错了就在下一版里说。
 
 仓库先后叫过 `featuretree`（到 2026-11-08）和 `arbor`（到 2026-11-10），App 也叫过 Arbor。改名时更新包的 bundle id 变了（`com.linjiejim.arbor` → `com.linjiejim.turnery`），所以 Arbor 0.5.x 及更早的 App 不会自动更新到 Turnery：要手动下载一次。以后不要再建名叫 `featuretree` 或 `arbor` 的仓库，否则 GitHub 对旧地址的转发会断。旧文件照常能用：`*.arbor.json`、`*.arbor-asm.json` 仍然能打开和保存，新建的文件用 `*.turnery.json`；第一次启动 Turnery 时，`~/.arbor` 会整个改名为 `~/.turnery`（旧的 Arbor 还在运行时不动）。
 

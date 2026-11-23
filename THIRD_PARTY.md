@@ -84,7 +84,7 @@ Turnery 的窗口和网站共用上面「随网站发布」的前端组件（Rea
 
 ### jim-uiux 组件
 
-`app/src/components/ui/` 下的组件、`app/src/lib/utils.ts`、`app/src/lib/strings.ts` 和设计令牌，来自作者自己的设计系统 [jim-uiux](https://design.linjiejim.com)（通过 shadcn 注册表安装）。
+`app/src/components/ui/` 下的组件、`app/src/lib/utils.ts`、`app/src/lib/strings.ts`、`app/src/lib/changelog.ts`、`desktop/scripts/release-notes.mjs` 和设计令牌，来自作者自己的设计系统 [jim-uiux](https://design.linjiejim.com)（通过 shadcn 注册表安装）。
 
 - 除 import 路径外和上游一致。
 - 它们基于 [shadcn/ui](https://github.com/shadcn-ui/ui)（MIT），用到的 Radix、cva 等见上表。

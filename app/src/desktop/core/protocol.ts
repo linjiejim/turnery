@@ -260,6 +260,8 @@ export interface TurneryBridge {
   /** Quit, put the downloaded version in place, start again. */
   restartToUpdate(): Promise<void>
   platform: string
+  /** The app's version (desktop/package.json). Only the desktop app has one: the website's workbench leaves it out. */
+  version?: string
 }
 
 /**
@@ -273,7 +275,7 @@ export type UpdateStatus =
 
 export type Notice = { tone: "info" | "success" | "error"; text: string }
 
-export type MenuAction = "undo" | "redo" | "agent-setup" | "focus" | "toggle-left" | "toggle-right" | "back" | "forward"
+export type MenuAction = "undo" | "redo" | "agent-setup" | "whats-new" | "focus" | "toggle-left" | "toggle-right" | "back" | "forward"
 
 export type ExportFormat = "step" | "stl" | "3mf" | "py" | "json"
 /** Pictures `export` makes as well: the model as seen, or a line drawing. */
