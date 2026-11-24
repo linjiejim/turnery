@@ -126,7 +126,8 @@ export type ProjectFile = {
 /** The folder the open files belong to (see core/project.ts). */
 export type ProjectSummary = { root: string; name: string; files: ProjectFile[]; truncated: boolean }
 
-export type LoadState = { path: string; name: string; startedAt: number; progress?: BuildProgress | null }
+/** `cancellable`: opening a part (not applying an edit), on a host that can stop it: the window offers to cancel. */
+export type LoadState = { path: string; name: string; startedAt: number; progress?: BuildProgress | null; cancellable?: boolean }
 export type Snapshot = { parts: PartSummary[]; active: string | null; kernel: KernelPhase; agent: AgentActivity; project: ProjectSummary | null; loading?: LoadState | null }
 
 /** The agent asks the person to click a face or an edge. */
@@ -174,7 +175,8 @@ export type EngineEvent =
   | { type: "pick"; request: PickRequest | null }
   | { type: "show"; request: ShowRequest }
 
-export type CommandResult = { ok: boolean; text: string; images?: string[] }
+/** `cancelled`: the person stopped it (cancelled loading the part, or opened another): nothing to report. */
+export type CommandResult = { ok: boolean; text: string; images?: string[]; cancelled?: boolean }
 
 /** Context of a command: who runs it and on which part. */
 export type CallContext = { actor: Actor; part?: string; session?: string; cwd?: string }
@@ -208,6 +210,8 @@ export interface TurneryBridge {
   subscribe(cb: (e: EngineEvent) => void): () => void
   call(command: string, input: Record<string, unknown>, part?: string): Promise<CommandResult>
   kernel(path: string, call: KernelCall): Promise<unknown>
+  /** Stop opening the part that is loading (true: there was one to stop). */
+  cancelLoad(): Promise<boolean>
   /** The engine asks the window to render views for `look`. */
   onLook(render: (req: LookRequest) => Promise<string[]>): () => void
   /** Keep a picture or line drawing of the view: asks where (next to the open file), shows it in Finder. The path, or null when cancelled. */

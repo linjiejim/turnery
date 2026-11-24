@@ -430,7 +430,7 @@ export function DesktopApp() {
           )}
           {/* Loading and recomputing sit at the top with the agent's banners, out of the model's way. */}
           <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex flex-col items-center gap-2 pr-80 pl-16">
-            {loading && <ModelLoading load={loading} visible={Boolean(doc?.path === loading.path && studio.display?.mesh)} />}
+            {loading && <ModelLoading load={loading} visible={Boolean(doc?.path === loading.path && studio.display?.mesh)} onCancel={loading.cancellable ? () => void turnery.cancelLoad() : undefined} />}
             {doc && (
               <>
                 {pick && <PickBanner request={pick} elsewhere={pick.path !== path} />}
@@ -590,7 +590,7 @@ function useHistory(doc: DocState | null) {
     void turnery.call("open_part", v.context ? { path: v.path, context: v.context } : { path: v.path }).then((r) => {
       if (r.ok) return
       setTravel(null)
-      notify.error(r.text.replace(/^✗ /, ""))
+      if (!r.cancelled) notify.error(r.text.replace(/^✗ /, ""))
     })
   }
   return {
@@ -659,5 +659,5 @@ async function openPart(doc: DocState, file: string, inPlace: boolean) {
   const t = openTarget(doc, file)
   if (t.reason) return notify(t.reason)
   const r = await turnery.call("open_part", inPlace && !t.nested ? { path: t.path, context: doc.path } : { path: t.path })
-  if (!r.ok) notify.error(r.text.replace(/^✗ /, ""))
+  if (!r.ok && !r.cancelled) notify.error(r.text.replace(/^✗ /, ""))
 }

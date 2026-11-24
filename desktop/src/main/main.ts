@@ -390,7 +390,7 @@ async function openForUser(from: Workspace | null, file: string, create = false)
     (from && (from.engine.empty || !from.engine.projectRoot || inside(from.engine.projectRoot, canonical(path.dirname(p)))) ? from : (emptyWorkspace() ?? newWorkspace()))
   present(ws)
   const res = await ws.engine.openForUser(p, create)
-  if (!res.ok) void dialog.showMessageBox({ type: "warning", message: tm("打不开这个零件", "Can’t open this part"), detail: res.text.replace(/^✗ /, "") })
+  if (!res.ok && !res.cancelled) void dialog.showMessageBox({ type: "warning", message: tm("打不开这个零件", "Can’t open this part"), detail: res.text.replace(/^✗ /, "") })
   refreshMenu()
   return res.ok
 }
@@ -697,6 +697,7 @@ function wireIpc() {
   })
   ipcMain.handle("turnery:call", (e, command: string, input: Record<string, unknown>, part?: string) => wsOf(e).engine.run(command, input, userCtx(part)))
   ipcMain.handle("turnery:kernel", (e, p: string, call: KernelCall) => wsOf(e).engine.kernelCall(p, call))
+  ipcMain.handle("turnery:cancel-load", (e) => wsOf(e).engine.cancelLoading())
   ipcMain.handle("turnery:answer-pick", (e, id: string, answer: { info: PickInfo; text?: string } | null) => wsOf(e).engine.answerPick(id, answer))
   ipcMain.handle("turnery:open-part", (e) => openPartDialog(wsOf(e)))
   ipcMain.handle("turnery:new-part", (e) => newPartDialog(wsOf(e)))
@@ -760,9 +761,11 @@ if (!app.requestSingleInstanceLock()) {
     writeAppInfo({ exec: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] })
     engineReady = true
     createWindow(first, fromAgent ? "inactive" : "focus")
-    for (const f of pendingOpen.splice(0)) await openForUser(first, f)
-    // The person starts Turnery: back where they were. An agent's start leaves the window empty for the agent.
-    if (!fromAgent && first.engine.empty) {
+    const asked = pendingOpen.splice(0)
+    for (const f of asked) await openForUser(first, f)
+    // The person starts Turnery: back where they were. An agent's start leaves the window empty for the agent,
+    // and so does a file the person asked for and then stopped loading.
+    if (!fromAgent && !asked.length && first.engine.empty) {
       const last = recentProjects()[0]?.root
       const part = readRecent().find((p) => existsSync(p))
       if (last) await first.engine.run("open_project", { path: last }, userCtx())

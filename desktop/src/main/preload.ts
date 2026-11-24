@@ -15,6 +15,7 @@ const bridge: TurneryBridge = {
   subscribe: (cb) => listen<[EngineEvent]>("turnery:event", cb),
   call: (command, input, part) => ipcRenderer.invoke("turnery:call", command, input, part),
   kernel: (path, call) => ipcRenderer.invoke("turnery:kernel", path, call),
+  cancelLoad: () => ipcRenderer.invoke("turnery:cancel-load"),
   onLook: (render) => {
     const off = listen<[number, LookRequest]>("turnery:look", async (id, req) => {
       try {

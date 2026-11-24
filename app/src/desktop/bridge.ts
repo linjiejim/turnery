@@ -19,6 +19,7 @@ const unavailable: TurneryBridge = {
   subscribe: () => () => {},
   call: missing,
   kernel: missing,
+  cancelLoad: missing,
   onLook: () => () => {},
   saveFigure: missing,
   answerPick: missing,

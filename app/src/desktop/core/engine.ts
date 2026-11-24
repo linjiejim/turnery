@@ -11,7 +11,7 @@ import { drawnBox, fitCamera, lineFigure, type FigureLabels } from "../../studio
 import type { PartsView } from "../../studio/scene"
 import { EMPTY_TREE, Feature, Tree, componentName, displayName } from "../../studio/dsl"
 import { designation } from "../../studio/fasteners"
-import type { BuildReport, BuildProgress, ComponentSource, ContextSource, DisplayData } from "../../studio/kernel/build"
+import { BuildStopped, type BuildReport, type BuildProgress, type ComponentSource, type ContextSource, type DisplayData } from "../../studio/kernel/build"
 import { num as evalNum } from "../../studio/expr"
 import {
   FOCUS_PADDING,
@@ -119,6 +119,11 @@ export interface KernelHost {
    * that kernel starts empty, so files and the tree must be handed over again.
    */
   use?(slot: string): Promise<boolean>
+  /**
+   * Stop the rebuild under way: the call building rejects with BuildStopped. `reset`: the host had to start
+   * its kernel afresh, so it holds no part now.
+   */
+  cancel?(): Promise<"idle" | "stopped" | "reset">
 }
 
 export interface Files {
@@ -205,6 +210,8 @@ const STUDIO_TOOL_NAMES = new Set([...Object.keys(STUDIO_TOOLS), ...Object.keys(
 const WINDOW_OK = new Set(["undo", "redo"])
 
 const fail = (text: string): CommandResult => ({ ok: false, text: `✗ ${text}` })
+/** The person cancelled loading the part this needed (or opened another): not an error of the command. */
+const cancelled = (): CommandResult => ({ ...fail(ta("用户取消了加载。", "The user cancelled loading.")), cancelled: true })
 const clip = (s: string, n = 30) => (s.length > n ? `${s.slice(0, n)}…` : s)
 /** A count in English: "1 note", "2 notes". */
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -218,7 +225,8 @@ const kindWord = (path: string) => (isAssembly(path) ? ta("装配", "assembly") 
 const issuesText = (issues: { path: PropertyKey[]; message: string }[]) => issues.map((i) => `${i.path.join(".") || ta("（根）", "(root)")} ${i.message}`).join(ta("；", "; "))
 const shadowWarning = (names: string[]) => ta(`⚠ 参数 ${names.join("、")} 在共享参数文件里也有，以共享的为准`, `⚠ Parameters ${names.join(", ")} are also in the shared parameter file: the shared values win`)
 /** doc.error after a build threw (cleared by the next build that works), in either language. */
-const LOAD_FAILED = ["加载失败：", "Failed to load: "]
+const CANCELLED = ["已取消加载", "Loading was cancelled"]
+const LOAD_FAILED = ["加载失败：", "Failed to load: ", ...CANCELLED]
 
 export function partName(path: string) {
   const base = path.split(/[\\/]/).pop() ?? path
@@ -291,8 +299,13 @@ const BY = (a: Actor) =>
 /** Who did it, in a sentence (the Chinese runs straight into what they did: 「另一个 agent 删除备注 n2」). */
 const WHO = (a: Actor) => ({ user: ta("用户", "the user"), file: ta("文件", "the file"), agent: ta("另一个 agent ", "another agent"), assistant: ta("内置助手", "the built-in assistant") })[a]
 
+/** A part being opened: who opened it (the window's own loads give way when it opens another). */
+type Loading = Omit<LoadState, "progress"> & { by?: Actor }
+
 export class Engine {
-  private loading: LoadState | null = null
+  private loading: Loading | null = null
+  /** The load the person cancelled: its steps stop as soon as they see it. */
+  private stopping: Loading | null = null
   private docs = new Map<string, Doc>()
   private active: string | null = null
   private sessions = new Map<string, string>()
@@ -365,8 +378,12 @@ export class Engine {
     this.emitDoc(doc)
   }
 
-  /** Stable geometry arrives before exact checks finish in the kernel worker. */
-  kernelPreview(display: DisplayData) {
+  /**
+   * Stable geometry arrives before exact checks finish in the kernel worker. `path`: the part it is of
+   * (a preview of a load that was cancelled is never put on the part opened next).
+   */
+  kernelPreview(display: DisplayData, path?: string) {
+    if (path !== undefined && path !== this.loading?.path) return
     const doc = this.docs.get(this.loading?.path ?? "")
     if (!doc) return
     doc.preview = display
@@ -381,10 +398,13 @@ export class Engine {
       name: d.name,
       features: d.tree.features.length,
       openNotes: d.notes.notes.filter((n) => n.status === "open").length,
-      error: d.error,
+      // A cancelled load isn't something wrong with the file.
+      error: CANCELLED.some((p) => d.error?.startsWith(p)) ? undefined : d.error,
       kind: isAssembly(d.path) ? ("assembly" as const) : ("part" as const),
     }))
-    return { parts, active: this.active, kernel: this.opts.kernel.phase, agent: { ...this.agent }, project: this.projectSummary(), loading: this.loading ? { ...this.loading, progress: this.opts.kernel.progress } : null }
+    const l = this.loading
+    const loading: LoadState | null = l ? { path: l.path, name: l.name, startedAt: l.startedAt, progress: this.opts.kernel.progress, cancellable: Boolean(l.cancellable && this.opts.kernel.cancel && this.stopping !== l) } : null
+    return { parts, active: this.active, kernel: this.opts.kernel.phase, agent: { ...this.agent }, project: this.projectSummary(), loading }
   }
 
   private projectSummary(): ProjectSummary | null {
@@ -468,12 +488,40 @@ export class Engine {
     const data = parsed.data as Record<string, unknown>
     if (name === "guide") return { ok: true, text: AGENT_GUIDE }
     try {
+      // The person opens another part while one is still loading: that load stops, so this one needn't wait for it.
+      if (name === "open_part" && ctx.actor === "user" && this.loading?.by === "user" && this.loading.path !== this.partKey(String(data.path ?? ""), ctx.cwd)) void this.cancelLoading()
       // Waits for the person outside the queue (and without "agent busy"): the window answers through kernel calls.
       if (name === "request_pick") return await this.requestPick(data, ctx)
       return await this.track(ctx, name, () => this.exclusive(() => this.runLocked(name, data, ctx)))
     } catch (e) {
+      if (e instanceof BuildStopped) return cancelled()
       return fail(e instanceof InputError ? e.message : ta(`出错了：${(e as Error)?.message ?? e}`, `Error: ${(e as Error)?.message ?? e}`))
     }
+  }
+
+  /**
+   * Stop opening the part that is loading (the person cancelled, or opened another one): its rebuild stops
+   * and the window is free at once. The part stays open, marked as not loaded; opening it again carries on
+   * (the steps built so far are kept). Edits being applied aren't stopped. True: there was a load to stop.
+   */
+  async cancelLoading(): Promise<boolean> {
+    const load = this.loading
+    if (!load?.cancellable || !this.opts.kernel.cancel || this.stopping === load) return false
+    this.stopping = load
+    this.emitSnapshot()
+    const how = await this.opts.kernel.cancel()
+    // A kernel started afresh holds no part: the next one used is handed its files and tree again.
+    if (how === "reset") {
+      this.slot = null
+      this.built.clear()
+      this.assetsKeys.clear()
+    }
+    return true
+  }
+
+  /** The load under way was cancelled: stop before the next long step. */
+  private checkStop() {
+    if (this.stopping && this.stopping === this.loading) throw new BuildStopped()
   }
 
   private async track(ctx: CallContext, name: string, fn: () => Promise<CommandResult>) {
@@ -537,6 +585,7 @@ export class Engine {
       return notice ? { ...res, text: `${notice}\n\n${res.text}` } : res
     } catch (e) {
       if (e instanceof InputError) return fail(e.message)
+      if (e instanceof BuildStopped) return cancelled()
       return fail(ta(`出错了：${(e as Error)?.message ?? e}`, `Error: ${(e as Error)?.message ?? e}`))
     }
   }
@@ -864,7 +913,7 @@ export class Engine {
     const path = this.partKey(input.path, ctx.cwd)
     const previous = this.active
     this.active = path
-    this.loading = { path, name: partName(path), startedAt: Date.now() }
+    this.loading = { path, name: partName(path), startedAt: Date.now(), cancellable: true, by: ctx.actor }
     this.emitSnapshot()
     try {
       const result = await this.finishOpenPart(input, ctx, path)
@@ -883,6 +932,11 @@ export class Engine {
 
   private async finishOpenPart(input: { path: string; create?: boolean; template?: string; context?: string }, ctx: CallContext, path: string): Promise<CommandResult> {
     const existed = this.docs.has(path) || (await this.opts.files.read(path)) !== null
+    // The project's files show while a big part loads: the person can open another one meanwhile.
+    if (existed && !this.project) {
+      await this.joinProject(path)
+      this.emitSnapshot()
+    }
     const doc = await this.load(path, { create: input.create, template: isAssembly(path) ? undefined : input.template })
     // In an assembly (or out of one): the other parts come along as see-through references.
     const context = input.context ? this.partKey(input.context, ctx.cwd) : null
@@ -901,7 +955,7 @@ export class Engine {
       } else doc.context = null
       this.assetsKeys.delete(path)
       await this.ensureKernel(doc, true)
-    }
+    } else if (!doc.report || LOAD_FAILED.some((p) => doc.error?.startsWith(p))) await this.ensureKernel(doc)
     this.active = path
     if (ctx.session) this.sessions.set(ctx.session, path)
     await this.joinProject(path)
@@ -1367,7 +1421,13 @@ export class Engine {
     await this.refreshShared(doc)
     if (text === null) await this.save(doc, "agent")
     doc.unwatch = this.opts.files.watch(path, () => this.onDisk(() => this.fileChanged(doc)))
-    await this.ensureKernel(doc)
+    try {
+      await this.ensureKernel(doc)
+    } catch (e) {
+      // Cancelled before it ever showed: as if it hadn't been opened (opening it again carries on).
+      if (e instanceof BuildStopped) this.closePart(path, false)
+      throw e
+    }
     this.recent = [path, ...this.recent.filter((p) => p !== path)].slice(0, 20)
     this.opts.onRecent?.(this.recent)
     return doc
@@ -1780,17 +1840,22 @@ export class Engine {
     this.slot = doc.path
   }
 
-  /** Make the kernel hold this part's current tree (with its shared parameters). */
-  private async ensureKernel(doc: Doc, force = false) {
+  /**
+   * Make the kernel hold this part's current tree (with its shared parameters). `by`: who asked, when it's
+   * the window (its loads give way when it opens another part).
+   */
+  private async ensureKernel(doc: Doc, force = false, by?: Actor) {
     let sourcesChanged = false
     if (!force && this.slot === doc.path && this.built.get(doc.path) === doc.tree) {
       sourcesChanged = await this.syncAssets(doc, doc.tree)
       if (!sourcesChanged) return doc.report!
     }
-    return this.withLoading(doc, async () => {
+    return this.withLoading(doc, true, by, async () => {
+      this.checkStop()
       await this.select(doc)
       sourcesChanged = (await this.syncAssets(doc, doc.tree)) || sourcesChanged
       if (force || sourcesChanged || this.built.get(doc.path) !== doc.tree) {
+        this.checkStop()
         const tree = doc.tree
         doc.report = await this.opts.kernel.rebuild(this.effective(doc, tree), { background: true })
         this.built.set(doc.path, tree)
@@ -1799,9 +1864,10 @@ export class Engine {
     })
   }
 
-  private async withLoading<T>(doc: Doc, work: () => Promise<T>): Promise<T> {
+  /** `cancellable`: opening the part, which the person may stop (an edit being applied isn't). */
+  private async withLoading<T>(doc: Doc, cancellable: boolean, by: Actor | undefined, work: () => Promise<T>): Promise<T> {
     const previous = this.loading
-    if (!previous || previous.path !== doc.path) this.loading = { path: doc.path, name: doc.name, startedAt: Date.now() }
+    if (!previous || previous.path !== doc.path) this.loading = { path: doc.path, name: doc.name, startedAt: Date.now(), ...(cancellable ? { cancellable } : {}), ...(by ? { by } : {}) }
     this.emitDoc(doc)
     try {
       const result = await work()
@@ -1809,7 +1875,10 @@ export class Engine {
       if (LOAD_FAILED.some((p) => doc.error?.startsWith(p))) doc.error = undefined
       return result
     } catch (e) {
-      doc.error = ta(`加载失败：${(e as Error)?.message ?? e}`, `Failed to load: ${(e as Error)?.message ?? e}`)
+      doc.error =
+        e instanceof BuildStopped
+          ? ta("已取消加载。再打开这个零件会接着加载。", "Loading was cancelled. Open the part again to carry on.")
+          : ta(`加载失败：${(e as Error)?.message ?? e}`, `Failed to load: ${(e as Error)?.message ?? e}`)
       throw e
     } finally {
       doc.preview = undefined
@@ -1854,8 +1923,10 @@ export class Engine {
     const full = await gather(files, doc.path, tree, [], true)
     const context = doc.context ? ((await this.contextOf(doc, true))?.source ?? null) : null
     await this.opts.kernel.preparePreview?.(doc.path, this.effective(doc, tree), full.assets, full.components, context, this.project && inside(this.project.root, doc.path) ? this.project.root : null)
+    this.checkStop()
     await this.opts.kernel.setAssets?.(full.assets)
     await this.opts.kernel.setComponents?.(full.components)
+    this.checkStop()
     await this.opts.kernel.setContext?.(context)
     this.assetsKeys.set(doc.path, key)
     return true
@@ -1943,7 +2014,7 @@ export class Engine {
 
   private port(doc: Doc, background = true): KernelPort {
     return {
-      rebuild: async (t) => this.withLoading(doc, async () => {
+      rebuild: async (t) => this.withLoading(doc, false, undefined, async () => {
         await this.select(doc)
         this.built.delete(doc.path)
         if (t.uses !== doc.shared?.file) doc.shared = t.uses ? await loadShared(this.opts.files, doc.path, t.uses) : null
@@ -1961,7 +2032,9 @@ export class Engine {
     return this.exclusive(async () => {
       const doc = this.docs.get(path)
       if (!doc) throw new Error(ta("这个零件已经关闭了", "This part has been closed"))
-      await this.ensureKernel(doc)
+      // The person cancelled its load: the window doesn't start it again by asking to draw it (opening it does).
+      if (CANCELLED.some((p) => doc.error?.startsWith(p)) && this.built.get(doc.path) !== doc.tree) throw new BuildStopped()
+      await this.ensureKernel(doc, false, "user")
       const k = this.opts.kernel
       switch (call.op) {
         case "display":

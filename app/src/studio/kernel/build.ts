@@ -7,6 +7,7 @@
 import {
   Blueprints,
   cast,
+  deserializeDrawing,
   deserializeShape,
   draw,
   Drawing,
@@ -26,6 +27,7 @@ import {
   CompoundBlueprint,
   type Blueprint,
   type AnyShape,
+  type Face,
   type Shape3D,
 } from "replicad"
 import type { PickInfo } from "../annotations"
@@ -53,7 +55,7 @@ import { applyMate, applyRigid, axisAngle, FREE, IDENTITY, rotation, type Freedo
 import { fastenerShape } from "./fastener-shapes"
 import { designation, type FastenerSpec } from "../fasteners"
 import { packDisplay, restoreDisplay, placeDisplay, assemblyDisplay, type ComponentDisplay } from "./component-display"
-import { classifyFaces, faceSignatures, meshBody, meshEdges, meshShape, type EdgeMesh, type FaceSig, type FaceStatus, type Mesh } from "./mesh"
+import { classifyFaces, faceSignatures, meshBody, meshEdges, meshFaces, meshShape, type EdgeMesh, type FaceSig, type FaceStatus, type Mesh } from "./mesh"
 import {
   axisDir,
   DIRS,
@@ -259,12 +261,110 @@ export type BuildReport = {
   refs?: { id: string; name: string; size: V3 }[]
   /** Exact assembly intersections, reusable only for the identical source/placement content. */
   interferences?: { feature: string; a: string; b: string; volume: number }[]
+  /** Steps brought back from the store (StepStore) rather than built. */
+  kept?: number
   ms: number
 }
 
 /** Actual work completed, not a time estimate. */
 export type BuildProgress = { stage: "prepare" | "build" | "mesh" | "checks"; completed: number; total: number; label?: string }
-export type BuildHooks = { deferChecks?: boolean; progress?: (p: BuildProgress) => void; preview?: (d: DisplayData) => void; interferences?: BuildReport["interferences"] }
+/** `stop`: asked between features; true ends the rebuild with BuildStopped (the steps built so far stay). */
+export type BuildHooks = { deferChecks?: boolean; progress?: (p: BuildProgress) => void; preview?: (d: DisplayData) => void; interferences?: BuildReport["interferences"]; stop?: () => boolean }
+
+/** A rebuild ended early because the host asked it to (another part was opened, or the person cancelled). */
+export class BuildStopped extends Error {
+  constructor() {
+    super(ta("加载已取消", "Loading was cancelled"))
+    this.name = "BuildStopped"
+  }
+}
+
+/**
+ * Where a kernel keeps what its steps built, to bring them back in a later session instead of building
+ * them again (the desktop app keeps it on disk; the site has none). Keyed by everything a step's result
+ * depends on; a value is a StepRecord or a ChecksRecord. Both calls may throw: the kernel builds then.
+ */
+export interface StepStore {
+  get(key: string): unknown
+  put(key: string, value: unknown): void
+}
+
+/** A face or edge of a kept mesh by its place in the body (facesOf / edgesOf order): hashes don't outlive the process. */
+type KeptMesh = { vertices: Float32Array; normals: Float32Array; triangles: Uint32Array; faceGroups: { start: number; count: number; face: number }[] }
+type KeptEdges = { lines: Float32Array; edgeGroups: { start: number; count: number; edge: number }[] }
+
+/** One step as kept in a StepStore: plain data, shapes as B-rep text. */
+export type StepRecord = {
+  kind: "step"
+  result: FeatureResult
+  /** The B-rep of the body this step made; null: it passes the body before it through (a sketch, a suppressed step). */
+  body: string | null
+  origins: string[]
+  status: FaceStatus[]
+  sigs: FaceSig[]
+  /** The body's measurements as far as they were worked out (each takes up to a second on a big body). */
+  bounds?: [V3, V3]
+  mass?: Mass
+  stats?: BodyStats
+  /** The display mesh, kept for the last body only. */
+  mesh?: KeptMesh
+  edges?: KeptEdges
+  sketch?: { drawing: string | null; paths: [number, number][][]; plane: ResolvedPlane; lines: Float32Array }
+  tools?: { brep: string; mode: Tool["mode"] }[]
+  threads?: Thread[]
+  geom?: StepGeom
+  mainName?: string
+}
+
+/** The requirements measured on a kept body; faces and edges by their place in it. */
+type ChecksRecord = { kind: "checks"; results: (Omit<CheckResult, "faces" | "edges"> & { faces: number[]; edges: number[] })[] }
+
+/** A shape kept as text until a step needs it: bringing a part back reads only the bodies it uses. */
+class LazyShape {
+  shape: Shape3D | null = null
+  private text: string
+  private readonly known: Pick<StepRecord, "bounds" | "mass" | "stats">
+  constructor(text: string, known: Pick<StepRecord, "bounds" | "mass" | "stats"> = {}) {
+    this.text = text
+    this.known = { bounds: known.bounds, mass: known.mass, stats: known.stats }
+  }
+  get(): Shape3D {
+    if (!this.shape) {
+      const shape = deserializeShape(this.text) as Shape3D
+      this.text = ""
+      if (this.known.bounds) BOUNDS.set(shape, this.known.bounds)
+      if (this.known.mass) {
+        MASS.set(shape, this.known.mass)
+        VOLUMES.set(shape, this.known.mass.volume)
+      }
+      if (this.known.stats) STATS.set(shape, this.known.stats)
+      this.shape = shape
+    }
+    return this.shape
+  }
+}
+
+/** A property worked out the first time it is read; setting it makes it a plain one. */
+function readOnUse<T extends object, K extends keyof T>(obj: T, key: K, read: () => T[K]) {
+  Object.defineProperty(obj, key, {
+    get: read,
+    set(value: T[K]) {
+      Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true })
+    },
+    enumerable: true,
+    configurable: true,
+  })
+}
+
+/** What a step brought back from a store still holds as text (and the mesh to put on its body once loaded). */
+type Kept = { body?: LazyShape; tools?: { records: NonNullable<StepRecord["tools"]>; loaded: Tool[] | null }; mesh?: KeptMesh; edges?: KeptEdges }
+const KEPT = new WeakMap<Step, Kept>()
+/** Steps built in this kernel and not yet put in its store. */
+const DIRTY = new WeakSet<Step>()
+/** Bumped when what a record holds, or how a step is built, changes in a way the app's build hash misses. */
+const STORE_VERSION = 1
+/** A step that took longer than this to build is kept right away (Kernel.rebuild). */
+const KEEP_AT_ONCE_MS = 1000
 
 export type DisplayData = {
   /** Transport preview; wait for the current interactive kernel before using its face hashes. */
@@ -409,7 +509,12 @@ const BODY_OPS = new Set<FeatureOp>(["extrude", "revolve", "fillet", "chamfer", 
 export class Kernel {
   /** Component preparation needs exact geometry and selectors, not the part editor's diagnostics. */
   private readonly componentOnly: boolean
-  constructor(componentOnly = false) { this.componentOnly = componentOnly }
+  /** Where built steps are kept between sessions (none: every session builds from scratch). */
+  private readonly store: StepStore | null
+  constructor(componentOnly = false, store: StepStore | null = null) {
+    this.componentOnly = componentOnly
+    this.store = componentOnly ? null : store
+  }
 
   private steps: Step[] = []
   private paramsKey = ""
@@ -430,6 +535,8 @@ export class Kernel {
   private componentsGiven = false
   private overlapJobs: { id: string; a: Part; b: Part }[] = []
   private trackOrigins = true
+  /** The requirements as last measured, on which step's body. */
+  private checked: { step: Step; same: string; results: CheckResult[] } | null = null
 
   /** The host hands over what an assembly's `component` features read. Call before `rebuild`. */
   setComponents(list: ComponentSource[]) {
@@ -543,8 +650,11 @@ export class Kernel {
     const off = suppressedOf(tree)
     const keys = this.keysOf(tree)
     let failed = paramError !== undefined
+    let restored = 0
     for (let i = 0; i < tree.features.length; i++) {
       const f = tree.features[i]
+      // Between features, never inside one: the steps built so far stay valid for the next rebuild.
+      if (hooks.stop?.()) throw new BuildStopped()
       hooks.progress?.({ stage: "build", completed: i, total: tree.features.length, label: displayName(tree, f) })
       const key = keys[i]
       const cached = this.steps[i]
@@ -554,15 +664,24 @@ export class Kernel {
       }
       this.disposeFrom(i)
       const prev = this.lastBuilt(i)
+      const kept = failed ? null : this.restore(f, key, prev)
       // A suppressed feature passes the body through untouched; what depends on it fails on its own.
-      const step = off.has(f.id)
-        ? this.base(f, key, prev, tree, { state: "suppressed", summary: off.get(f.id) ? suppressedBy(displayName(tree, tree.features.find((x) => x.id === off.get(f.id))!)) : ta("已压缩", "Suppressed") })
-        : failed
-          ? this.skip(f, key, prev, tree)
-          : this.run(f, key, prev, tree)
+      const step =
+        kept ??
+        (off.has(f.id)
+          ? this.base(f, key, prev, tree, { state: "suppressed", summary: off.get(f.id) ? suppressedBy(displayName(tree, tree.features.find((x) => x.id === off.get(f.id))!)) : ta("已压缩", "Suppressed") })
+          : failed
+            ? this.skip(f, key, prev, tree)
+            : this.run(f, key, prev, tree))
+      if (kept) restored++
+      else DIRTY.add(step)
       if (step.result.state === "error" || step.result.state === "skipped") failed = true
       step.pendingOverlaps = this.overlapJobs.filter((job) => job.id === f.id)
       this.steps.push(step)
+      // A slow step is kept as soon as it is built (with what came before it): when this rebuild is stopped,
+      // its thread ended or the app quits, opening the part again starts from here. The last feature is
+      // kept when the host is idle, with the display mesh.
+      if (!kept && this.store && step.result.ms > KEEP_AT_ONCE_MS && i < tree.features.length - 1) this.persist(Infinity, false)
     }
     this.disposeFrom(tree.features.length)
 
@@ -606,12 +725,23 @@ export class Kernel {
     this.overlapJobs = []
     hooks.progress?.({ stage: "checks", completed: 0, total: tree.checks?.length ?? 0, label: ta("装配要求", "Assembly requirements") })
 
+    let last = this.lastBuilt(this.steps.length)
+    let body: BodyStats | null = null
+    if (!this.componentOnly && last?.body) {
+      try {
+        body = stats(last.body)
+      } catch (e) {
+        // A body the kernel can't measure is the error of the step that made it, not the whole rebuild's.
+        const ex = explain(last.feature.op, describeError(e))
+        Object.assign(last.result, { state: "error", message: ex.message, hint: ex.hint })
+        last = this.lastBuilt(this.steps.indexOf(last))
+      }
+    }
     const features = this.steps.map((s) => s.result)
     let lastOk = -1
     features.forEach((r, i) => {
       if (r.state === "ok") lastOk = i
     })
-    const last = this.lastBuilt(this.steps.length)
     return {
       checksPending: hooks.deferChecks || undefined,
       params: this.scope,
@@ -619,10 +749,11 @@ export class Kernel {
       features,
       interferences: this.steps.flatMap((s) => s.interferences ?? []),
       lastOk,
-      body: !this.componentOnly && last?.body ? stats(last.body) : null,
-      checks: !hooks.deferChecks && !this.componentOnly && tree.checks?.length && last?.body ? runChecks(last.body, last.origins, tree.checks, this.scope, this.checkBodies(last)) : undefined,
+      body,
+      checks: !hooks.deferChecks && !this.componentOnly && tree.checks?.length && last?.body ? this.checksOf(last, tree) : undefined,
       refs: last?.refs?.length || this.context.length ? [...(last?.refs ?? []), ...this.context].map((r) => ({ id: r.id, name: r.name, size: sizeOf(r.shape) })) : undefined,
       parts: !this.componentOnly && last?.parts && last.parts.length > 1 ? last.parts.map((p) => ({ name: p.name, volume: stats(p.body).volume, size: stats(p.body).size })) : undefined,
+      ...(restored ? { kept: restored } : {}),
       ms: performance.now() - t0,
     }
   }
@@ -1139,7 +1270,26 @@ export class Kernel {
 
   /** A step's body meshed, once: assemblies place their parts' meshes rather than meshing the whole again. */
   private meshed(step: Step) {
-    if (step.body && !step.mesh) Object.assign(step, step.feature.op === "component" && step.parts ? assemblyDisplay(step.parts.map((p) => p.body)) : meshBody(step.body))
+    if (step.body && !step.mesh) {
+      const kept = KEPT.get(step)
+      if (kept?.mesh && kept.edges) {
+        // Kept with the step: put this session's face and edge hashes on it.
+        const faces = faceIds(step.body)
+        const es = edgesOf(step.body)
+        const edges = es.map((e) => e.hashCode)
+        es.forEach((e) => e.delete())
+        const m = kept.mesh
+        const e = kept.edges
+        delete kept.mesh
+        delete kept.edges
+        if (m.faceGroups.every((g) => g.face in faces) && e.edgeGroups.every((g) => g.edge in edges)) {
+          step.mesh = { vertices: m.vertices, normals: m.normals, triangles: m.triangles, faceGroups: m.faceGroups.map((g) => ({ start: g.start, count: g.count, faceId: faces[g.face] })) }
+          step.edges = { lines: e.lines, edgeGroups: e.edgeGroups.map((g) => ({ start: g.start, count: g.count, edgeId: edges[g.edge] })) }
+          return
+        }
+      }
+      Object.assign(step, step.feature.op === "component" && step.parts ? assemblyDisplay(step.parts.map((p) => p.body)) : meshBody(step.body))
+    }
   }
 
   /** Dimensions of every feature that built (kernel/dims.ts). */
@@ -1147,7 +1297,7 @@ export class Kernel {
     const geoms = new Map<string, StepGeom>()
     for (const s of this.steps) if (s.result.state === "ok" && s.geom) geoms.set(s.feature.id, s.geom)
     const last = this.lastBuilt(this.steps.length)
-    const bb = last?.body ? (last.body.boundingBox.bounds as [V3, V3]) : null
+    const bb = last?.body ? boundsOf(last.body) : null
     const diag = bb ? Math.hypot(bb[1][0] - bb[0][0], bb[1][1] - bb[0][1], bb[1][2] - bb[0][2]) : 50
     return dimensionsOf(this.tree, this.scope, geoms, Math.max(3, 0.06 * diag))
   }
@@ -1288,6 +1438,7 @@ export class Kernel {
 
   dispose() {
     this.disposeFrom(0)
+    this.checked = null
     for (const shape of this.parsed.values()) shape.delete()
     this.parsed.clear()
     this.context.forEach((r) => r.shape.delete())
@@ -1304,12 +1455,207 @@ export class Kernel {
 
   private disposeFrom(i: number) {
     for (const s of this.steps.slice(i)) {
-      if (s.ownsBody) s.body?.delete()
+      // A step brought back from the store frees only what it loaded (reading it just to free it would be silly).
+      const kept = KEPT.get(s)
+      if (s.ownsBody) (kept?.body ? kept.body.shape : s.body)?.delete()
       s.parts?.forEach((p) => p.owned && p.body.delete())
       s.refs?.forEach((r) => r.owned && r.shape.delete())
-      s.tools?.forEach((t) => t.tool.delete())
+      ;(kept?.tools ? kept.tools.loaded : s.tools)?.forEach((t) => t.tool.delete())
     }
     this.steps.length = Math.min(this.steps.length, i)
+  }
+
+  // ------------------------------------------------------------- the store
+
+  /** The store's key for a step key: also what else a step's result depends on (the words it is written in, the assembly around it). */
+  private storeKey(key: string) {
+    return `turnery-step ${STORE_VERSION}\n${agentLang()}\n${this.trackOrigins ? 1 : 0}\n${this.contextKey}\n${key}`
+  }
+
+  /**
+   * A step an earlier session built with exactly this key, brought back from the store: its body stays
+   * B-rep text until something reads it. Null: not kept (or unreadable), so it is built.
+   */
+  private restore(f: Feature, key: string, prev: Step | null): Step | null {
+    if (!this.store) return null
+    let rec: StepRecord
+    try {
+      rec = this.store.get(this.storeKey(key)) as StepRecord
+    } catch {
+      return null
+    }
+    if (!rec || rec.kind !== "step" || rec.result?.id !== f.id || rec.result.op !== f.op) return null
+    // A step that passes its body through needs the one before it, as it is now.
+    if (rec.body === null && prev && (prev.parts || prev.refs?.length)) return null
+    const kept: Kept = {}
+    const step: Step = {
+      key,
+      feature: f,
+      result: { ...rec.result },
+      body: null,
+      ownsBody: false,
+      origins: rec.origins,
+      status: rec.status,
+      sigs: rec.sigs,
+      mesh: null,
+      edges: null,
+      ...(rec.threads ? { threads: rec.threads } : {}),
+      ...(rec.geom ? { geom: rec.geom } : {}),
+      ...(rec.mainName !== undefined ? { mainName: rec.mainName } : {}),
+    }
+    try {
+      if (rec.sketch) step.sketch = { ...rec.sketch, drawing: rec.sketch.drawing === null ? null : deserializeDrawing(rec.sketch.drawing) }
+    } catch {
+      return null
+    }
+    if (rec.body !== null) {
+      kept.body = new LazyShape(rec.body, rec)
+      step.ownsBody = true
+      if (rec.mesh) kept.mesh = rec.mesh
+      if (rec.edges) kept.edges = rec.edges
+    } else if (prev) {
+      const before = KEPT.get(prev)
+      if (before?.body) kept.body = before.body
+      else step.body = prev.body
+      step.mesh = prev.mesh
+      step.edges = prev.edges
+      if (!step.mesh && before?.mesh && before.edges) {
+        kept.mesh = before.mesh
+        kept.edges = before.edges
+      }
+      step.mainName ??= prev.mainName
+    }
+    if (kept.body) {
+      const lazy = kept.body
+      readOnUse(step, "body", () => lazy.get())
+    }
+    if (rec.tools?.length) {
+      const tools = (kept.tools = { records: rec.tools, loaded: null as Tool[] | null })
+      readOnUse(step, "tools", () => (tools.loaded ??= tools.records.map((t) => ({ tool: deserializeShape(t.brep) as Shape3D, mode: t.mode }))))
+    }
+    KEPT.set(step, kept)
+    return step
+  }
+
+  /**
+   * Put the steps this kernel built (and hasn't kept yet) in its store, within about `budgetMs`: the host
+   * calls it when idle, so a cold open isn't held up writing. Returns how many are left for the next call.
+   */
+  persist(budgetMs = Infinity, withMesh = true): number {
+    if (!this.store) return 0
+    const t0 = performance.now()
+    // The last body keeps its display mesh too (opening the part shows it). Not read just to compare.
+    const last = this.lastBuilt(this.steps.length)
+    const lazy = last ? KEPT.get(last)?.body : undefined
+    const lastBody = lazy ? lazy.shape : (last?.body ?? null)
+    let left = 0
+    for (const s of this.steps) {
+      if (!DIRTY.has(s)) continue
+      if (performance.now() - t0 > budgetMs) {
+        left++
+        continue
+      }
+      DIRTY.delete(s)
+      try {
+        const rec = this.recordOf(s, withMesh && s.ownsBody && s.body === lastBody)
+        if (rec) this.store.put(this.storeKey(s.key), rec)
+      } catch {
+        /* a step that can't be kept is built again next time */
+      }
+    }
+    return left
+  }
+
+  /** A step as plain data for the store; null for what isn't kept (assemblies, imports, split parts, errors). */
+  private recordOf(s: Step, last: boolean): StepRecord | null {
+    if (s.result.state !== "ok" && s.result.state !== "suppressed") return null
+    if (s.parts || s.refs?.length || s.interferences?.length || s.pendingOverlaps?.length || s.feature.op === "component" || s.feature.op === "import") return null
+    const body = s.ownsBody ? s.body : null
+    const rec: StepRecord = {
+      kind: "step",
+      result: { ...s.result },
+      body: body ? body.serialize() : null,
+      origins: s.origins,
+      status: s.status,
+      sigs: s.sigs,
+      ...(s.sketch ? { sketch: { drawing: s.sketch.drawing ? s.sketch.drawing.serialize() : null, paths: s.sketch.paths, plane: s.sketch.plane, lines: s.sketch.lines } } : {}),
+      ...(s.tools?.length ? { tools: s.tools.map((t) => ({ brep: t.tool.serialize(), mode: t.mode })) } : {}),
+      ...(s.threads ? { threads: s.threads } : {}),
+      ...(s.geom ? { geom: s.geom } : {}),
+      ...(s.mainName !== undefined ? { mainName: s.mainName } : {}),
+    }
+    if (body) {
+      const bounds = BOUNDS.get(body)
+      const mass = MASS.get(body)
+      const stats = STATS.get(body)
+      if (bounds) rec.bounds = bounds
+      if (mass) rec.mass = mass
+      if (stats) rec.stats = stats
+      // Meshed now if nothing showed it yet (a part built by the CLI): opening it then shows it at once.
+      if (last && !s.mesh) this.meshed(s)
+      if (last && s.mesh) {
+        const faces = new Map(faceIds(body).map((h, i) => [h, i]))
+        rec.mesh = { vertices: s.mesh.vertices, normals: s.mesh.normals, triangles: s.mesh.triangles, faceGroups: s.mesh.faceGroups.map((g) => ({ start: g.start, count: g.count, face: faces.get(g.faceId) ?? -1 })) }
+        if (rec.mesh.faceGroups.some((g) => g.face < 0)) delete rec.mesh
+      }
+      if (last && s.edges && rec.mesh) {
+        const es = edgesOf(body)
+        const edges = new Map(es.map((e, i) => [e.hashCode, i]))
+        es.forEach((e) => e.delete())
+        rec.edges = { lines: s.edges.lines, edgeGroups: s.edges.edgeGroups.map((g) => ({ start: g.start, count: g.count, edge: edges.get(g.edgeId) ?? -1 })) }
+        if (rec.edges.edgeGroups.some((g) => g.edge < 0)) {
+          delete rec.mesh
+          delete rec.edges
+        }
+      }
+    }
+    return rec
+  }
+
+  /**
+   * The requirements measured on the last body. A body brought back from the store brings its results back
+   * too (they take seconds on a big part): kept by the step's key and the requirements as written.
+   */
+  private checksOf(last: Step, tree: Tree): CheckResult[] {
+    // The same body and requirements as the last rebuild (a tool that rebuilds to read the report): the same results.
+    const same = JSON.stringify([tree.checks, this.contextKey])
+    const copy = (rs: CheckResult[]) => rs.map((r) => ({ ...r, faces: [...r.faces], edges: [...r.edges] }))
+    if (this.checked?.step === last && this.checked.same === same) return copy(this.checked.results)
+    const results = this.measureChecks(last, tree)
+    this.checked = { step: last, same, results: copy(results) }
+    return results
+  }
+
+  private measureChecks(last: Step, tree: Tree): CheckResult[] {
+    const run = () => runChecks(last.body!, last.origins, tree.checks!, this.scope, this.checkBodies(last))
+    if (!this.store || last.parts || last.refs?.length || this.context.length) return run()
+    const key = this.storeKey(`checks\n${JSON.stringify(tree.checks)}\n${last.key}`)
+    const body = last.body!
+    try {
+      const rec = this.store.get(key) as ChecksRecord | null
+      if (rec?.kind === "checks" && Array.isArray(rec.results)) {
+        const faces = faceIds(body)
+        const es = edgesOf(body)
+        const edges = es.map((e) => e.hashCode)
+        es.forEach((e) => e.delete())
+        if (rec.results.every((r) => r.faces.every((i) => i in faces) && r.edges.every((i) => i in edges)))
+          return rec.results.map((r) => ({ ...r, faces: r.faces.map((i) => faces[i]), edges: r.edges.map((i) => edges[i]) }))
+      }
+    } catch {
+      /* measured again below */
+    }
+    const results = run()
+    try {
+      const faces = new Map(faceIds(body).map((h, i) => [h, i]))
+      const es = edgesOf(body)
+      const edges = new Map(es.map((e, i) => [e.hashCode, i]))
+      es.forEach((e) => e.delete())
+      const kept = results.map((r) => ({ ...r, faces: r.faces.map((h) => faces.get(h) ?? -1), edges: r.edges.map((h) => edges.get(h) ?? -1) }))
+      if (kept.every((r) => !r.faces.includes(-1) && !r.edges.includes(-1))) this.store.put(key, { kind: "checks", results: kept } satisfies ChecksRecord)
+    } catch {
+      /* not kept: measured again next time */
+    }
+    return results
   }
 
   private base(f: Feature, key: string, prev: Step | null, tree: Tree, result: Partial<FeatureResult>): Step {
@@ -1375,13 +1721,13 @@ export class Kernel {
       if (out.threads) step.threads = out.threads
       if (out.geom) step.geom = out.geom
       if (out.body) {
-        // Nothing left (a cut through the whole solid) or a body the kernel can't measure (a profile
-        // revolved about an axis outside its plane): this step's error, not the whole rebuild's.
+        // Nothing left (a cut through the whole solid): this step's error, not the whole rebuild's.
+        // The body's size and volume are measured once, on the last body (rebuild), not after every step:
+        // on a lofted body the exact box and volume took over a second per step.
         if (!faceIds(out.body).length)
           throw new InputError(
             ta("这一步之后什么都不剩了：切除把整个实体都去掉了。改小切除的范围，或者换一个草图", "Nothing is left after this step: the cut removed the whole solid. Make the cut smaller, or use another sketch"),
           )
-        stats(out.body)
         this.commitBody(step, prev, out.body, f.id)
         // A component's faces are its part file's: its slivers are reported there, not in the assembly.
         const sliver = this.componentOnly || f.op === "sketch" || f.op === "import" || f.op === "component" ? null : this.slivers(step)
@@ -1411,7 +1757,6 @@ export class Kernel {
   /** Mesh the new body, classify its faces against the previous one, carry provenance forward. */
   private commitBody(step: Step, prev: Step | null, body: Shape3D, id: string) {
     const identity = step.feature.op === "component" || !this.trackOrigins
-    const { mesh, edges } = identity ? { mesh: null, edges: null } : meshBody(body)
     if (identity) {
       const ids = step.parts ? [...new Set(step.parts.flatMap((p) => faceIds(p.body)))] : faceIds(body)
       FACE_IDS.set(body, ids)
@@ -1428,23 +1773,25 @@ export class Kernel {
     }
     const faces = facesOf(body)
     const prevFaces = prev?.body ? facesOf(prev.body) : null
-    // Placing a component adds unchanged B-rep faces to a compound. Their identities
-    // already tell us which faces survived; projecting every face onto the previous
-    // assembly's surfaces is both unnecessary and wrong for coplanar separate parts.
-    const sigs = mesh ? faceSignatures(faces, mesh) : []
-    const byHash = identity ? new Map(prevFaces?.map((f, i) => [f.hashCode, i])) : null
-    const cls = byHash
-      ? faces.map((f) => {
-          const match = byHash.get(f.hashCode) ?? -1
-          return { status: match >= 0 ? ("kept" as const) : ("new" as const), match }
-        })
-      : classifyFaces(prevFaces, prev?.sigs ?? null, sigs)
+    // A face the step left alone is the very same face in the new body (booleans and fillets keep
+    // untouched faces): its signature is the old one, and it is kept. Only the faces the step made or
+    // changed are integrated and projected, not every face of a big body after every step.
+    const same = prevFaces && prev && prev.sigs.length === prevFaces.length ? sameFaces(faces, prevFaces) : null
+    const known = same ? (i: number) => (same[i] >= 0 ? prev!.sigs[same[i]] : null) : undefined
+    // Only those faces are meshed, for their signatures; the body's display mesh is made when the step is
+    // shown (meshing the whole of a big body after every step took a third of a rebuild).
+    const fresh = known ? faces.filter((_, i) => !known(i)) : faces
+    const part = fresh.length === faces.length ? null : compoundOf(fresh)
+    const mesh = !fresh.length ? NO_MESH : meshFaces(part ?? body)
+    part?.delete()
+    const sigs = faceSignatures(faces, mesh, known)
+    const cls = classifyFaces(prevFaces, prev?.sigs ?? null, sigs, 1e-4, same)
     prevFaces?.forEach((pf) => pf.delete())
     faces.forEach((x) => x.delete())
     step.body = body
     step.ownsBody = true
-    step.mesh = mesh
-    step.edges = edges
+    step.mesh = null
+    step.edges = null
     step.sigs = sigs
     step.status = cls.map((c) => c.status)
     step.origins = cls.map((c) => (c.match >= 0 && prev ? prev.origins[c.match] : id))
@@ -1459,7 +1806,8 @@ export class Kernel {
     if (!step.body || !step.status.some((s) => s === "new")) return null
     const faces = facesOf(step.body)
     try {
-      const areas = faces.map((f) => measureArea(f))
+      // The faces' signatures measured their areas already (the same integration).
+      const areas = step.sigs.length === faces.length ? step.sigs.map((s) => s.area) : faces.map((f) => measureArea(f))
       const total = areas.reduce((a, b) => a + b, 0)
       let tiny = areas.filter((a, i) => step.status[i] === "new" && a < SLIVER_AREA && a < 1e-5 * total)
       if (!tiny.length) return null
@@ -1508,7 +1856,10 @@ export class Kernel {
           }
         })
       }
-      const spot = narrowSpot(faces, step.status.map((s) => s === "new"), group)
+      // Boxes from the display mesh (each face's triangles, padded by more than the mesh's deflection):
+      // exact boxes of spline faces took seconds per step, and this only picks which pairs to measure.
+      const boxes = step.sigs.length === faces.length ? step.sigs.map((s) => (s.box ? padBox(s.box, MESH_SLACK) : null)) : undefined
+      const spot = narrowSpot(faces, step.status.map((s) => s === "new"), group, undefined, boxes)
       if (!spot) return null
       const p = `(${spot.at.map((x) => fmt(x)).join(", ")})`
       if (agentLang() === "en")
@@ -1561,8 +1912,13 @@ export class Kernel {
       }
     }
     // A datum plane flush with the body's far side (the back, the bottom…) is seen from outside that side too.
-    if (!ref.face && !ref.tilt && prev?.body) {
-      const [lo, hi] = (prev.body.boundingBox.bounds as [V3, V3]).map((b) => b[P.axis])
+    // The exact box of a big body takes a second: only worked out when the plane is near a side of the box
+    // its mesh spans (the exact one is that, grown by less than MESH_SPREAD).
+    const inner = prev?.body && !ref.face && !ref.tilt ? meshBounds(prev.sigs) : null
+    const nearSide = !inner || (coord > inner[1][P.axis] - 1e-3 && coord < inner[1][P.axis] + MESH_SPREAD) || (coord < inner[0][P.axis] + 1e-3 && coord > inner[0][P.axis] - MESH_SPREAD)
+    if (!ref.face && !ref.tilt && prev?.body && nearSide) {
+      // Cached per body: every sketch on it asks.
+      const [lo, hi] = boundsOf(prev.body).map((b) => b[P.axis])
       const outward = Math.abs(coord - hi) < 1e-3 ? 1 : Math.abs(coord - lo) < 1e-3 ? -1 : 0
       flipped = outward !== 0 && outward !== Math.sign(P.normal[P.axis])
     }
@@ -3004,6 +3360,36 @@ function unified(tool: Shape3D): Shape3D {
   return out
 }
 
+/** Which face of `before` each face is (the same B-rep face, not just one like it), else -1. */
+function sameFaces(faces: Face[], before: Face[]): number[] {
+  const byHash = new Map<number, number[]>()
+  before.forEach((f, i) => byHash.set(f.hashCode, [...(byHash.get(f.hashCode) ?? []), i]))
+  return faces.map((f) => byHash.get(f.hashCode)?.find((i) => f.isSame(before[i])) ?? -1)
+}
+
+/** More than the display mesh strays from the exact surface (it is meshed to 0.05 mm). */
+const MESH_SLACK = 0.1
+/** Further than any mesh of a body strays from it (with room to spare): see `plane`. */
+const MESH_SPREAD = 0.5
+const NO_MESH: Mesh = { vertices: new Float32Array(0), normals: new Float32Array(0), triangles: new Uint32Array(0), faceGroups: [] }
+
+/**
+ * Where a body surely reaches, from its faces' mesh boxes (their points lie on it): its exact box is this
+ * one, grown by at most the mesh's slack. Null when a face has no box.
+ */
+function meshBounds(sigs: FaceSig[]): [V3, V3] | null {
+  if (!sigs.length || sigs.some((s) => !s.box)) return null
+  const lo: V3 = [Infinity, Infinity, Infinity]
+  const hi: V3 = [-Infinity, -Infinity, -Infinity]
+  for (const s of sigs)
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k], s.box![0][k])
+      hi[k] = Math.max(hi[k], s.box![1][k])
+    }
+  return [lo, hi]
+}
+const padBox = (b: [V3, V3], d: number): [V3, V3] => [[b[0][0] - d, b[0][1] - d, b[0][2] - d], [b[1][0] + d, b[1][1] + d, b[1][2] + d]]
+
 // Committed bodies are immutable. Weak caches retain no OCCT handles and expire
 // with their JS wrappers, including when a tree prefix is invalidated.
 const FACE_IDS = new WeakMap<AnyShape, number[]>()
@@ -3021,14 +3407,9 @@ function faceIds(body: AnyShape): number[] {
 const BOUNDS = new WeakMap<AnyShape, [V3, V3]>()
 const STATS = new WeakMap<Shape3D, BodyStats>()
 const VOLUMES = new WeakMap<Shape3D, number>()
+/** One integration gives the volume and the centre of mass: the body's stats then don't integrate it again. */
 function volumeOf(body: Shape3D): number {
-  const cached = VOLUMES.get(body)
-  if (cached !== undefined) return cached
-  const props = measureShapeVolumeProperties(body)
-  const volume = props.volume
-  props.delete?.()
-  VOLUMES.set(body, volume)
-  return volume
+  return VOLUMES.get(body) ?? massOf(body).volume
 }
 function boundsOf(body: AnyShape): [V3, V3] {
   let bounds = BOUNDS.get(body)

@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { t } from "@/lib/i18n"
@@ -6,8 +7,11 @@ import type { LoadState } from "../core/protocol"
 
 const STAGES = { prepare: t("准备零件", "Preparing parts"), build: t("组装模型", "Assembling the model"), mesh: t("生成视图", "Building the view"), checks: t("检查装配", "Checking the assembly") }
 
-/** A slim card at the top of the viewport while the worker is busy: the model stays in view and can be orbited. */
-export function ModelLoading({ load, visible }: { load: LoadState; visible: boolean }) {
+/**
+ * A slim card at the top of the viewport while the worker is busy: the model stays in view and can be orbited.
+ * `onCancel`: opening the part can be stopped (the window is free at once; opening another part does it too).
+ */
+export function ModelLoading({ load, visible, onCancel }: { load: LoadState; visible: boolean; onCancel?: () => void }) {
   const [mountedAt] = React.useState(Date.now)
   const [now, setNow] = React.useState(Date.now)
   React.useEffect(() => {
@@ -29,7 +33,16 @@ export function ModelLoading({ load, visible }: { load: LoadState; visible: bool
         {determinate && <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{p.completed} / {p.total}</span>}
         <span className="shrink-0 font-mono text-caption text-muted-foreground tabular-nums">{t(`${elapsed} 秒`, `${elapsed} s`)}</span>
       </div>
-      {determinate && <Progress value={p.completed} max={p.total} aria-label={title} className="mt-2" />}
+      {(determinate || onCancel) && (
+        <div className="mt-2 flex items-center gap-2">
+          {determinate ? <Progress value={p.completed} max={p.total} aria-label={title} className="min-w-0 flex-1" /> : <span className="flex-1" />}
+          {onCancel && (
+            <Button size="sm" variant="ghost" className="-my-1 -mr-1.5" onClick={onCancel} data-testid="cancel-load">
+              {t("取消加载", "Cancel loading")}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
