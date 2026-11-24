@@ -204,7 +204,7 @@ export const CURRICULUM_EN: CurriculumEn = {
   projects: {
     P1: { title: "A 3D-printed storage box or phone stand (a first project for makers)", prereq: "T0, M1.1–1.3, M4.1" },
     P2: { title: "A sheet metal enclosure or bracket (for hardware engineers)", prereq: "T1, M4.3, T3" },
-    P3: { title: "A handheld appliance housing: shape and draft → shell → screw bosses → ribs (industrial design meets engineering)", prereq: "M4.4, M6.5" },
+    P3: { title: "A handheld appliance housing: shape and draft → shell → screw bosses and ribs → snap fits (industrial design meets engineering)", prereq: "M4.4, M6.5" },
     P4: { title: "A simple mechanism: a hinged box, gears or a linkage" },
     P5: { title: "A parametric part family (several size configurations)" },
     P6: { title: "Model-from-drawing challenge: graded like a certification exam, by the volume or center of mass you enter", prereq: "M0.2, T1" },

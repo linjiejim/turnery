@@ -164,6 +164,11 @@ const P3_PARAMS = {
   dh: [2.5, t("螺丝柱的孔径（自攻螺钉底孔）", "Hole diameter in the bosses (pilot hole for a self-tapping screw)")],
   tr: [1.2, t("加强筋厚", "Rib thickness")],
   zr: [10, t("加强筋下沿离分型面的高度", "Height of the rib's lower edge above the parting plane")],
+  sw: [8, t("卡扣臂宽，沿 X", "Width of the snap arm, along X")],
+  st: [1.2, t("卡扣臂厚", "Thickness of the snap arm")],
+  sl: [7, t("卡扣臂伸出分型面的长度", "How far the snap arm reaches below the parting plane")],
+  hd: [1, t("卡钩向外凸出的深度", "How far the hook sticks out")],
+  hz: [4.5, t("卡钩挂面在分型面下多深", "How far below the parting plane the hook's catch face sits")],
 } as const satisfies Record<string, readonly [number, string]>
 /** The parameters a step uses, with their notes: each step only carries what its features need. */
 const p3Params = (...names: (keyof typeof P3_PARAMS)[]) => ({
@@ -205,12 +210,41 @@ const p3Ribs: Feature[] = [
   { id: "rib", op: "rib", name: t("加强筋", "Rib"), sketch: "rs", t: "tr", intent: t("把螺丝柱连到侧墙上，拧螺钉时柱子不晃", "Ties the boss to the wall, so it doesn't wobble when the screw goes in") },
   { id: "mr", op: "mirror", name: t("镜像加强筋", "Mirror the rib"), plane: "YZ", features: ["rib"], intent: t("另一根螺丝柱用同一根筋", "The same rib for the other boss") },
 ]
+const p3Snaps: Feature[] = [
+  {
+    id: "ss",
+    op: "sketch",
+    name: t("卡扣截面", "Snap section"),
+    on: { plane: "YZ" },
+    shapes: [
+      {
+        type: "polyline",
+        points: [
+          ["W/2-t+0.05-st", 4],
+          ["W/2-t+0.05", 4],
+          ["W/2-t+0.05", "-hz"],
+          ["W/2-t+0.05+hd", "-hz"],
+          ["W/2-t+0.05+hd", "-hz-0.7"],
+          ["W/2-t+0.05", "-sl"],
+          ["W/2-t+0.05-st", "-sl"],
+        ],
+      },
+    ],
+    intent: t(
+      "臂贴着内壁往下伸过分型面（多伸进壁里 0.05，和壁长成一体）；钩子朝外，平的挂面扣住底壳，斜面是导入角",
+      "The arm runs down the inside of the wall past the parting plane (0.05 into the wall, so they grow together); the hook points outward, its flat catch face holds the bottom shell and its slope leads it in",
+    ),
+  },
+  { id: "snap", op: "extrude", name: t("卡扣", "Snap"), sketch: "ss", distance: "sw", direction: "both", intent: t("两侧对称拉出臂宽，卡扣在长边正中", "Symmetric to the arm's width, in the middle of the long side") },
+  { id: "ms", op: "mirror", name: t("镜像卡扣", "Mirror the snap"), plane: "XZ", features: ["snap"], intent: t("对面的长边也扣一个，两边受力一样", "One on the opposite long side too, so both sides hold the same") },
+]
 const SHAPE = ["L", "W", "H", "rc", "a", "rt"] as const
 const p3Stage1: Tree = { ...p3Params(...SHAPE), features: p3Shape }
 const p3Stage2: Tree = { ...p3Params(...SHAPE, "t"), features: [...p3Shape, p3Shell] }
 const p3Stage3: Tree = { ...p3Params(...SHAPE, "t", "px", "db", "dh"), features: [...p3Shape, p3Shell, ...p3Bosses] }
 const p3Stage4: Tree = { ...p3Params(...SHAPE, "t", "px", "db", "dh", "tr", "zr"), features: [...p3Shape, p3Shell, ...p3Bosses, ...p3Ribs] }
-const P3 = (step: number) => ({ id: "P3", step, of: 4 })
+const p3Stage5: Tree = { ...p3Params(...SHAPE, "t", "px", "db", "dh", "tr", "zr", "sw", "st", "sl", "hd", "hz"), features: [...p3Shape, p3Shell, ...p3Bosses, ...p3Ribs, ...p3Snaps] }
+const P3 = (step: number) => ({ id: "P3", step, of: 5 })
 
 export const PRACTICE: Practice[] = [
   {
@@ -754,6 +788,7 @@ export const PRACTICE: Practice[] = [
   {
     id: "p3-4",
     project: P3(4),
+    next: "p3-5",
     title: t("小家电上壳 4：加强筋", "Appliance top shell 4: ribs"),
     task: t(
       "用加强筋把每根螺丝柱连到端墙上：筋厚 1.2，下沿离分型面 10，往上长到顶板。",
@@ -769,6 +804,26 @@ export const PRACTICE: Practice[] = [
       ["On the front plane, draw a line from the boss to the end wall", "The rib extends the line to the walls and grows up to the top", "Mirror it for the other side"],
     ),
     solution: p3Stage4,
+  },
+  {
+    id: "p3-5",
+    project: P3(5),
+    title: t("小家电上壳 5：卡扣", "Appliance top shell 5: snap fits"),
+    task: t(
+      "在两条长边的正中各加一个悬臂卡扣：臂宽 8、厚 1.2，贴着内壁从分型面往下伸 7；末端的卡钩向外凸 1，挂面在分型面下 4.5。",
+      "Add a cantilever snap in the middle of each long side: an arm 8 wide and 1.2 thick, running down the inside of the wall 7 past the parting plane, with a hook at its end sticking out 1 and its catch face 4.5 below the parting plane.",
+    ),
+    start: p3Stage4,
+    checks: [
+      { id: "p-size", said: t("从分型面往下伸 7", "Reaching 7 below the parting plane"), kind: "size", expect: [140, 48, 29] },
+      { id: "p-arm", said: t("臂厚 1.2", "An arm 1.2 thick"), kind: "thickness", faces: { normal: "-Y", near: [0, 20.85, -2] }, expect: 1.2 },
+      { id: "p-hook", said: t("挂面在分型面下 4.5", "The catch face 4.5 below the parting plane"), kind: "distance", a: { face: { normal: "+Z", near: [0, 22.6, -4.5] } }, b: { face: { normal: "-Z", at: { axis: "Z", value: 0 }, near: [0, 23, 0] } }, expect: 4.5 },
+    ],
+    tips: byLocale(
+      ["在右视基准面上画臂和钩的截面，两侧对称拉伸 8", "钩子朝外，挂面平、下面是斜的导入面", "卡钩是倒扣：模具要斜顶，或在臂上开窗"],
+      ["Draw the arm and hook on the right plane; extrude 8, symmetric", "The hook points outward: a flat catch face, a sloped lead-in below", "The hook is an undercut: the mold needs a lifter or a window"],
+    ),
+    solution: p3Stage5,
   },
 ]
 
