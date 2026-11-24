@@ -196,18 +196,29 @@ const p3Bosses: Feature[] = [
     ],
     intent: t("外圆减孔：柱壁约为壳壁的 60%，背面不缩痕", "Outer circle minus the hole: the boss wall about 60 % of the shell wall, so the outside doesn't sink"),
   },
-  { id: "boss", op: "extrude", name: t("螺丝柱", "Screw bosses"), sketch: "bs", until: "next", intent: t("从分型面一直长到碰到顶板", "Grows from the parting plane until it meets the top") },
+  { id: "boss", op: "extrude", name: t("螺丝柱", "Screw bosses"), sketch: "bs", distance: "H-t/2", intent: t("从分型面往上长，伸进顶板半个壁厚，和顶板连成一体", "Grows up from the parting plane and half a wall into the top, so the two fuse") },
 ]
 const p3Ribs: Feature[] = [
   {
     id: "rs",
     op: "sketch",
-    name: t("筋的下沿", "Lower edge of the rib"),
+    name: t("筋的侧面轮廓", "Side outline of the rib"),
     on: { plane: "XZ" },
-    shapes: [{ type: "path", points: [["px+db/2", "zr"], ["L/2-t", "zr"]] }],
-    intent: t("一条线：从螺丝柱到端墙，筋从这里往上长到顶板", "One line from the boss to the end wall; the rib grows up from it to the top"),
+    shapes: [
+      {
+        type: "polyline",
+        points: [
+          ["px+(db+dh)/4", "zr"],
+          ["L/2-t", "zr"],
+          ["L/2-t", "H-rt-t"],
+          ["L/2-rt-t", "H-t/2"],
+          ["px+(db+dh)/4", "H-t/2"],
+        ],
+      },
+    ],
+    intent: t("从柱壁画到端墙，上沿伸进顶板；靠墙的上角切掉，免得从顶边圆角穿出去", "From the boss wall to the end wall, its top inside the top plate; the corner by the wall is cut off so it can't come out through the top fillet"),
   },
-  { id: "rib", op: "rib", name: t("加强筋", "Rib"), sketch: "rs", t: "tr", intent: t("把螺丝柱连到侧墙上，拧螺钉时柱子不晃", "Ties the boss to the wall, so it doesn't wobble when the screw goes in") },
+  { id: "rib", op: "extrude", name: t("加强筋", "Rib"), sketch: "rs", distance: "tr", direction: "both", intent: t("两侧对称拉出筋厚，把螺丝柱连到端墙上，拧螺钉时柱子不晃", "Extruded to the rib thickness, both ways: ties the boss to the end wall, so it doesn't wobble when the screw goes in") },
   { id: "mr", op: "mirror", name: t("镜像加强筋", "Mirror the rib"), plane: "YZ", features: ["rib"], intent: t("另一根螺丝柱用同一根筋", "The same rib for the other boss") },
 ]
 const p3Snaps: Feature[] = [
@@ -780,8 +791,8 @@ export const PRACTICE: Practice[] = [
       { id: "p-pitch", said: t("离中心各 50", "Each 50 from the center"), kind: "pcd", faces: { kind: "cylinder", radius: 1.25 }, count: 2, expect: 100 },
     ],
     tips: byLocale(
-      ["一张草图画两个外圆、两个挖掉的孔", "拉伸选「成形到下一面」，长到顶板", "柱壁 1.25，约为壳壁的 60%"],
-      ["One sketch: two outer circles and two cut-out holes", "Extrude up to next, so it reaches the top", "A 1.25 boss wall, about 60 % of the shell wall"],
+      ["一张草图画两个外圆、两个挖掉的孔", "拉伸到 H - t/2：伸进顶板，不穿出外面", "柱壁 1.25，约为壳壁的 60%"],
+      ["One sketch: two outer circles and two cut-out holes", "Extrude to H - t/2: into the top, not through it", "A 1.25 boss wall, about 60 % of the shell wall"],
     ),
     solution: p3Stage3,
   },
@@ -800,8 +811,8 @@ export const PRACTICE: Practice[] = [
       { id: "p-low", said: t("下沿离分型面 10", "Its lower edge 10 above the parting plane"), kind: "distance", a: { face: { normal: "-Z", near: [60, 0, 10] } }, b: { face: { normal: "-Z", extreme: "-Z", near: [0, 23, 0] } }, expect: 10 },
     ],
     tips: byLocale(
-      ["在前视基准面上画一条线，从柱子到端墙", "筋特征会把线延长到墙，往上长到顶板", "另一边用镜像"],
-      ["On the front plane, draw a line from the boss to the end wall", "The rib extends the line to the walls and grows up to the top", "Mirror it for the other side"],
+      ["在前视基准面上画筋的侧面，从柱壁到端墙", "两侧对称拉伸 1.2，上沿伸进顶板", "另一边用镜像"],
+      ["On the front plane, draw the rib's side, boss wall to end wall", "Extrude 1.2 both ways, its top into the top plate", "Mirror it for the other side"],
     ),
     solution: p3Stage4,
   },
