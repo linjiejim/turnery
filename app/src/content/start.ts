@@ -25,8 +25,8 @@ export const STARTING_POINTS: StartingPoint[] = [
   {
     id: "designer",
     who: t("产品和工业设计师", "Product and industrial designers"),
-    why: t("先把曲面做顺，再看它能不能脱模。", "Make surfaces smooth first, then check they can come out of a mold."),
-    lessons: ["sweep-loft", "curvature-continuity", "zebra-stripes", "draft-analysis"],
+    why: t("先把比例和曲面做对，再看它能不能脱模、装得起来。", "Get the proportions and surfaces right, then check the part can be molded and put together."),
+    lessons: ["proportion-scale", "curvature-continuity", "zebra-stripes", "styling-dfm"],
   },
   {
     id: "maker",

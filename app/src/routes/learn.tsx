@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Link, useLocation } from "react-router"
-import { Box, ChevronRight, FileText, Layers } from "lucide-react"
+import { Box, Check, ChevronRight, FileText, Hammer, Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Page, PageHeader, Section } from "@/components/ui/page"
 import { useProgress } from "@/lib/progress"
@@ -11,7 +11,13 @@ import { useModelIndex } from "@/lib/use-async"
 import { cardQuizKey, reviewDue, useContinue, type ReviewItem } from "@/lib/progress"
 import { LESSONS } from "@/content/lessons"
 import { CARDS } from "@/content/cards"
+import { projectSteps, type Practice } from "@/content/practice"
+import { practiceKey } from "@/studio/practice-state"
 import { t } from "@/lib/i18n"
+
+/** How many topics there are, in words: 「七个主题」, "seven topics". */
+const TOPICS_ZH = "零一二三四五六七八九十"[TRACKS.length] ?? String(TRACKS.length)
+const TOPICS_EN = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][TRACKS.length] ?? String(TRACKS.length)
 
 export function LearnPage() {
   const progress = useProgress()
@@ -29,6 +35,8 @@ export function LearnPage() {
 
   const topics = TRACKS.map((track) => ({ track, ...topicItems(track, models, progress.done) }))
   const all = topics.flatMap((x) => x.items)
+  const open = PROJECTS.map((project) => ({ project, steps: projectSteps(project.id) })).filter((x) => x.steps.length > 0)
+  const coming = PROJECTS.filter((p) => !open.some((x) => x.project.id === p.id))
   const finished = all.filter((i) => i.done).length
 
   return (
@@ -47,8 +55,8 @@ export function LearnPage() {
       />
       <p className="-mt-2 max-w-[44em] text-reading text-muted-foreground">
         {t(
-          `${COUNTS.lessons} 节 3D 互动课、${COUNTS.cards} 张图文卡和 ${models.length || 9} 个真实零件的拆解，按六个主题排好了顺序。不用一次看完：从下面五节开始，或者按你的背景挑起点。`,
-          `${COUNTS.lessons} hands-on 3D lessons, ${COUNTS.cards} cards and ${models.length || 9} teardowns of real parts, in six topics. No need to take it all in at once: start with the five below, or pick a starting point for your background.`,
+          `${COUNTS.lessons} 节 3D 互动课、${COUNTS.cards} 张图文卡和 ${models.length || 9} 个真实零件的拆解，按${TOPICS_ZH}个主题排好了顺序。不用一次看完：从下面五节开始，或者按你的背景挑起点。`,
+          `${COUNTS.lessons} hands-on 3D lessons, ${COUNTS.cards} cards and ${models.length || 9} teardowns of real parts, in ${TOPICS_EN} topics. No need to take it all in at once: start with the five below, or pick a starting point for your background.`,
         )}
         {finished > 0 && <span className="ml-1 font-medium text-foreground">{t(`你已学完 ${finished} / ${all.length}。`, `You've finished ${finished} of ${all.length}.`)}</span>}
       </p>
@@ -65,7 +73,7 @@ export function LearnPage() {
         <StartingPoints />
       </Section>
 
-      <h2 className="mt-14 text-title font-semibold">{t("六个主题", "Six topics")}</h2>
+      <h2 className="mt-14 text-title font-semibold">{t(`${TOPICS_ZH}个主题`, `${TOPICS_EN[0].toUpperCase()}${TOPICS_EN.slice(1)} topics`)}</h2>
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-small text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <Box className="size-3.5 text-primary" />
@@ -126,18 +134,59 @@ export function LearnPage() {
         )
       })}
 
-      {PROJECTS.length > 0 && (
-        <section className="mt-12 border-t pt-6 pb-4">
+      {open.length > 0 && (
+        <section className="mt-12 border-t pt-6">
+          <h3 className="text-heading font-semibold">{t("综合项目", "Projects")}</h3>
+          <p className="mt-1 text-body text-muted-foreground">{t("把前面的课串起来，在工作台里一步步做完一件东西，每一步由内核核对。", "Projects that tie the lessons together: build one thing step by step in the workbench, every step checked by the kernel.")}</p>
+          <div className="mt-4 grid grid-cols-3 gap-3 max-lg:grid-cols-2 max-sm:grid-cols-1">
+            {open.map(({ project, steps }) => (
+              <ProjectTile key={project.id} title={project.title} steps={steps} anchor={project.id} done={progress.done} />
+            ))}
+          </div>
+        </section>
+      )}
+      {coming.length > 0 && (
+        <section className={open.length ? "mt-8 pb-4" : "mt-12 border-t pt-6 pb-4"}>
           <h3 className="text-heading font-semibold">{t("还在写：综合项目", "Coming: projects")}</h3>
-          <p className="mt-1 text-body text-muted-foreground">{t("把前面的课串起来，从头做完一件东西。", "Projects that tie the lessons together, from start to a finished thing.")}</p>
+          {!open.length && <p className="mt-1 text-body text-muted-foreground">{t("把前面的课串起来，从头做完一件东西。", "Projects that tie the lessons together, from start to a finished thing.")}</p>}
           <ul className="mt-3 grid grid-cols-3 gap-x-6 gap-y-1 text-small text-faint-foreground max-md:grid-cols-1">
-            {PROJECTS.map((p) => (
-              <li key={p.id}>{p.title.replace(/[（(][^）)]*[）)]$/, "")}</li>
+            {coming.map((p) => (
+              <li key={p.id} id={p.id} className="scroll-mt-24">
+                {projectTitle(p.title)}
+              </li>
             ))}
           </ul>
         </section>
       )}
     </Page>
+  )
+}
+
+/** 「手持小家电外壳：…（ID 与工程结合）」 → without the trailing remark in brackets. */
+const projectTitle = (title: string) => title.replace(/[（(][^）)]*[）)]$/, "")
+
+/** A project you can open: its steps in the workbench, opening at the first one not done yet. */
+function ProjectTile({ title, steps, anchor, done }: { title: string; steps: Practice[]; anchor: string; done: string[] }) {
+  const finished = steps.filter((s) => done.includes(practiceKey(s.id))).length
+  const next = steps.find((s) => !done.includes(practiceKey(s.id))) ?? steps[0]
+  return (
+    <Link
+      id={anchor}
+      to={`/studio?practice=${next.id}`}
+      className="group flex scroll-mt-24 items-start gap-3 rounded-lg border p-3 transition-colors duration-(--duration-fast) hover:border-input hover:bg-accent/40 target:border-primary target:bg-selected"
+    >
+      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-selected text-primary [&_svg]:size-4">
+        <Hammer />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-body font-medium">{projectTitle(title)}</span>
+        <span className="block text-small text-muted-foreground">
+          {t(`工作台项目 · ${steps.length} 步`, `Workbench project · ${steps.length} steps`)}
+          {finished > 0 && finished < steps.length && t(` · 做到第 ${finished} 步`, ` · ${finished} done`)}
+        </span>
+      </span>
+      {finished === steps.length && <Check className="mt-1 size-4 shrink-0 text-success" aria-label={t("已完成", "Done")} />}
+    </Link>
   )
 }
 

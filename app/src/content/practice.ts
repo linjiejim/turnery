@@ -8,8 +8,12 @@ import { byLocale, t } from "@/lib/i18n"
  */
 export type Practice = {
   id: string
-  /** 课程 id（lessons/index.ts） */
-  lesson: string
+  /** 课程 id（lessons/index.ts）；综合项目的一步不属于某节课，写 project */
+  lesson?: string
+  /** 综合项目（curriculum.json 的 projects）里的第几步，从 1 数起 */
+  project?: { id: string; step: number; of: number }
+  /** 做完以后接着做哪一道（项目的下一步） */
+  next?: string
   title: string
   /** 一两句话的任务，每个尺寸都写出来 */
   task: string
@@ -95,6 +99,173 @@ const bracketFeatures: Feature[] = [
   },
   { id: "arm", op: "extrude", name: t("横梁", "Arm"), sketch: "arm_s", distance: "t", intent: t("往上长到和立柱顶面齐平", "Grows upward until it's flush with the top of the post") },
 ]
+
+
+/** 放样出来的实心罩壳：底面 B×W，往上 h 收到 TB×TW。 */
+const coverParams = {
+  params: { B: 70, W: 44, TB: 50, TW: 30, h: 30 },
+  paramNotes: {
+    B: t("底面长，沿 X", "Bottom length, along X"),
+    W: t("底面宽，沿 Y", "Bottom width, along Y"),
+    TB: t("顶面长，沿 X", "Top length, along X"),
+    TW: t("顶面宽，沿 Y", "Top width, along Y"),
+    h: t("罩壳高，沿 Z", "Cover height, along Z"),
+  },
+}
+const coverFeatures: Feature[] = [
+  { id: "s1", op: "sketch", name: t("底面截面", "Bottom section"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "B", h: "W" }], intent: t("底面关于原点对称", "The bottom, symmetric about the origin") },
+  { id: "s2", op: "sketch", name: t("顶面截面", "Top section"), on: { plane: "XY", offset: "h" }, shapes: [{ type: "rect", w: "TB", h: "TW" }], intent: t("画在偏移 h 的基准面上", "On a plane offset by h") },
+  { id: "lf", op: "loft", name: t("罩壳外形", "Cover shape"), sketches: ["s1", "s2"], intent: t("两个截面放样出外形，侧面自带斜度", "Loft the two sections into the shape; the sides come out sloped") },
+]
+
+/** 一块 60×40×25 的料：注塑底壳的起点。 */
+const trayParams = {
+  params: { L: 60, W: 40, H: 25 },
+  paramNotes: { L: t("长，沿 X", "Length, along X"), W: t("宽，沿 Y", "Width, along Y"), H: t("高，沿 Z，开模方向", "Height, along Z, the pull direction") },
+}
+const trayFeatures: Feature[] = [
+  { id: "sk", op: "sketch", name: t("底壳轮廓", "Tray outline"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "L", h: "W" }], intent: t("轮廓画在分型面上，也就是底面", "The outline sits on the parting plane, the bottom face") },
+  { id: "base", op: "extrude", name: t("实心料块", "Solid block"), sketch: "sk", distance: "H", intent: t("先得到实心的外形", "The solid shape first") },
+]
+
+/** 一块 80×50、厚 2 的底板。 */
+const plateParams = {
+  params: { L: 80, W: 50, t: 2 },
+  paramNotes: { L: t("板长，沿 X", "Plate length, along X"), W: t("板宽，沿 Y", "Plate width, along Y"), t: t("板厚", "Plate thickness") },
+}
+const plateFeatures: Feature[] = [
+  { id: "sk", op: "sketch", name: t("底板轮廓", "Plate outline"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "L", h: "W" }], intent: t("矩形关于原点对称", "Rectangle symmetric about the origin") },
+  { id: "plate", op: "extrude", name: t("底板", "Plate"), sketch: "sk", distance: "t", intent: t("薄板：刚度靠后面的筋，不靠板厚", "A thin plate: its stiffness will come from ribs, not thickness") },
+]
+
+/** 外壳的法兰面：盖子平压在上面，O 形圈槽的起点。 */
+const flangeParams = {
+  params: { L: 70, W: 50, t: 6, r: 10 },
+  paramNotes: { L: t("法兰长，沿 X", "Flange length, along X"), W: t("法兰宽，沿 Y", "Flange width, along Y"), t: t("法兰厚", "Flange thickness"), r: t("法兰四角圆角", "Corner radius of the flange") },
+}
+const flangeFeatures: Feature[] = [
+  { id: "sk", op: "sketch", name: t("法兰轮廓", "Flange outline"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "L", h: "W", r: "r" }], intent: t("外壳开口一圈的法兰，盖子压在它的顶面上", "The flange around the housing's opening; the lid presses on its top face") },
+  { id: "flange", op: "extrude", name: t("法兰", "Flange"), sketch: "sk", distance: "t", intent: t("顶面就是密封面", "Its top face is the sealing face") },
+]
+
+/** 两块盖板连成一整块：活动铰链的起点。 */
+const lidParams = {
+  params: { L: 82, W: 30, t: 2 },
+  paramNotes: { L: t("两块盖板连起来的总长，沿 X", "Overall length of the two lids together, along X"), W: t("宽，沿 Y", "Width, along Y"), t: t("盖板厚", "Lid thickness") },
+}
+const lidFeatures: Feature[] = [
+  { id: "sk", op: "sketch", name: t("盖板轮廓", "Lid outline"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "L", h: "W" }], intent: t("两块盖板画成一整块，铰链在正中间", "Both lids drawn as one piece, with the hinge right in the middle") },
+  { id: "lid", op: "extrude", name: t("盖板", "Lids"), sketch: "sk", distance: "t", intent: t("一体注塑：盖子、盒身和铰链是同一个零件", "Molded in one: lid, box and hinge are a single part") },
+]
+
+// ------------------------------------------------------------ P3 手持小家电外壳
+
+/** 上壳的外形：圆角矩形拉伸，侧面拔模，顶边圆角。 */
+const P3_PARAMS = {
+  L: [140, t("外形长，沿 X", "Overall length, along X")],
+  W: [48, t("外形宽，沿 Y", "Overall width, along Y")],
+  H: [22, t("上壳高，沿 Z，开模方向", "Height of the top shell, along Z, the pull direction")],
+  rc: [20, t("俯视轮廓的四角圆角", "Corner radius of the outline seen from above")],
+  a: [1.5, t("侧面拔模角", "Draft angle on the sides")],
+  rt: [6, t("顶边圆角", "Fillet on the top edge")],
+  t: [2, t("壁厚", "Wall thickness")],
+  px: [50, t("螺丝柱离中心的距离，沿 X", "Distance of each screw boss from the center, along X")],
+  db: [5, t("螺丝柱外径", "Outer diameter of the screw bosses")],
+  dh: [2.5, t("螺丝柱的孔径（自攻螺钉底孔）", "Hole diameter in the bosses (pilot hole for a self-tapping screw)")],
+  tr: [1.2, t("加强筋厚", "Rib thickness")],
+  zr: [10, t("加强筋下沿离分型面的高度", "Height of the rib's lower edge above the parting plane")],
+  sw: [8, t("卡扣臂宽，沿 X", "Width of the snap arm, along X")],
+  st: [1.2, t("卡扣臂厚", "Thickness of the snap arm")],
+  sl: [7, t("卡扣臂伸出分型面的长度", "How far the snap arm reaches below the parting plane")],
+  hd: [1, t("卡钩向外凸出的深度", "How far the hook sticks out")],
+  hz: [4.5, t("卡钩挂面在分型面下多深", "How far below the parting plane the hook's catch face sits")],
+} as const satisfies Record<string, readonly [number, string]>
+/** The parameters a step uses, with their notes: each step only carries what its features need. */
+const p3Params = (...names: (keyof typeof P3_PARAMS)[]) => ({
+  params: Object.fromEntries(names.map((n) => [n, P3_PARAMS[n][0]])),
+  paramNotes: Object.fromEntries(names.map((n) => [n, P3_PARAMS[n][1]])),
+})
+const p3Shape: Feature[] = [
+  { id: "sk", op: "sketch", name: t("俯视轮廓", "Outline from above"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "L", h: "W", r: "rc" }], intent: t("轮廓画在分型面上：上壳从这里往上长", "The outline sits on the parting plane: the top shell grows up from here") },
+  { id: "body", op: "extrude", name: t("实心外形", "Solid shape"), sketch: "sk", distance: "H", intent: t("先得到实心的大体块", "The big solid mass first") },
+  { id: "dr", op: "draft", name: t("侧面拔模", "Draft on the sides"), faces: { at: { axis: "Z", value: "H/2" } }, angle: "a", neutral: { plane: "XY" }, intent: t("分型面是中性面，侧面朝开模方向收", "The parting plane is neutral; the sides taper toward the pull direction") },
+  { id: "rt", op: "fillet", name: t("顶边圆角", "Top edge fillet"), edges: { faces: { normal: "+Z", extreme: "+Z" } }, r: "rt", intent: t("最大的圆角定下整体的软硬，放在拔模之后", "The largest fillet sets how soft the whole thing looks; it comes after the draft") },
+]
+const p3Shell: Feature = { id: "sh", op: "shell", name: t("抽壳", "Shell"), open: { normal: "-Z", extreme: "-Z" }, t: "t", intent: t("从分型面打开，所有面向内偏移一个壁厚", "Open at the parting plane; every face moves inward by one wall thickness") }
+const p3Bosses: Feature[] = [
+  {
+    id: "bs",
+    op: "sketch",
+    name: t("螺丝柱截面", "Boss sections"),
+    on: { plane: "XY" },
+    shapes: [
+      { type: "circle", d: "db", center: ["-px", 0] },
+      { type: "circle", d: "db", center: ["px", 0] },
+      { type: "circle", d: "dh", center: ["-px", 0], cut: true },
+      { type: "circle", d: "dh", center: ["px", 0], cut: true },
+    ],
+    intent: t("外圆减孔：柱壁约为壳壁的 60%，背面不缩痕", "Outer circle minus the hole: the boss wall about 60 % of the shell wall, so the outside doesn't sink"),
+  },
+  { id: "boss", op: "extrude", name: t("螺丝柱", "Screw bosses"), sketch: "bs", distance: "H-t/2", intent: t("从分型面往上长，伸进顶板半个壁厚，和顶板连成一体", "Grows up from the parting plane and half a wall into the top, so the two fuse") },
+]
+const p3Ribs: Feature[] = [
+  {
+    id: "rs",
+    op: "sketch",
+    name: t("筋的侧面轮廓", "Side outline of the rib"),
+    on: { plane: "XZ" },
+    shapes: [
+      {
+        type: "polyline",
+        points: [
+          ["px+(db+dh)/4", "zr"],
+          ["L/2-t", "zr"],
+          ["L/2-t", "H-rt-t"],
+          ["L/2-rt-t", "H-t/2"],
+          ["px+(db+dh)/4", "H-t/2"],
+        ],
+      },
+    ],
+    intent: t("从柱壁画到端墙，上沿伸进顶板；靠墙的上角切掉，免得从顶边圆角穿出去", "From the boss wall to the end wall, its top inside the top plate; the corner by the wall is cut off so it can't come out through the top fillet"),
+  },
+  { id: "rib", op: "extrude", name: t("加强筋", "Rib"), sketch: "rs", distance: "tr", direction: "both", intent: t("两侧对称拉出筋厚，把螺丝柱连到端墙上，拧螺钉时柱子不晃", "Extruded to the rib thickness, both ways: ties the boss to the end wall, so it doesn't wobble when the screw goes in") },
+  { id: "mr", op: "mirror", name: t("镜像加强筋", "Mirror the rib"), plane: "YZ", features: ["rib"], intent: t("另一根螺丝柱用同一根筋", "The same rib for the other boss") },
+]
+const p3Snaps: Feature[] = [
+  {
+    id: "ss",
+    op: "sketch",
+    name: t("卡扣截面", "Snap section"),
+    on: { plane: "YZ" },
+    shapes: [
+      {
+        type: "polyline",
+        points: [
+          ["W/2-t+0.05-st", 4],
+          ["W/2-t+0.05", 4],
+          ["W/2-t+0.05", "-hz"],
+          ["W/2-t+0.05+hd", "-hz"],
+          ["W/2-t+0.05+hd", "-hz-0.7"],
+          ["W/2-t+0.05", "-sl"],
+          ["W/2-t+0.05-st", "-sl"],
+        ],
+      },
+    ],
+    intent: t(
+      "臂贴着内壁往下伸过分型面（多伸进壁里 0.05，和壁长成一体）；钩子朝外，平的挂面扣住底壳，斜面是导入角",
+      "The arm runs down the inside of the wall past the parting plane (0.05 into the wall, so they grow together); the hook points outward, its flat catch face holds the bottom shell and its slope leads it in",
+    ),
+  },
+  { id: "snap", op: "extrude", name: t("卡扣", "Snap"), sketch: "ss", distance: "sw", direction: "both", intent: t("两侧对称拉出臂宽，卡扣在长边正中", "Symmetric to the arm's width, in the middle of the long side") },
+  { id: "ms", op: "mirror", name: t("镜像卡扣", "Mirror the snap"), plane: "XZ", features: ["snap"], intent: t("对面的长边也扣一个，两边受力一样", "One on the opposite long side too, so both sides hold the same") },
+]
+const SHAPE = ["L", "W", "H", "rc", "a", "rt"] as const
+const p3Stage1: Tree = { ...p3Params(...SHAPE), features: p3Shape }
+const p3Stage2: Tree = { ...p3Params(...SHAPE, "t"), features: [...p3Shape, p3Shell] }
+const p3Stage3: Tree = { ...p3Params(...SHAPE, "t", "px", "db", "dh"), features: [...p3Shape, p3Shell, ...p3Bosses] }
+const p3Stage4: Tree = { ...p3Params(...SHAPE, "t", "px", "db", "dh", "tr", "zr"), features: [...p3Shape, p3Shell, ...p3Bosses, ...p3Ribs] }
+const p3Stage5: Tree = { ...p3Params(...SHAPE, "t", "px", "db", "dh", "tr", "zr", "sw", "st", "sl", "hd", "hz"), features: [...p3Shape, p3Shell, ...p3Bosses, ...p3Ribs, ...p3Snaps] }
+const P3 = (step: number) => ({ id: "P3", step, of: 5 })
 
 export const PRACTICE: Practice[] = [
   {
@@ -459,7 +630,270 @@ export const PRACTICE: Practice[] = [
       ],
     },
   },
+  {
+    id: "offset-thicken-1",
+    lesson: "offset-thicken",
+    title: t("把实心罩壳抽成 2 mm 的壁", "Shell a solid cover to a 2 mm wall"),
+    task: t(
+      "这个放样出来的罩壳是实心的。从底面打开抽壳，壁厚 2，外形尺寸不变。",
+      "This lofted cover is solid. Shell it open at the bottom with a 2 wall, keeping its outside size.",
+    ),
+    start: { ...coverParams, features: coverFeatures },
+    checks: [
+      { id: "p-size", said: t("外形尺寸不变", "Outside size unchanged"), kind: "size", expect: [70, 44, 30] },
+      { id: "p-wall", said: t("壁厚 2", "A 2 wall"), kind: "thickness", faces: { normal: "+Z", extreme: "+Z" }, expect: 2 },
+    ],
+    tips: byLocale(
+      ["抽壳要选开口的面：底面", "壁厚向内长，外形尺寸不变", "顶板也会变成 2 厚"],
+      ["Shelling asks for the open face: the bottom", "The wall grows inward, so the outside size stays", "The top becomes 2 thick too"],
+    ),
+    solution: {
+      params: { ...coverParams.params, t: 2 },
+      paramNotes: { ...coverParams.paramNotes, t: "壁厚，向内" },
+      features: [...coverFeatures, { id: "sh", op: "shell", name: "抽壳", open: { normal: "-Z", extreme: "-Z" }, t: "t", intent: "去掉底面，所有面向内偏移一个壁厚" }],
+    },
+  },
+  {
+    id: "styling-dfm-1",
+    lesson: "styling-dfm",
+    title: t("做一个能脱模的底壳", "Make a tray that comes out of the mold"),
+    task: t(
+      "把这块 60×40×25 的料做成注塑底壳，从上面开模：四个侧面加 2° 拔模，中性面放在底面；再从顶面打开抽壳，壁厚 2。",
+      "Turn this 60×40×25 block into a molded tray that is pulled upward: give the four sides 2° of draft with the neutral plane at the bottom, then shell it open at the top with a 2 wall.",
+    ),
+    start: { ...trayParams, features: trayFeatures },
+    checks: [
+      { id: "p-size", said: t("底面保持 60×40，高 25", "The bottom stays 60×40, 25 high"), kind: "size", expect: [60, 40, 25] },
+      { id: "p-draft", said: t("四个侧面加 2° 拔模", "2° of draft on the four sides"), kind: "angle", a: { normal: "-Z", extreme: "-Z" }, b: { kind: "plane", near: [30, 0, 12.5] }, expect: 88 },
+      { id: "p-wall", said: t("壁厚 2", "A 2 wall"), kind: "thickness", faces: { normal: "-Z", extreme: "-Z" }, expect: 2 },
+    ],
+    tips: byLocale(
+      ["先拔模再抽壳，内壁跟着一起斜", "中性面在底面，底面尺寸不变", "侧面用高度中间的位置一起选"],
+      ["Draft first, then shell, so the inside walls slope too", "With the neutral plane at the bottom, the bottom keeps its size", "Pick the sides together by their mid-height"],
+    ),
+    solution: {
+      params: { ...trayParams.params, a: 2, t: 2 },
+      paramNotes: { ...trayParams.paramNotes, a: "侧面拔模角", t: "壁厚，向内" },
+      features: [
+        ...trayFeatures,
+        { id: "dr", op: "draft", name: "侧面拔模", faces: { kind: "plane", at: { axis: "Z", value: "H/2" } }, angle: "a", neutral: { plane: "XY" }, intent: "四个侧面朝开模方向向内收，底面尺寸不变" },
+        { id: "sh", op: "shell", name: "抽壳", open: { normal: "+Z", extreme: "+Z" }, t: "t", intent: "从顶面打开；在拔模之后抽壳，内壁也带着拔模角" },
+      ],
+    },
+  },
+  {
+    id: "stiffness-ribs-1",
+    lesson: "stiffness-ribs",
+    title: t("用筋加强薄底板", "Stiffen a thin plate with ribs"),
+    task: t(
+      "这块 80×50、厚 2 的底板太软。不加厚板子，在板面上加两道沿 X 方向的筋：筋厚 1.2，高出板面 6，离中心线各 10；总用料不超过 10000 mm³。",
+      "This 80×50 plate, 2 thick, is too floppy. Without making it thicker, add two ribs along X on top: 1.2 thick, standing 6 above the plate, each 10 from the centerline, using no more than 10000 mm³ of material in all.",
+    ),
+    start: { ...plateParams, features: plateFeatures },
+    checks: [
+      { id: "p-size", said: t("高出板面 6", "Standing 6 above the plate"), kind: "size", expect: [80, 50, 8] },
+      { id: "p-rib", said: t("筋厚 1.2", "Ribs 1.2 thick"), kind: "thickness", faces: { normal: "+Y", near: [0, 10.6, 5] }, expect: 1.2 },
+      { id: "p-mass", said: t("总用料不超过 10000 mm³", "No more than 10000 mm³ of material"), kind: "volume", max: 10000 },
+    ],
+    tips: byLocale(
+      ["两个窄矩形画在板面上，往上拉伸 6", "筋厚约为板厚的 60%，背面不容易缩痕", "加厚到 8 要 32000 mm³，筋只要九千多"],
+      ["Two narrow rectangles on the plate's top face, extruded up 6", "Ribs about 60 % of the wall, so the back doesn't sink", "A plate 8 thick takes 32000 mm³; the ribs, a little over 9000"],
+    ),
+    solution: {
+      params: { ...plateParams.params, tr: 1.2, hr: 6, y: 10 },
+      paramNotes: { ...plateParams.paramNotes, tr: "筋厚", hr: "筋高出板面的高度", y: "两道筋离中心线的距离" },
+      features: [
+        ...plateFeatures,
+        {
+          id: "rs",
+          op: "sketch",
+          name: "两道筋",
+          on: { plane: "XY", offset: "t" },
+          shapes: [
+            { type: "rect", w: "L", h: "tr", center: [0, "y"] },
+            { type: "rect", w: "L", h: "tr", center: [0, "-y"] },
+          ],
+          intent: "画在板面上，关于中心线对称",
+        },
+        { id: "ribs", op: "extrude", name: "加强筋", sketch: "rs", distance: "hr", intent: "往上长出筋高：刚度按高度的三次方涨，用料只按高度涨" },
+      ],
+    },
+  },
+  {
+    id: "seals-1",
+    lesson: "seals",
+    title: t("切一圈 O 形圈槽", "Cut an O-ring groove"),
+    task: t(
+      "这块 70×50、厚 6 的是外壳的法兰，盖子平压在顶面上。给线径 3.53 的 O 形圈切一圈端面密封槽：槽深 2.65、槽宽 4.70，槽的中心线是 56×36、四角 R8 的圆角矩形。",
+      "This 70×50 piece, 6 thick, is the housing's flange; the lid presses flat on its top face. Cut a face-seal groove for a 3.53 O-ring: 2.65 deep and 4.70 wide, its centerline a 56×36 rounded rectangle with R8 corners.",
+    ),
+    start: { ...flangeParams, features: flangeFeatures },
+    checks: [
+      { id: "p-size", said: t("外形 70×50×6 不变", "The 70×50×6 outline unchanged"), kind: "size", expect: [70, 50, 6] },
+      { id: "p-depth", said: t("槽深 2.65", "2.65 deep"), kind: "distance", a: { face: { normal: "+Z", near: [0, 0, 6] } }, b: { face: { normal: "+Z", near: [0, 18, 3.35] } }, expect: 2.65 },
+      { id: "p-width", said: t("槽宽 4.70", "4.70 wide"), kind: "distance", a: { face: { normal: "+Y", near: [0, 15.65, 5] } }, b: { face: { normal: "-Y", near: [0, 20.35, 5] } }, expect: 4.7 },
+    ],
+    tips: byLocale(
+      ["一张草图：外圈圆角矩形减内圈，差一个槽宽", "圆角跟着偏移：外圈 R8 + 2.35，内圈 R8 − 2.35", "切深 2.65：压缩率约 25%，填充率约 79%"],
+      ["One sketch: an outer rounded rectangle minus an inner one", "The corners offset too: R8 + 2.35 outside, R8 − 2.35 inside", "Cut 2.65 deep: about 25 % squeeze, 79 % fill"],
+    ),
+    solution: {
+      params: { ...flangeParams.params, cl: 56, cw: 36, cr: 8, gw: 4.7, gd: 2.65 },
+      paramNotes: {
+        ...flangeParams.paramNotes,
+        cl: t("槽中心线长，沿 X", "Groove centerline length, along X"),
+        cw: t("槽中心线宽，沿 Y", "Groove centerline width, along Y"),
+        cr: t("槽中心线的四角圆角", "Corner radius of the groove centerline"),
+        gw: t("槽宽：按 O 形圈线径查设计表", "Groove width: from the design chart for the cord"),
+        gd: t("槽深：决定压缩率", "Groove depth: sets the squeeze"),
+      },
+      features: [
+        ...flangeFeatures,
+        {
+          id: "gs",
+          op: "sketch",
+          name: t("密封槽", "Seal groove"),
+          on: { plane: "XY", offset: "t" },
+          shapes: [
+            { type: "rect", w: "cl+gw", h: "cw+gw", r: "cr+gw/2" },
+            { type: "rect", w: "cl-gw", h: "cw-gw", r: "cr-gw/2", cut: true },
+          ],
+          intent: t("中心线往两边各偏半个槽宽，圆角也跟着偏，槽宽处处一样", "The centerline offset half a groove width each way, corners included, so the groove is the same width all round"),
+        },
+        { id: "groove", op: "extrude", name: t("切出密封槽", "Cut the groove"), sketch: "gs", distance: "gd", mode: "cut", direction: "reverse", intent: t("往下切到槽深，换线径时改 gw 和 gd", "Cut down to the groove depth; for another cord change gw and gd") },
+      ],
+    },
+  },
+  {
+    id: "living-hinge-1",
+    lesson: "living-hinge",
+    title: t("切出一条活动铰链", "Cut a living hinge"),
+    task: t(
+      "这块 82×30、厚 2 的料是一体注塑的盒盖和盒身。在正中间从上面切一道宽 2 的槽，只留 0.4 厚，做成活动铰链。",
+      "This 82×30 piece, 2 thick, is a lid and a box molded in one. Cut a slot 2 wide down from the top, right in the middle, leaving only 0.4 of material: that is the living hinge.",
+    ),
+    start: { ...lidParams, features: lidFeatures },
+    checks: [
+      { id: "p-size", said: t("外形 82×30×2 不变", "The 82×30×2 outline unchanged"), kind: "size", expect: [82, 30, 2] },
+      { id: "p-hinge", said: t("只留 0.4 厚", "Only 0.4 left"), kind: "thickness", faces: { normal: "+Z", near: [0, 0, 0.4] }, expect: 0.4 },
+      { id: "p-width", said: t("槽宽 2", "A slot 2 wide"), kind: "distance", a: { face: { normal: "+X", near: [-1, 0, 1] } }, b: { face: { normal: "-X", near: [1, 0, 1] } }, expect: 2 },
+    ],
+    tips: byLocale(
+      ["槽画在顶面上：宽 2、长过整个宽度", "切除深度 = 板厚 − 铰链厚 = 1.6", "铰链要用 PP 这类耐弯折的料"],
+      ["Draw the slot on the top face: 2 wide, across the whole width", "Cut depth = lid thickness − hinge thickness = 1.6", "The hinge needs a resin that takes flexing, such as PP"],
+    ),
+    solution: {
+      params: { ...lidParams.params, w: 2, h: 0.4 },
+      paramNotes: { ...lidParams.paramNotes, w: "铰链槽宽", h: "铰链剩下的厚度" },
+      features: [
+        ...lidFeatures,
+        { id: "gs", op: "sketch", name: "铰链槽", on: { plane: "XY", offset: "t" }, shapes: [{ type: "rect", w: "w", h: "W+2" }], intent: "画在顶面上，比料宽一点，切得干净" },
+        { id: "groove", op: "extrude", name: "切出铰链", sketch: "gs", distance: "t-h", mode: "cut", direction: "reverse", intent: "往下切到只剩 h，铰链厚度由参数决定" },
+      ],
+    },
+  },
+  {
+    id: "p3-1",
+    project: P3(1),
+    next: "p3-2",
+    title: t("小家电上壳 1：外形与拔模", "Appliance top shell 1: shape and draft"),
+    task: t(
+      "做一个手持小家电的上壳外形：俯视是 140×48、四角 R20 的圆角矩形，高 22；分型面在底面，侧面加 1.5° 拔模；最后给顶边倒 R6 圆角。",
+      "Build the shape of a handheld appliance's top shell: seen from above a 140×48 rounded rectangle with R20 corners, 22 high; with the parting plane at the bottom, give the sides 1.5° of draft, and finish with an R6 fillet on the top edge.",
+    ),
+    checks: [
+      { id: "p-size", said: t("140×48，高 22", "140×48, 22 high"), kind: "size", expect: [140, 48, 22] },
+      { id: "p-draft", said: t("侧面加 1.5° 拔模", "1.5° of draft on the sides"), kind: "angle", a: { normal: "-Z", extreme: "-Z" }, b: { kind: "plane", near: [0, 24, 8] }, expect: 88.5 },
+    ],
+    tips: byLocale(
+      ["草图里的矩形可以直接带四角圆角", "先拔模再倒顶边圆角", "拔模的中性面选上视基准面"],
+      ["A sketch rectangle can carry its corner radius", "Draft first, then the top edge fillet", "Use the top plane as the neutral plane"],
+    ),
+    solution: p3Stage1,
+  },
+  {
+    id: "p3-2",
+    project: P3(2),
+    next: "p3-3",
+    title: t("小家电上壳 2：抽壳", "Appliance top shell 2: shell"),
+    task: t(
+      "接着上一步的外形（这里给的是参考做法）：从底面打开抽壳，壁厚 2，外形不变。",
+      "Carry on from the shape of the previous step (here, its reference answer): shell it open at the bottom with a 2 wall, keeping the outside.",
+    ),
+    start: p3Stage1,
+    checks: [
+      { id: "p-size", said: t("外形不变", "The outside unchanged"), kind: "size", expect: [140, 48, 22] },
+      { id: "p-wall", said: t("壁厚 2", "A 2 wall"), kind: "thickness", faces: { normal: "+Z", extreme: "+Z" }, expect: 2 },
+    ],
+    tips: byLocale(
+      ["开口面是分型面上的底面", "圆角和拔模都在抽壳之前，内壁跟着偏移", "壁厚处处一样，注塑不缩不翘"],
+      ["The open face is the bottom, on the parting plane", "Fillet and draft come before the shell, so the inside follows", "One wall thickness everywhere: no sink, no warp"],
+    ),
+    solution: p3Stage2,
+  },
+  {
+    id: "p3-3",
+    project: P3(3),
+    next: "p3-4",
+    title: t("小家电上壳 3：螺丝柱", "Appliance top shell 3: screw bosses"),
+    task: t(
+      "在壳里加两根螺丝柱，离中心各 50：外径 5，中间是 ⌀2.5 的自攻螺钉孔，从分型面一直长到顶板。",
+      "Add two screw bosses inside the shell, each 50 from the center: 5 across, with a ⌀2.5 hole for a self-tapping screw, growing from the parting plane up to the top.",
+    ),
+    start: p3Stage2,
+    checks: [
+      { id: "p-holes", said: t("⌀2.5 的自攻螺钉孔", "⌀2.5 holes for self-tapping screws"), kind: "holes", faces: { kind: "cylinder", radius: 1.25 }, count: 2, d: 2.5 },
+      { id: "p-pitch", said: t("离中心各 50", "Each 50 from the center"), kind: "pcd", faces: { kind: "cylinder", radius: 1.25 }, count: 2, expect: 100 },
+    ],
+    tips: byLocale(
+      ["一张草图画两个外圆、两个挖掉的孔", "拉伸到 H - t/2：伸进顶板，不穿出外面", "柱壁 1.25，约为壳壁的 60%"],
+      ["One sketch: two outer circles and two cut-out holes", "Extrude to H - t/2: into the top, not through it", "A 1.25 boss wall, about 60 % of the shell wall"],
+    ),
+    solution: p3Stage3,
+  },
+  {
+    id: "p3-4",
+    project: P3(4),
+    next: "p3-5",
+    title: t("小家电上壳 4：加强筋", "Appliance top shell 4: ribs"),
+    task: t(
+      "用加强筋把每根螺丝柱连到端墙上：筋厚 1.2，下沿离分型面 10，往上长到顶板。",
+      "Tie each screw boss to its end wall with a rib: 1.2 thick, its lower edge 10 above the parting plane, growing up to the top.",
+    ),
+    start: p3Stage3,
+    checks: [
+      { id: "p-rib", said: t("筋厚 1.2", "A rib 1.2 thick"), kind: "thickness", faces: { normal: "+Y", near: [60, 0.6, 15] }, expect: 1.2 },
+      { id: "p-low", said: t("下沿离分型面 10", "Its lower edge 10 above the parting plane"), kind: "distance", a: { face: { normal: "-Z", near: [60, 0, 10] } }, b: { face: { normal: "-Z", extreme: "-Z", near: [0, 23, 0] } }, expect: 10 },
+    ],
+    tips: byLocale(
+      ["在前视基准面上画筋的侧面，从柱壁到端墙", "两侧对称拉伸 1.2，上沿伸进顶板", "另一边用镜像"],
+      ["On the front plane, draw the rib's side, boss wall to end wall", "Extrude 1.2 both ways, its top into the top plate", "Mirror it for the other side"],
+    ),
+    solution: p3Stage4,
+  },
+  {
+    id: "p3-5",
+    project: P3(5),
+    title: t("小家电上壳 5：卡扣", "Appliance top shell 5: snap fits"),
+    task: t(
+      "在两条长边的正中各加一个悬臂卡扣：臂宽 8、厚 1.2，贴着内壁从分型面往下伸 7；末端的卡钩向外凸 1，挂面在分型面下 4.5。",
+      "Add a cantilever snap in the middle of each long side: an arm 8 wide and 1.2 thick, running down the inside of the wall 7 past the parting plane, with a hook at its end sticking out 1 and its catch face 4.5 below the parting plane.",
+    ),
+    start: p3Stage4,
+    checks: [
+      { id: "p-size", said: t("从分型面往下伸 7", "Reaching 7 below the parting plane"), kind: "size", expect: [140, 48, 29] },
+      { id: "p-arm", said: t("臂厚 1.2", "An arm 1.2 thick"), kind: "thickness", faces: { normal: "-Y", near: [0, 20.85, -2] }, expect: 1.2 },
+      { id: "p-hook", said: t("挂面在分型面下 4.5", "The catch face 4.5 below the parting plane"), kind: "distance", a: { face: { normal: "+Z", near: [0, 22.6, -4.5] } }, b: { face: { normal: "-Z", at: { axis: "Z", value: 0 }, near: [0, 23, 0] } }, expect: 4.5 },
+    ],
+    tips: byLocale(
+      ["在右视基准面上画臂和钩的截面，两侧对称拉伸 8", "钩子朝外，挂面平、下面是斜的导入面", "卡钩是倒扣：模具要斜顶，或在臂上开窗"],
+      ["Draw the arm and hook on the right plane; extrude 8, symmetric", "The hook points outward: a flat catch face, a sloped lead-in below", "The hook is an undercut: the mold needs a lifter or a window"],
+    ),
+    solution: p3Stage5,
+  },
 ]
 
 export const practiceFor = (lesson: string) => PRACTICE.filter((p) => p.lesson === lesson)
+/** A project's steps (curriculum.json projects), in order. */
+export const projectSteps = (project: string) => PRACTICE.filter((p) => p.project?.id === project).sort((a, b) => a.project!.step - b.project!.step)
 export const practiceById = (id: string) => PRACTICE.find((p) => p.id === id)

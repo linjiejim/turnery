@@ -39,6 +39,8 @@ export const TEARDOWN_CODES: Record<string, string> = {
   "4.4.5": "enclosure_bottom",
   "2.1.1": "enclosure",
   "2.1.3": "hinge_box",
+  "2.2.1": "desk_lamp",
+  "4.4.7": "mouse_shell",
 }
 
 export type Availability = { to: string; label: string; kind: "lesson" | "teardown" | "card" }

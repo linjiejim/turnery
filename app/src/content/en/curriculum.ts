@@ -23,6 +23,10 @@ export const CURRICULUM_EN: CurriculumEn = {
     T3: { title: "Drawings and tolerances", note: "About 8–12 hours; 3.1 can also come straight after T1, as SOLIDWORKS Essentials does it" },
     T4: { title: "Design for manufacturing (DFM)", note: "About 12–18 hours" },
     T5: { title: "Curves, surfaces and styling", note: "The industrial design track, about 25–40 hours" },
+    T6: {
+      title: "Product design: form, ergonomics, CMF and product structure",
+      note: "The other half of the industrial design track, about 20–30 hours: the surface track is about making faces smooth, this one is about what to make, who it is for and how it goes together",
+    },
   },
 
   modules: {
@@ -50,6 +54,13 @@ export const CURRICULUM_EN: CurriculumEn = {
     "M5.4": { title: "Patch layout and an introduction to Class-A" },
     "M5.5": { title: "Freeform modeling" },
     "M5.6": { title: "From styling to engineering" },
+    "M6.0": { title: "The design process", note: "A short read" },
+    "M6.1": { title: "Form" },
+    "M6.2": { title: "Ergonomics" },
+    "M6.3": { title: "CMF: color, material and finish" },
+    "M6.4": { title: "Presenting a design" },
+    "M6.5": { title: "Product structure", note: "Turning a form into something that goes together" },
+    "M6.6": { title: "From prototype to market", note: "A short read" },
   },
 
   lessons: {
@@ -160,19 +171,47 @@ export const CURRICULUM_EN: CurriculumEn = {
     "5.5.2": { title: "From SubD to NURBS, back into the engineering workflow", goal: "Hand a freeform shape over to engineering", prereq: "5.5.1, 5.2.3" },
     "5.6.1": { title: "Splitting a styled form into parts", goal: "Break a one-piece styled form into parts that can be manufactured", prereq: "5.2.4, M4.4" },
     "5.6.2": { title: "DFM review of styled parts", goal: "Meet the injection molding requirements without spoiling the design" },
+
+    // T6
+    "6.0.1": { title: "The design process: diverge, then converge", goal: "Know what each stage should produce and when to converge", prereq: "None" },
+    "6.0.2": { title: "User research methods", goal: "Pick the method that answers your question: interviews, observation, surveys, usability tests" },
+    "6.0.3": { title: "Writing a design brief", goal: "Put the target users, the situations of use, the constraints and the success criteria on one page" },
+    "6.1.1": { title: "Visual thinning", goal: "Control how thick a product looks with tapered edges, chamfers and where the parting line goes", interactiveNote: "measure the apparent thickness from where the user looks" },
+    "6.1.2": { title: "Fillet hierarchy and corners", goal: "Order large, medium and small fillets, and resolve the corner where three edges meet" },
+    "6.1.3": { title: "Character lines and highlights", goal: "Steer highlights with hard creases, soft creases and fading surfaces", interactiveNote: "turn the light and watch the highlight lines" },
+    "6.1.4": { title: "Proportion, massing and scale", goal: "Judge proportion by primary and secondary masses, visual weight and the scale of a hand" },
+    "6.2.1": { title: "Body dimensions and percentiles", goal: "Size things for P5–P95, knowing there is no such thing as an average person", prereq: "None", interactiveNote: "a percentile slider" },
+    "6.2.2": { title: "Grips and handles", goal: "Choose a handle's diameter and cross-section for the way it is held" },
+    "6.2.3": { title: "How a button feels: the force–travel curve", goal: "Read a force–travel curve and shape the click with the structure", interactiveNote: "press the button and watch the curve being drawn" },
+    "6.2.4": { title: "Sight lines and reach", goal: "Put screens and buttons where they can be seen clearly and reached" },
+    "6.3.1": { title: "Materials and finishes", goal: "Understand roughness, metalness and what common surface finishes look like", prereq: "None", interactiveNote: "switch the finish on one model" },
+    "6.3.2": { title: "Gloss shows every flaw", goal: "Know that glossy faces expose sink marks, and choose rib thickness and process for the finish", prereq: "4.4.1, 6.3.1" },
+    "6.3.3": { title: "Texture and draft", goal: "Give a textured face enough draft for its texture depth", prereq: "4.4.2, 6.3.1" },
+    "6.4.1": { title: "Perspective and ellipses", goal: "Find the horizon and the vanishing points, and line an ellipse's minor axis up with the axis of rotation", interactiveNote: "turn a cylinder and watch its ellipses" },
+    "6.4.2": { title: "Lighting a product shot", goal: "Show the form clearly with key, fill and rim lights and the right focal length", interactiveNote: "drag the lights" },
+    "6.4.3": { title: "Line weight and shading in sketches", goal: "Show volume with line weight and tonal values" },
+    "6.5.1": { title: "Gap and flush", goal: "Predict the visible gaps and steps between parts from a tolerance stack", interactiveNote: "assemble 1,000 units in simulation" },
+    "6.5.2": { title: "A feel for stiffness: wall thickness and ribs", goal: "Know that stiffness grows with the cube of the wall thickness, and use ribs instead of thicker walls" },
+    "6.5.3": { title: "Seals and O-rings", goal: "Design a seal groove for the right squeeze and fill" },
+    "6.5.4": { title: "Living hinges", goal: "Design a one-piece hinge for its material and strain" },
+    "6.5.5": { title: "Laying out electronics and sizing openings", goal: "Place the PCB, battery and connectors, and work out how much clearance an opening in the housing needs" },
+    "6.5.6": { title: "Design for disassembly and recycling", goal: "Use fewer fasteners and fewer mixed materials, so the product comes apart and its materials can be sorted" },
+    "6.6.1": { title: "Prototype fidelity", goal: "Pick the prototype for the question you want answered: looks, structure or function" },
+    "6.6.2": { title: "Safety and certification", goal: "Know where requirements such as drop tests, IP ratings and small-parts rules come from" },
+    "6.6.3": { title: "Packaging and unboxing", goal: "Design the packaging and the unboxing as part of the product" },
   },
 
   projects: {
     P1: { title: "A 3D-printed storage box or phone stand (a first project for makers)", prereq: "T0, M1.1–1.3, M4.1" },
     P2: { title: "A sheet metal enclosure or bracket (for hardware engineers)", prereq: "T1, M4.3, T3" },
-    P3: { title: "A handheld appliance housing: styling → shell → snap fits and bosses → draft check (industrial design meets engineering)", prereq: "T5, M4.4" },
+    P3: { title: "A handheld appliance housing: shape and draft → shell → screw bosses and ribs → snap fits (industrial design meets engineering)", prereq: "M4.4, M6.5" },
     P4: { title: "A simple mechanism: a hinged box, gears or a linkage" },
     P5: { title: "A parametric part family (several size configurations)" },
     P6: { title: "Model-from-drawing challenge: graded like a certification exam, by the volume or center of mass you enter", prereq: "M0.2, T1" },
   },
 
   personas: {
-    "产品/工业设计师": { name: "Product and industrial designers", path: "T0 → M5.1–5.3 → M1.1–1.3 (condensed) → M5.4–5.6 → M4.4 → P3" },
+    "产品/工业设计师": { name: "Product and industrial designers", path: "T0 → M5.1–5.3 → M6.1–6.4 → M1.1–1.3 (condensed) → M5.4–5.6 → M6.5 → M4.4 → P3" },
     Makers: { name: "Makers" },
     硬件工程师: { name: "Hardware engineers", path: "T0 → all of T1 → T2 → T3 → M4.2–4.4 → P2 / P4" },
     软件转硬件: {

@@ -9,7 +9,22 @@ import { Kernel } from "@/studio/kernel/build"
 import { initNodeKernel } from "@/studio/kernel/node"
 import { DESKTOP_OPS, STUDIO_TOOLS } from "@/studio/tools"
 
-const FIRST_BATCH = ["sketch-to-solid", "revolve", "pattern-mirror", "fillet-chamfer", "fillet-shell-order", "sweep-loft", "datum-planes", "print-overhang"]
+/** Lessons with a practice, in the order PRACTICE lists them (project steps come after, with no lesson). */
+const WITH_PRACTICE = [
+  "sketch-to-solid",
+  "revolve",
+  "pattern-mirror",
+  "fillet-chamfer",
+  "fillet-shell-order",
+  "sweep-loft",
+  "datum-planes",
+  "print-overhang",
+  "offset-thicken",
+  "styling-dfm",
+  "stiffness-ribs",
+  "seals",
+  "living-hinge",
+]
 
 /** Parses as the site's assistant would write it; zod drops keys it doesn't know, so anything dropped is desktop-only. */
 function expectWeb(schema: unknown, value: unknown, what: string) {
@@ -30,13 +45,30 @@ function expectWebTree(tree: Tree, what: string) {
 }
 
 describe("practice data", () => {
-  it("is the first batch: one exercise for each of the eight lessons", () => {
-    expect(PRACTICE.map((p) => p.lesson)).toEqual(FIRST_BATCH)
+  it("has one exercise for each of these lessons, then the projects' steps", () => {
+    const own = PRACTICE.filter((p) => !p.project)
+    expect(own.map((p) => p.lesson)).toEqual(WITH_PRACTICE)
     expect(new Set(PRACTICE.map((p) => p.id)).size).toBe(PRACTICE.length)
     const lessons = new Set(LESSONS.map((l) => l.id))
-    for (const p of PRACTICE) {
-      expect(lessons.has(p.lesson), p.id).toBe(true)
+    for (const p of own) {
+      expect(lessons.has(p.lesson!), p.id).toBe(true)
       expect(p.id).toMatch(new RegExp(`^${p.lesson}-\\d+$`))
+    }
+  })
+
+  it("chains each project's steps: numbered from 1, each pointing at the next, starting where the last one ended", () => {
+    const projects = new Set(PRACTICE.flatMap((p) => (p.project ? [p.project.id] : [])))
+    expect(projects.size).toBeGreaterThan(0)
+    for (const id of projects) {
+      const steps = PRACTICE.filter((p) => p.project?.id === id)
+      expect(steps.map((p) => p.project!.step), id).toEqual(steps.map((_, i) => i + 1))
+      steps.forEach((p, i) => {
+        expect(p.lesson, `${p.id}: a project step belongs to no lesson`).toBeUndefined()
+        expect(p.id).toBe(`${id.toLowerCase()}-${i + 1}`)
+        expect(p.project!.of).toBe(steps.length)
+        expect(p.next).toBe(steps[i + 1]?.id)
+        if (i > 0) expect(p.start, `${p.id} starts from ${steps[i - 1].id}'s reference answer`).toEqual(steps[i - 1].solution)
+      })
     }
   })
 

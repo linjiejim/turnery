@@ -1,0 +1,413 @@
+{
+ "kind": "part",
+ "id": "toothbrush_handle",
+ "title": "电动牙刷手柄",
+ "subtitle": "变截面放样 · 按键平面 · 包胶槽 · 密封",
+ "level": "进阶",
+ "teaches": [
+  "截面沿长度变化：握得稳，也摸得出方向",
+  "按键放在平面上",
+  "包胶槽边缘要有封胶台阶",
+  "按键和充电口都不开通孔到外面"
+ ],
+ "params": [
+  {
+   "id": "L",
+   "label": "长度",
+   "unit": "mm",
+   "default": 190,
+   "values": [],
+   "feature": "sk1"
+  },
+  {
+   "id": "rb",
+   "label": "底边圆角",
+   "unit": "mm",
+   "default": 4,
+   "values": [],
+   "feature": "fil1"
+  },
+  {
+   "id": "t",
+   "label": "壁厚",
+   "unit": "mm",
+   "default": 2,
+   "values": [
+    2,
+    2.5
+   ],
+   "feature": "shell1"
+  },
+  {
+   "id": "g",
+   "label": "包胶厚",
+   "unit": "mm",
+   "default": 1.2,
+   "values": [
+    0.8,
+    1.2
+   ],
+   "feature": "cut2"
+  },
+  {
+   "id": "dh",
+   "label": "按键孔径",
+   "unit": "mm",
+   "default": 5,
+   "values": [],
+   "feature": "hole1"
+  },
+  {
+   "id": "dc",
+   "label": "充电凹槽直径",
+   "unit": "mm",
+   "default": 9,
+   "values": [],
+   "feature": "cut3"
+  },
+  {
+   "id": "hc",
+   "label": "充电凹槽深",
+   "unit": "mm",
+   "default": 12,
+   "values": [],
+   "feature": "cut3"
+  }
+ ],
+ "features": [
+  {
+   "id": "sk1",
+   "op": "sketch",
+   "name": "草图1",
+   "title": "六个截面",
+   "why": "手柄沿长度方向画六个椭圆截面：底部接近圆，放在充电座上不挑方向；握持段左右宽、前后扁，手一握就知道刷头朝哪边；拇指的位置前面再鼓起一点，留给按键。截面一变，手感就变，这比在外形上加花纹管用。",
+   "summary": "6 个截面 · 高 0 → 190",
+   "summaryTemplate": "6 个截面 · 高 0 → {L}",
+   "pitfall": "截面的间距要大致均匀。间距忽大忽小，放样会在截面之间鼓出没画过的包。",
+   "view": [
+    1.2,
+    -0.8,
+    0.5
+   ],
+   "focus": null,
+   "code": "ovals = [Pos(0, 0, z * s) * Ellipse(a, b) for z, a, b in SECTIONS]\nzw, aw, bw = SECTIONS[2]  # 腰部截面"
+  },
+  {
+   "id": "loft1",
+   "op": "loft",
+   "name": "放样1",
+   "title": "手柄主体",
+   "why": "把六个截面放样成一个光顺的实体。侧面是一张连续的曲面，从底部一直到顶部，没有接缝，握在手里摸不到棱。",
+   "summary": "6 个截面 · 光顺",
+   "summaryTemplate": "6 个截面 · 光顺",
+   "pitfall": "",
+   "view": [
+    1.2,
+    -0.8,
+    0.5
+   ],
+   "focus": null,
+   "code": "handle = loft(ovals)"
+  },
+  {
+   "id": "fil1",
+   "op": "fillet",
+   "name": "圆角1",
+   "title": "底边圆角",
+   "why": "底边倒 R4。圆角放在抽壳之前，抽壳会把它偏移成同心的内圆角，底部转角的壁厚和侧壁一样。",
+   "summary": "R4",
+   "summaryTemplate": "R{rb}",
+   "pitfall": "圆角小于壁厚，抽壳后内侧就成了尖角，跌落时这里最先裂。",
+   "view": [
+    1,
+    -1,
+    -0.6
+   ],
+   "focus": null,
+   "code": "bottom_edge = handle.faces().sort_by(Axis.Z)[0].edges()\nhandle = fillet(bottom_edge, radius=p[\"rb\"])"
+  },
+  {
+   "id": "cut1",
+   "op": "cut",
+   "name": "切除1",
+   "title": "按键平面",
+   "why": "在拇指鼓起的地方平切一刀，切出一块平面放按键。平面让按键好找、好按，也让包胶的边是一条平面上的曲线，模具好做。只在 z ≥ 80 的范围切：下面的握持段更胖，不能一起削掉；切的位置正好让平面的上下两头自然收在曲面上，没有台阶。",
+   "summary": "离中心线 10.8 · 高于 z = 80",
+   "summaryTemplate": "离中心线 10.8 · 高于 z = 80",
+   "pitfall": "平面切得太深，会在上下两头切出台阶；太浅，平面只剩一条细缝，按键放不下。",
+   "view": [
+    0.6,
+    -1.4,
+    0.2
+   ],
+   "focus": [
+    [
+     -16,
+     -16,
+     80
+    ],
+    [
+     16,
+     16,
+     175
+    ]
+   ],
+   "code": "knife = Pos(0, -FLAT_Y, FLAT_Z0 * s) * Box(60, 30, 200, align=(Align.CENTER, Align.MAX, Align.MIN))  # 平面以外、z ≥ 80 的一块\nhandle -= knife"
+  },
+  {
+   "id": "shell1",
+   "op": "shell",
+   "name": "抽壳1",
+   "title": "掏空手柄",
+   "why": "从顶面打开抽壳，电机、电池和电路板做成一个机芯，从顶部整个插进去，顶部再用密封圈和顶盖封住。手柄本身是一个只在顶上开口的杯子，底部和侧面都没有缝。",
+   "summary": "壁厚 2 · 移除顶面",
+   "summaryTemplate": "壁厚 {t} · 移除顶面",
+   "pitfall": "",
+   "view": [
+    0.8,
+    -1,
+    1.4
+   ],
+   "focus": null,
+   "code": "top = handle.faces().sort_by(Axis.Z)[-1]\nhandle = offset(handle, amount=-t, openings=top)"
+  },
+  {
+   "id": "cut2",
+   "op": "cut",
+   "name": "切除2",
+   "title": "软胶包胶槽",
+   "why": "前面按键处和背面握持处各切一个和外表面平行的浅槽，第二次注塑时 TPE 软胶填进来，表面和硬胶齐平。槽的边是一圈垂直的台阶：模具在台阶外面压住硬胶，软胶流不出去，边缘也有足够的厚度，不会翘起来。",
+   "summary": "槽深 = 包胶厚 1.2 · 前后 2 处",
+   "summaryTemplate": "槽深 = 包胶厚 {g} · 前后 2 处",
+   "pitfall": "包胶的边削成斜坡、越来越薄，模具压不住，软胶会溢出一层毛边，薄边也容易被指甲抠起来。",
+   "view": [
+    1.1,
+    1.2,
+    0.35
+   ],
+   "focus": [
+    [
+     -16,
+     -16,
+     25
+    ],
+    [
+     16,
+     16,
+     105
+    ]
+   ],
+   "code": "skin = outer - offset(outer, amount=-g)  # outer 是抽壳前的实心手柄：取它外表面往里一层包胶厚的皮\nz0, w0, h0 = FRONT_PAD\nz1, w1, h1 = BACK_PAD\nfront = extrude(Plane.XZ * Pos(0, z0 * s) * SlotCenterToCenter(h0 - w0, w0, rotation=90), amount=30)  # 朝前\nback = extrude(Plane.XZ * Pos(0, z1 * s) * SlotCenterToCenter(h1 - w1, w1, rotation=90), amount=-30)  # 朝后\nhandle -= skin & (front + back)"
+  },
+  {
+   "id": "hole1",
+   "op": "hole",
+   "name": "孔1",
+   "title": "按键孔",
+   "why": "在按键包胶区中间打一个孔，穿过剩下的硬胶壁。软胶包上来以后把孔整个盖住，按键就是一块软胶膜，手指隔着它按下面的开关。外面看不到孔，水也进不去。孔边离包胶槽边留 2 mm，作为软胶和硬胶粘合的密封面。",
+   "summary": "Ø5 · 只穿前壁",
+   "summaryTemplate": "Ø{dh} · 只穿前壁",
+   "pitfall": "按键做成单独的硬件、四周留一圈缝，水和牙膏沫就会从缝里渗进去。",
+   "view": [
+    0.6,
+    -1.4,
+    0.2
+   ],
+   "focus": [
+    [
+     -16,
+     -16,
+     100
+    ],
+    [
+     16,
+     16,
+     150
+    ]
+   ],
+   "code": "handle -= Pos(0, -FLAT_Y, BUTTON_Z * s) * Rot(90, 0, 0) * Cylinder(p[\"dh\"] / 2, 8)  # 只穿前壁"
+  },
+  {
+   "id": "cut3",
+   "op": "cut",
+   "name": "切除3",
+   "title": "充电凹槽",
+   "why": "底部切一个凹槽，坐在充电座的立柱上；线圈绕在凹槽四周，隔着塑料感应充电，手柄上不用开任何金属触点。凹槽伸进了手柄里面，所以先在内腔里长一个杯子，再在杯子里切槽：杯壁和杯底也是一个壁厚，手柄仍然是密封的。",
+   "summary": "Ø9 × 12 · 杯壁 = 壁厚",
+   "summaryTemplate": "Ø{dc} × {hc} · 杯壁 = 壁厚",
+   "pitfall": "直接在底板上切 12 mm 深的槽，会把底板切穿，手柄里外就通了。",
+   "view": [
+    0.7,
+    -0.9,
+    -1.4
+   ],
+   "focus": null,
+   "code": "dc, hc = p[\"dc\"], p[\"hc\"]\ncup = Pos(0, 0, t / 2) * Cylinder(dc / 2 + t, hc + t / 2, align=UP)  # 先在内腔里长一个杯子\nhandle = handle + cup - Pos(0, 0, -1) * Cylinder(dc / 2, hc + 1, align=UP)  # 再在杯子里切槽"
+  }
+ ],
+ "failures": {
+  "shell1": "抽壳失败：壁厚相对拇指处的曲率太大。",
+  "cut2": "包胶槽太深，切穿了硬胶壁。",
+  "cut3": "充电凹槽把底部切穿了：杯子不够高，或者壁厚不够。"
+ },
+ "defaultVariant": "g-1.2_t-2",
+ "variants": {
+  "g-0.8_t-2": {
+   "ok": true,
+   "values": {
+    "L": 190,
+    "rb": 4,
+    "t": 2,
+    "g": 0.8,
+    "dh": 5,
+    "dc": 9,
+    "hc": 12
+   },
+   "file": "g-0.8_t-2.glb",
+   "bytes": 248772,
+   "steps": 8,
+   "summaries": {
+    "sk1": "6 个截面 · 高 0 → 190",
+    "loft1": "6 个截面 · 光顺",
+    "fil1": "R4",
+    "cut1": "离中心线 10.8 · 高于 z = 80",
+    "shell1": "壁厚 2 · 移除顶面",
+    "cut2": "槽深 = 包胶厚 0.8 · 前后 2 处",
+    "hole1": "Ø5 · 只穿前壁",
+    "cut3": "Ø9 × 12 · 杯壁 = 壁厚"
+   },
+   "triangles": 8697,
+   "volume": 27718.09,
+   "bbox": [
+    [
+     -15.78,
+     -15.01,
+     -0.0
+    ],
+    [
+     15.78,
+     15.01,
+     190.0
+    ]
+   ]
+  },
+  "g-1.2_t-2": {
+   "ok": true,
+   "values": {
+    "L": 190,
+    "rb": 4,
+    "t": 2,
+    "g": 1.2,
+    "dh": 5,
+    "dc": 9,
+    "hc": 12
+   },
+   "file": "g-1.2_t-2.glb",
+   "bytes": 245920,
+   "steps": 8,
+   "summaries": {
+    "sk1": "6 个截面 · 高 0 → 190",
+    "loft1": "6 个截面 · 光顺",
+    "fil1": "R4",
+    "cut1": "离中心线 10.8 · 高于 z = 80",
+    "shell1": "壁厚 2 · 移除顶面",
+    "cut2": "槽深 = 包胶厚 1.2 · 前后 2 处",
+    "hole1": "Ø5 · 只穿前壁",
+    "cut3": "Ø9 × 12 · 杯壁 = 壁厚"
+   },
+   "triangles": 8693,
+   "volume": 27245.07,
+   "bbox": [
+    [
+     -15.78,
+     -15.01,
+     -0.0
+    ],
+    [
+     15.78,
+     15.01,
+     190.0
+    ]
+   ]
+  },
+  "g-0.8_t-2.5": {
+   "ok": true,
+   "values": {
+    "L": 190,
+    "rb": 4,
+    "t": 2.5,
+    "g": 0.8,
+    "dh": 5,
+    "dc": 9,
+    "hc": 12
+   },
+   "file": "g-0.8_t-2.5.glb",
+   "bytes": 249284,
+   "steps": 8,
+   "summaries": {
+    "sk1": "6 个截面 · 高 0 → 190",
+    "loft1": "6 个截面 · 光顺",
+    "fil1": "R4",
+    "cut1": "离中心线 10.8 · 高于 z = 80",
+    "shell1": "壁厚 2.5 · 移除顶面",
+    "cut2": "槽深 = 包胶厚 0.8 · 前后 2 处",
+    "hole1": "Ø5 · 只穿前壁",
+    "cut3": "Ø9 × 12 · 杯壁 = 壁厚"
+   },
+   "triangles": 8770,
+   "volume": 34074.29,
+   "bbox": [
+    [
+     -15.78,
+     -15.01,
+     -0.0
+    ],
+    [
+     15.78,
+     15.01,
+     190.0
+    ]
+   ]
+  },
+  "g-1.2_t-2.5": {
+   "ok": true,
+   "values": {
+    "L": 190,
+    "rb": 4,
+    "t": 2.5,
+    "g": 1.2,
+    "dh": 5,
+    "dc": 9,
+    "hc": 12
+   },
+   "file": "g-1.2_t-2.5.glb",
+   "bytes": 246432,
+   "steps": 8,
+   "summaries": {
+    "sk1": "6 个截面 · 高 0 → 190",
+    "loft1": "6 个截面 · 光顺",
+    "fil1": "R4",
+    "cut1": "离中心线 10.8 · 高于 z = 80",
+    "shell1": "壁厚 2.5 · 移除顶面",
+    "cut2": "槽深 = 包胶厚 1.2 · 前后 2 处",
+    "hole1": "Ø5 · 只穿前壁",
+    "cut3": "Ø9 × 12 · 杯壁 = 壁厚"
+   },
+   "triangles": 8766,
+   "volume": 33600.51,
+   "bbox": [
+    [
+     -15.78,
+     -15.01,
+     -0.0
+    ],
+    [
+     15.78,
+     15.01,
+     190.0
+    ]
+   ]
+  }
+ },
+ "source": "models/parts/toothbrush_handle.py"
+}

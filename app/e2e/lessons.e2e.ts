@@ -7,6 +7,10 @@ import { expect, expectRendered, test } from "./fixtures"
  * as soon as it is registered.
  */
 test.describe("互动课", () => {
+  // Every step waits for a rendered frame, and on CI's software WebGL a heavy scene takes seconds per
+  // frame: the 7-step gap-and-flush lesson (clipped parts rebuilt on every change) took 2.3 min there,
+  // over 3 min on a busy runner.
+  test.describe.configure({ timeout: 300_000 })
   LESSONS.forEach((lesson, i) => {
     const next = LESSONS[i + 1]
     const url = `/lesson/${lesson.id}`
@@ -14,7 +18,9 @@ test.describe("互动课", () => {
       await page.goto(url)
       const canvas = page.locator("canvas").first()
       const steps = page.getByRole("tablist", { name: "课程步骤" }).getByRole("tab")
-      await expect(steps.first()).toBeVisible()
+      // The lessons with a studio environment build it before the steps show: twice as long as the
+      // others, past 10 s on a busy CI runner.
+      await expect(steps.first()).toBeVisible({ timeout: 30_000 })
       const total = await steps.count()
       expect(total, "at least one step plus the quiz").toBeGreaterThan(1)
 
