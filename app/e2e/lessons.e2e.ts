@@ -7,6 +7,9 @@ import { expect, expectRendered, test } from "./fixtures"
  * as soon as it is registered.
  */
 test.describe("互动课", () => {
+  // Every step waits for a rendered frame, and on CI's software WebGL a scene with shadows takes
+  // seconds per frame: a 7-step lesson with three shadow-casting lights took 110 s there.
+  test.describe.configure({ timeout: 180_000 })
   LESSONS.forEach((lesson, i) => {
     const next = LESSONS[i + 1]
     const url = `/lesson/${lesson.id}`

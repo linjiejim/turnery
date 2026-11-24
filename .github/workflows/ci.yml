@@ -19,9 +19,15 @@ permissions:
   contents: read
 
 jobs:
+  # The smoke tests run in two halves side by side: with every lesson walked step by step on software
+  # WebGL they take about 25 minutes in one job. The first half also runs the check.
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: app
@@ -34,6 +40,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npm run check
+        if: matrix.shard == 1
       - run: npm run build
       # The browser comes from Playwright's CDN. Its system packages come from Ubuntu's mirrors, which
       # the runners sometimes can't reach; the runner image already has what Chromium needs to run
@@ -42,11 +49,11 @@ jobs:
       - run: npx playwright install-deps chromium
         timeout-minutes: 3
         continue-on-error: true
-      - run: npm run e2e
+      - run: npm run e2e -- --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             app/playwright-report/
             app/test-results/
