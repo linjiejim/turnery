@@ -17,7 +17,9 @@ test.describe("互动课", () => {
       await page.goto(url)
       const canvas = page.locator("canvas").first()
       const steps = page.getByRole("tablist", { name: "课程步骤" }).getByRole("tab")
-      await expect(steps.first()).toBeVisible()
+      // The lessons with a studio environment build it before the steps show: twice as long as the
+      // others, past 10 s on a busy CI runner.
+      await expect(steps.first()).toBeVisible({ timeout: 30_000 })
       const total = await steps.count()
       expect(total, "at least one step plus the quiz").toBeGreaterThan(1)
 
