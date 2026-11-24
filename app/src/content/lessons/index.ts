@@ -221,6 +221,15 @@ const LESSONS_ZH: LessonMeta[] = [
     load: () => import("./curvature-continuity"),
   },
   {
+    id: "offset-thicken",
+    codes: ["5.2.4"],
+    title: "偏移与加厚",
+    track: "T5",
+    minutes: 8,
+    gist: "拖动壁厚看曲面沿法向偏移；偏移侧最小曲率半径小于壁厚就自交（燕尾），向内向外各怕什么，最小半径检查，以及三种修法。",
+    load: () => import("./offset-thicken"),
+  },
+  {
     id: "zebra-stripes",
     codes: ["5.3.1", "5.3.3"],
     title: "斑马纹：用反光看曲面质量",
@@ -230,6 +239,24 @@ const LESSONS_ZH: LessonMeta[] = [
     load: () => import("./zebra-stripes"),
   },
   {
+    id: "patch-layout",
+    codes: ["5.4.1"],
+    title: "分面布面：主面、过渡面、圆角面",
+    track: "T5",
+    minutes: 9,
+    gist: "同一只鼠标两种布面：一张大面硬剪裁，对比主面、过渡面、角片分层；看等参线和斑马纹，点选给 17 块面片分层，再按层级搭一遍。",
+    load: () => import("./patch-layout"),
+  },
+  {
+    id: "singularities",
+    codes: ["5.4.2"],
+    title: "四边面、奇点与收敛点",
+    track: "T5",
+    minutes: 8,
+    gist: "圆顶收敛到极点与四边面剪裁对比：等参线收敛、斑马纹拧尖，回转体上的极点为什么没事，极点旁那圈控制点，以及三边面的退化点和两种修法。",
+    load: () => import("./singularities"),
+  },
+  {
     id: "bezier-class-a",
     codes: ["5.4.3", "5.4.4"],
     title: "单跨度面、升阶与 Class-A",
@@ -237,6 +264,15 @@ const LESSONS_ZH: LessonMeta[] = [
     minutes: 9,
     gist: "同一个控制网读成单跨度 5 阶或多跨度 3 阶、2 阶，看节点线上的曲率梳和斑马纹；升阶形状不变点变多；手动理顺控制网；面片间 G1 / G2 / G3；盲选最接近 Class-A 的样件。",
     load: () => import("./bezier-class-a"),
+  },
+  {
+    id: "subd-modeling",
+    codes: ["5.5.1", "5.5.2"],
+    title: "SubD 推拉与转 NURBS",
+    track: "T5",
+    minutes: 9,
+    gist: "推拉控制笼做出把手，实时 Catmull–Clark 细分、折痕做硬边，找出星形点，再转成 NURBS 看面片和星形点周围的连续性。",
+    load: () => import("./subd-modeling"),
   },
   // ---------------------------------------------------------------- T6 产品设计
   {

@@ -108,13 +108,29 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "Curvature combs and G0 / G1 / G2 continuity",
     gist: "Read a curvature comb, drag control points to make G0, G1 and G2, and see why the arcs of a rounded rectangle are only G1.",
   },
+  "offset-thicken": {
+    title: "Offset and thicken",
+    gist: "Drag the wall thickness and watch the surface offset along its normals: why it self-intersects (a swallowtail) once the radius on the offset side is smaller than the wall, inward versus outward, the minimum-radius check, and three fixes.",
+  },
   "zebra-stripes": {
     title: "Zebra stripes: judging surfaces by their reflections",
     gist: "Stripes that break, kink or flow smoothly mean G0, G1 or G2; pick out the G2 surface in a blind test, and see how fillets and blends differ in their highlights.",
   },
+  "patch-layout": {
+    title: "Patch layout: primary, transition and fillet surfaces",
+    gist: "One mouse, two layouts: one big trimmed surface versus primaries, transitions and corner patches. Compare isoparms and zebra stripes, label the 17 patches by clicking, then build it layer by layer.",
+  },
+  "singularities": {
+    title: "Four-sided patches, poles and singular points",
+    gist: "A dome collapsed to a pole versus a trimmed four-sided patch: converging isoparms and pinched zebra stripes, why a pole on a revolved shape is fine, the ring of control points next to the pole, and degenerate three-sided corners with two fixes.",
+  },
   "bezier-class-a": {
     title: "Single-span patches, degree elevation and Class-A",
     gist: "Read one control net as a single degree-5 span or as several degree-3 or degree-2 spans and watch the comb and zebra stripes at the knot lines; elevate the degree without changing the shape; smooth a lumpy net by hand; join patches G1 / G2 / G3; and pick the sample closest to Class-A.",
+  },
+  "subd-modeling": {
+    title: "SubD push-pull and conversion to NURBS",
+    gist: "Push and pull a control cage into a handle with live Catmull–Clark subdivision, crease a sharp edge, find the star points, then convert to NURBS and see the patches and the continuity around star points.",
   },
 
   // T6
