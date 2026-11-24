@@ -12,3 +12,8 @@ __pycache__/
 
 # 宣发计划和各渠道文案：只给维护者自己看，不进仓库
 /docs/launch/
+
+# 本机生图产出和别的方向的调研笔记：不进仓库
+/output/
+/reports/
+/research_notes/
