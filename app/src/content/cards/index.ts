@@ -26,6 +26,14 @@ export const CARDS: CardMeta[] = [
   // ---------------------------------------------------------------- T2 装配与机构
   { code: "2.3.1", load: () => import("./2.3.1") },
   { code: "2.3.3", load: () => import("./2.3.3") },
+  // ---------------------------------------------------------------- T6 产品设计
+  { code: "6.0.1", load: () => import("./6.0.1") },
+  { code: "6.0.2", load: () => import("./6.0.2") },
+  { code: "6.0.3", load: () => import("./6.0.3") },
+  { code: "6.4.3", load: () => import("./6.4.3") },
+  { code: "6.6.1", load: () => import("./6.6.1") },
+  { code: "6.6.2", load: () => import("./6.6.2") },
+  { code: "6.6.3", load: () => import("./6.6.3") },
 ]
 
 export const cardMeta = (code: string | undefined) => CARDS.find((c) => c.code === code)
