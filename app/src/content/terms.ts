@@ -1,5 +1,6 @@
 import { isEn } from "../lib/i18n"
-import { TERMS_EN, type TermEn } from "./en/terms"
+import type { TermEn } from "./en/terms"
+import { EN } from "./en/ready"
 
 /**
  * Concept cards for the glossary: the ideas behind the commands. Each links
@@ -284,7 +285,8 @@ export function localizeTerm(term: Term, en: Partial<TermEn> | undefined): Term 
 }
 
 /** The concepts in the page's language. */
-export const TERMS: Term[] = isEn ? TERMS_ZH.map((term) => localizeTerm(term, TERMS_EN[term.id])) : TERMS_ZH
+const TERMS_EN = EN?.TERMS_EN
+export const TERMS: Term[] = TERMS_EN ? TERMS_ZH.map((term) => localizeTerm(term, TERMS_EN[term.id])) : TERMS_ZH
 
 /** The small text beside a concept's name: its English name on Chinese pages, its other names (if any) on English ones. */
 export const termAside = (term: Term) => (isEn ? term.aka : term.en)

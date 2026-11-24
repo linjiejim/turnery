@@ -1,4 +1,4 @@
-import type { ModelIndexEntry } from "@/three/baked"
+import type { ModelIndexEntry } from "@/three/model-index"
 
 /**
  * The teardowns' catalog text in English. public/models/index.json is written by the model baker in

@@ -38,6 +38,8 @@ const load = async (file) => {
 }
 
 const meta = await load("src/lib/page-meta.ts")
+// Both languages in one run: the English lesson and card titles come in here (on the site, only /en pages load them).
+meta.setEnglishTitles(await load("src/content/en/all.ts"))
 const { localizeIndex } = await load("src/content/en/teardowns.ts")
 const { SITE_URL } = await load("src/lib/site.ts")
 const models = JSON.parse(await readFile(path.join(dist, "models", "index.json"), "utf8"))
