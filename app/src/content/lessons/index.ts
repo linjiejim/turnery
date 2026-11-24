@@ -1,6 +1,5 @@
 import type { LessonMeta } from "./types"
-import { localizeLessons } from "@/content/en/lessons"
-import { isEn } from "@/lib/i18n"
+import { EN } from "@/content/en/ready"
 
 /**
  * Every interactive lesson, in curriculum order. Lessons load on demand so
@@ -521,7 +520,7 @@ const LESSONS_ZH: LessonMeta[] = [
 ]
 
 /** The lessons in the page's language: on English pages, the English title and gist (content/en/lessons.ts). */
-export const LESSONS = isEn ? localizeLessons(LESSONS_ZH) : LESSONS_ZH
+export const LESSONS = EN ? EN.localizeLessons(LESSONS_ZH) : LESSONS_ZH
 
 export const lessonMeta = (id: string | undefined) => LESSONS.find((l) => l.id === id)
 

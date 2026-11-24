@@ -1,9 +1,10 @@
 import { LESSONS } from "@/content/lessons"
 import { CARDS } from "@/content/cards"
 import curriculum from "@/content/curriculum.json"
-import { CURRICULUM_EN } from "@/content/en/curriculum"
-import { LESSONS_EN } from "@/content/en/lessons"
-import type { ModelIndexEntry } from "@/three/baked"
+import type { CURRICULUM_EN } from "@/content/en/curriculum"
+import type { LESSONS_EN } from "@/content/en/lessons"
+import { EN } from "@/content/en/ready"
+import type { ModelIndexEntry } from "@/three/model-index"
 import { locale, type Locale } from "@/lib/i18n"
 
 /**
@@ -22,6 +23,15 @@ export type PageMeta = {
   title: string | null
   /** One or two plain sentences, about 80 characters at most (link previews cut the rest). */
   description: string
+}
+
+/**
+ * English titles of lessons and cards: on English pages the tables content/en/ready.ts loaded; the
+ * build, which writes both languages in one run, passes them in (scripts/prerender.mjs).
+ */
+let english: { lessons: typeof LESSONS_EN; curriculum: typeof CURRICULUM_EN } | null = EN ? { lessons: EN.LESSONS_EN, curriculum: EN.CURRICULUM_EN } : null
+export function setEnglishTitles(tables: { LESSONS_EN: typeof LESSONS_EN; CURRICULUM_EN: typeof CURRICULUM_EN }) {
+  english = { lessons: tables.LESSONS_EN, curriculum: tables.CURRICULUM_EN }
 }
 
 export const SITE_NAME = "Turnery"
@@ -101,7 +111,7 @@ export const STATIC_PAGES = staticPages()
 export function lessonPageMeta(id: string, lang: Locale = locale): PageMeta | undefined {
   const l = LESSONS.find((x) => x.id === id)
   if (!l) return undefined
-  const en = LESSONS_EN[l.id]
+  const en = english?.lessons[l.id]
   return lang === "en"
     ? { title: en?.title ?? l.title, description: `Interactive lesson, about ${l.minutes} min (in Chinese). ${en?.gist ?? l.gist}` }
     : { title: l.title, description: `互动课，约 ${l.minutes} 分钟。${l.gist}` }
@@ -114,7 +124,7 @@ export function cardPageMeta(code: string, lang: Locale = locale): PageMeta | un
     for (const m of t.modules)
       for (const l of m.lessons) {
         if (l.id !== code) continue
-        const en = CURRICULUM_EN.lessons[l.id]
+        const en = english?.curriculum.lessons[l.id]
         return lang === "en" ? { title: `${en?.title ?? l.title} · Card`, description: `Card ${l.id} (in Chinese): ${en?.goal ?? l.goal}.` } : { title: `${l.title} · 图文卡`, description: `图文卡 ${l.id}：${l.goal}。` }
       }
   return undefined

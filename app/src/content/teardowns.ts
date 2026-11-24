@@ -1,6 +1,5 @@
 import type { OpId } from "./ops"
-import { localizePlanned } from "./en/teardowns"
-import { isEn } from "@/lib/i18n"
+import { EN } from "./en/ready"
 
 /** Teardowns on the roadmap that are not baked yet (shown as planned cards), in Chinese. */
 export const PLANNED_ZH: { title: string; subtitle: string; level: string; kind: string; ops: OpId[] }[] = [
@@ -11,4 +10,4 @@ export const PLANNED_ZH: { title: string; subtitle: string; level: string; kind:
 ]
 
 /** In the page's language (English: content/en/teardowns.ts). */
-export const PLANNED_MODELS = isEn ? localizePlanned(PLANNED_ZH) : PLANNED_ZH
+export const PLANNED_MODELS = EN ? EN.localizePlanned(PLANNED_ZH) : PLANNED_ZH

@@ -1,7 +1,8 @@
 import * as THREE from "three"
 import { LineMaterial } from "three/addons/lines/LineMaterial.js"
 import type { SceneTokens } from "./tokens"
-import { hexOf, luminance, type Look } from "@/studio/appearance"
+import { hexOf, luminance } from "@/studio/palette"
+import type { Look } from "@/studio/appearance"
 
 /** What a part draws with: its surface and its edges. */
 export type LookMaterials = { surface: THREE.Material; edge: THREE.LineBasicMaterial }

@@ -1,4 +1,4 @@
-import { loadIndex } from "@/three/baked"
+import { loadIndex } from "@/three/model-index"
 import { cardPageMeta, documentTitle, lessonPageMeta, STATIC_PAGES, teardownPageMeta } from "@/lib/page-meta"
 
 let shown: string | null = null

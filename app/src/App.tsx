@@ -1,6 +1,8 @@
 import type * as React from "react"
 import { createBrowserRouter, Outlet, redirect, RouterProvider, ScrollRestoration } from "react-router"
 import { SiteHeader } from "@/components/site-header"
+import { NavigationProgress } from "@/components/navigation-progress"
+import { installPrefetch } from "@/lib/prefetch"
 import { HomePage } from "@/routes/home"
 import { syncDocumentTitle } from "@/lib/document-title"
 import { routerBase } from "@/lib/i18n"
@@ -61,9 +63,17 @@ function appRouter() {
   // Per-route <title>, matching the prerendered HTML (lib/page-meta.ts).
   syncDocumentTitle(router.state.location.pathname)
   router.subscribe((s) => syncDocumentTitle(s.location.pathname))
+  // Links start downloading their page's code when pointed at (lib/prefetch.ts).
+  installPrefetch()
   return router
 }
 
 export function App() {
-  return <RouterProvider router={appRouter()} />
+  const router = appRouter()
+  return (
+    <>
+      <NavigationProgress router={router} />
+      <RouterProvider router={router} />
+    </>
+  )
 }

@@ -1,5 +1,5 @@
-import { isEn } from "../lib/i18n"
-import { OPS_EN, type OpEn } from "./en/ops"
+import type { OpEn } from "./en/ops"
+import { EN } from "./en/ready"
 
 /**
  * The modelling operations the site teaches, tool-agnostic, with what each
@@ -495,7 +495,8 @@ export function localizeOp(op: Op, en: Partial<OpEn> | undefined): Op {
 }
 
 /** The operations in the page's language. */
-export const OPS: Op[] = isEn ? OPS_ZH.map((o) => localizeOp(o, OPS_EN[o.id])) : OPS_ZH
+const OPS_EN = EN?.OPS_EN
+export const OPS: Op[] = OPS_EN ? OPS_ZH.map((o) => localizeOp(o, OPS_EN[o.id])) : OPS_ZH
 
 /**
  * A feature named the way the Chinese data names it (「圆角2」, 「切除1」), as an English CAD package

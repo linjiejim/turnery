@@ -1,8 +1,7 @@
 import data from "./curriculum.json"
 import { LESSONS } from "./lessons"
 import { CARDS } from "./cards"
-import { localizeCurriculum } from "./en/curriculum"
-import { isEn } from "@/lib/i18n"
+import { EN } from "./en/ready"
 
 /**
  * The curriculum (tracks → modules → lessons), drafted from the research
@@ -24,7 +23,7 @@ export type Project = { id: string; title: string; prereq: string; interactive: 
 export type Persona = { name: string; path: string }
 
 /** In the page's language: on English pages the English (content/en/curriculum.ts) over the Chinese. */
-const local = isEn ? localizeCurriculum(data as Curriculum) : (data as Curriculum)
+const local = EN ? EN.localizeCurriculum(data as Curriculum) : (data as Curriculum)
 type Curriculum = { tracks: Track[]; projects: Project[]; personas: Persona[] }
 
 export const TRACKS = local.tracks

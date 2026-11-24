@@ -1,5 +1,5 @@
 import * as React from "react"
-import { loadIndex, type ModelIndexEntry } from "@/three/baked"
+import { loadIndex, type ModelIndexEntry } from "@/three/model-index"
 
 /** Run a promise-returning function; re-run when deps change or on retry(). */
 export function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList) {
