@@ -92,6 +92,14 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
   },
 
   // T5
+  "nurbs-curves": {
+    title: "NURBS curves: control points, degree and knots",
+    gist: "Drag control points to see that only degree + 1 spans move, switch between degrees 1, 2, 3 and 5, read the knot vector against the point count, drag edit points, and use a weight to draw an exact circle.",
+  },
+  "curve-rebuild": {
+    title: "Curve quality and rebuilding",
+    gist: "A hand-traced 46-point curve with a jittery comb: rebuild it by point count and degree against a deviation plot and a tolerance band, find the fewest points with no inflections, and see how too tight a tolerance traces the noise.",
+  },
   "curvature-continuity": {
     title: "Curvature combs and G0 / G1 / G2 continuity",
     gist: "Read a curvature comb, drag control points to make G0, G1 and G2, and see why the arcs of a rounded rectangle are only G1.",
@@ -99,6 +107,10 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
   "zebra-stripes": {
     title: "Zebra stripes: judging surfaces by their reflections",
     gist: "Stripes that break, kink or flow smoothly mean G0, G1 or G2; pick out the G2 surface in a blind test, and see how fillets and blends differ in their highlights.",
+  },
+  "bezier-class-a": {
+    title: "Single-span patches, degree elevation and Class-A",
+    gist: "Read one control net as a single degree-5 span or as several degree-3 or degree-2 spans and watch the comb and zebra stripes at the knot lines; elevate the degree without changing the shape; smooth a lumpy net by hand; join patches G1 / G2 / G3; and pick the sample closest to Class-A.",
   },
 }
 

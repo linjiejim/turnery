@@ -185,6 +185,24 @@ const LESSONS_ZH: LessonMeta[] = [
   },
   // ---------------------------------------------------------------- T5 曲线曲面
   {
+    id: "nurbs-curves",
+    codes: ["5.1.1"],
+    title: "NURBS 曲线：控制点、阶数、节点",
+    track: "T5",
+    minutes: 8,
+    gist: "拖控制点看局部控制只动 阶数 + 1 个跨度，切换 1 / 2 / 3 / 5 阶，读节点向量和点数的关系，拖编辑点，再用权重画出精确的圆。",
+    load: () => import("./nurbs-curves"),
+  },
+  {
+    id: "curve-rebuild",
+    codes: ["5.1.2"],
+    title: "曲线质量与重建",
+    track: "T5",
+    minutes: 7,
+    gist: "手描的 46 点曲线曲率梳乱抖；按点数和阶数重建，看偏差图和公差带，找出满足公差、没有拐点的最少点数，再看公差收得太紧怎样描出噪声。",
+    load: () => import("./curve-rebuild"),
+  },
+  {
     id: "curvature-continuity",
     codes: ["5.1.3", "5.1.4", "5.1.5"],
     title: "曲率梳与 G0 / G1 / G2 连续",
@@ -201,6 +219,15 @@ const LESSONS_ZH: LessonMeta[] = [
     minutes: 6,
     gist: "斑马纹断开、拐折、顺滑分别对应 G0、G1、G2；盲测找出 G2，理解圆角和混接的高光差别。",
     load: () => import("./zebra-stripes"),
+  },
+  {
+    id: "bezier-class-a",
+    codes: ["5.4.3", "5.4.4"],
+    title: "单跨度面、升阶与 Class-A",
+    track: "T5",
+    minutes: 9,
+    gist: "同一个控制网读成单跨度 5 阶或多跨度 3 阶、2 阶，看节点线上的曲率梳和斑马纹；升阶形状不变点变多；手动理顺控制网；面片间 G1 / G2 / G3；盲选最接近 Class-A 的样件。",
+    load: () => import("./bezier-class-a"),
   },
 ]
 
