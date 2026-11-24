@@ -615,7 +615,7 @@ function Workbench({ host }: { host: WebHost }) {
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <ParamsPanel studio={studio} onHover={setTreeHover} />
+            <ParamsPanel studio={studio} onHover={setTreeHover} shownElsewhere={practicing ? practice?.checks.map((c) => c.id) : undefined} />
           </div>
           {/* A step's details from the timeline cover this panel while shown. */}
           <div ref={setStepSlot} className="pointer-events-none absolute inset-0 z-20" />

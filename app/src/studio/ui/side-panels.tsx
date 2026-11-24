@@ -21,10 +21,23 @@ import { useWords } from "./host-words"
  * involved. Each says what it is (the note the model wrote) and where it's
  * used; pointing at one lights up the features it drives.
  */
-export function ParamsPanel({ studio, onHover, annotations, canAdd = true }: { studio: Studio; onHover: (h: Hover | null) => void; annotations?: Annotations; canAdd?: boolean }) {
+export function ParamsPanel({
+  studio,
+  onHover,
+  annotations,
+  canAdd = true,
+  shownElsewhere,
+}: {
+  studio: Studio
+  onHover: (h: Hover | null) => void
+  annotations?: Annotations
+  canAdd?: boolean
+  /** Check ids another panel already lists (a practice's card): left out here, not shown twice. */
+  shownElsewhere?: readonly string[]
+}) {
   const { tree } = studio
   const entries = Object.entries(tree.params)
-  const checks = studio.report?.checks ?? []
+  const checks = (studio.report?.checks ?? []).filter((c) => !shownElsewhere?.includes(c.id))
   const words = useWords()
   if (!entries.length && !checks.length)
     return (
@@ -187,7 +200,9 @@ function Checklist({
                       {st === "pass"
                         ? t(` 实际 ${r.actual}`, ` actual ${r.actual}`)
                         : st === "invalid"
-                          ? t(` 量不了：${r.actual}（核对项写得不对，不是零件的问题）`, ` can’t measure: ${r.actual} (the check is written wrong, not the part)`)
+                          ? r.tooComplex
+                            ? ` ${r.actual}`
+                            : t(` 量不了：${r.actual}（要量的面还没做出来，或者核对项指错了地方）`, ` can’t measure: ${r.actual} (the face it measures isn’t there yet, or the check points at the wrong place)`)
                           : st === "drift"
                             ? t(` 已偏离：要求 ${r.expected}，现在 ${r.actual}（你改过参数）`, ` drifted: wants ${r.expected}, now ${r.actual} (you changed a parameter)`)
                             : t(` 要求 ${r.expected}，实际 ${r.actual}`, ` wants ${r.expected}, actual ${r.actual}`)}
