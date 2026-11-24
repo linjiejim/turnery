@@ -229,6 +229,43 @@ const LESSONS_ZH: LessonMeta[] = [
     gist: "同一个控制网读成单跨度 5 阶或多跨度 3 阶、2 阶，看节点线上的曲率梳和斑马纹；升阶形状不变点变多；手动理顺控制网；面片间 G1 / G2 / G3；盲选最接近 Class-A 的样件。",
     load: () => import("./bezier-class-a"),
   },
+  // ---------------------------------------------------------------- T6 产品设计
+  {
+    id: "seals",
+    codes: ["6.5.3"],
+    title: "密封与 O 形圈",
+    track: "T6",
+    minutes: 9,
+    gist: "剖开看 O 形圈被压扁，用压缩率和填充率定槽深槽宽，给受热溶胀留余量，塑料盖在螺钉间拱起，以及 IP 等级说的是什么。",
+    load: () => import("./seals"),
+  },
+  {
+    id: "living-hinge",
+    codes: ["6.5.4"],
+    title: "活动铰链",
+    track: "T6",
+    minutes: 8,
+    gist: "一体盒子合上时铰链外侧应变 ≈ π·t ÷ 2L，为什么只能用 PP / PE，浇口要让料横穿铰链，出模趁热折几下，厚度按指南定。",
+    load: () => import("./living-hinge"),
+  },
+  {
+    id: "electronics-layout",
+    codes: ["6.5.5"],
+    title: "电子件布局与开孔公差",
+    track: "T6",
+    minutes: 9,
+    gist: "把电路板放上螺柱，电池移出天线净空区，电池仓按鼓包留空间，再按插头包胶尺寸和公差叠加算 USB-C 开孔。",
+    load: () => import("./electronics-layout"),
+  },
+  {
+    id: "disassembly",
+    codes: ["6.5.6"],
+    title: "可拆解与回收",
+    track: "T6",
+    minutes: 8,
+    gist: "点击把小音箱按顺序拆开，统计步骤、工具、紧固方式、胶接和混合材料，改成统一螺钉、卡扣、单一材料并标 >PP<，再分拣回收。",
+    load: () => import("./disassembly"),
+  },
 ]
 
 /** The lessons in the page's language: on English pages, the English title and gist (content/en/lessons.ts). */

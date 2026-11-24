@@ -22,6 +22,7 @@ const WITH_PRACTICE = [
   "offset-thicken",
   "styling-dfm",
   "stiffness-ribs",
+  "seals",
   "living-hinge",
 ]
 

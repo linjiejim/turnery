@@ -138,6 +138,16 @@ const plateFeatures: Feature[] = [
   { id: "plate", op: "extrude", name: t("底板", "Plate"), sketch: "sk", distance: "t", intent: t("薄板：刚度靠后面的筋，不靠板厚", "A thin plate: its stiffness will come from ribs, not thickness") },
 ]
 
+/** 外壳的法兰面：盖子平压在上面，O 形圈槽的起点。 */
+const flangeParams = {
+  params: { L: 70, W: 50, t: 6, r: 10 },
+  paramNotes: { L: t("法兰长，沿 X", "Flange length, along X"), W: t("法兰宽，沿 Y", "Flange width, along Y"), t: t("法兰厚", "Flange thickness"), r: t("法兰四角圆角", "Corner radius of the flange") },
+}
+const flangeFeatures: Feature[] = [
+  { id: "sk", op: "sketch", name: t("法兰轮廓", "Flange outline"), on: { plane: "XY" }, shapes: [{ type: "rect", w: "L", h: "W", r: "r" }], intent: t("外壳开口一圈的法兰，盖子压在它的顶面上", "The flange around the housing's opening; the lid presses on its top face") },
+  { id: "flange", op: "extrude", name: t("法兰", "Flange"), sketch: "sk", distance: "t", intent: t("顶面就是密封面", "Its top face is the sealing face") },
+]
+
 /** 两块盖板连成一整块：活动铰链的起点。 */
 const lidParams = {
   params: { L: 82, W: 30, t: 2 },
@@ -706,6 +716,51 @@ export const PRACTICE: Practice[] = [
           intent: "画在板面上，关于中心线对称",
         },
         { id: "ribs", op: "extrude", name: "加强筋", sketch: "rs", distance: "hr", intent: "往上长出筋高：刚度按高度的三次方涨，用料只按高度涨" },
+      ],
+    },
+  },
+  {
+    id: "seals-1",
+    lesson: "seals",
+    title: t("切一圈 O 形圈槽", "Cut an O-ring groove"),
+    task: t(
+      "这块 70×50、厚 6 的是外壳的法兰，盖子平压在顶面上。给线径 3.53 的 O 形圈切一圈端面密封槽：槽深 2.65、槽宽 4.70，槽的中心线是 56×36、四角 R8 的圆角矩形。",
+      "This 70×50 piece, 6 thick, is the housing's flange; the lid presses flat on its top face. Cut a face-seal groove for a 3.53 O-ring: 2.65 deep and 4.70 wide, its centerline a 56×36 rounded rectangle with R8 corners.",
+    ),
+    start: { ...flangeParams, features: flangeFeatures },
+    checks: [
+      { id: "p-size", said: t("外形 70×50×6 不变", "The 70×50×6 outline unchanged"), kind: "size", expect: [70, 50, 6] },
+      { id: "p-depth", said: t("槽深 2.65", "2.65 deep"), kind: "distance", a: { face: { normal: "+Z", near: [0, 0, 6] } }, b: { face: { normal: "+Z", near: [0, 18, 3.35] } }, expect: 2.65 },
+      { id: "p-width", said: t("槽宽 4.70", "4.70 wide"), kind: "distance", a: { face: { normal: "+Y", near: [0, 15.65, 5] } }, b: { face: { normal: "-Y", near: [0, 20.35, 5] } }, expect: 4.7 },
+    ],
+    tips: byLocale(
+      ["一张草图：外圈圆角矩形减内圈，差一个槽宽", "圆角跟着偏移：外圈 R8 + 2.35，内圈 R8 − 2.35", "切深 2.65：压缩率约 25%，填充率约 79%"],
+      ["One sketch: an outer rounded rectangle minus an inner one", "The corners offset too: R8 + 2.35 outside, R8 − 2.35 inside", "Cut 2.65 deep: about 25 % squeeze, 79 % fill"],
+    ),
+    solution: {
+      params: { ...flangeParams.params, cl: 56, cw: 36, cr: 8, gw: 4.7, gd: 2.65 },
+      paramNotes: {
+        ...flangeParams.paramNotes,
+        cl: t("槽中心线长，沿 X", "Groove centerline length, along X"),
+        cw: t("槽中心线宽，沿 Y", "Groove centerline width, along Y"),
+        cr: t("槽中心线的四角圆角", "Corner radius of the groove centerline"),
+        gw: t("槽宽：按 O 形圈线径查设计表", "Groove width: from the design chart for the cord"),
+        gd: t("槽深：决定压缩率", "Groove depth: sets the squeeze"),
+      },
+      features: [
+        ...flangeFeatures,
+        {
+          id: "gs",
+          op: "sketch",
+          name: t("密封槽", "Seal groove"),
+          on: { plane: "XY", offset: "t" },
+          shapes: [
+            { type: "rect", w: "cl+gw", h: "cw+gw", r: "cr+gw/2" },
+            { type: "rect", w: "cl-gw", h: "cw-gw", r: "cr-gw/2", cut: true },
+          ],
+          intent: t("中心线往两边各偏半个槽宽，圆角也跟着偏，槽宽处处一样", "The centerline offset half a groove width each way, corners included, so the groove is the same width all round"),
+        },
+        { id: "groove", op: "extrude", name: t("切出密封槽", "Cut the groove"), sketch: "gs", distance: "gd", mode: "cut", direction: "reverse", intent: t("往下切到槽深，换线径时改 gw 和 gd", "Cut down to the groove depth; for another cord change gw and gd") },
       ],
     },
   },

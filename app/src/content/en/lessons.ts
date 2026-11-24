@@ -112,6 +112,24 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "Single-span patches, degree elevation and Class-A",
     gist: "Read one control net as a single degree-5 span or as several degree-3 or degree-2 spans and watch the comb and zebra stripes at the knot lines; elevate the degree without changing the shape; smooth a lumpy net by hand; join patches G1 / G2 / G3; and pick the sample closest to Class-A.",
   },
+
+  // T6
+  seals: {
+    title: "Seals and O-ring grooves",
+    gist: "An O-ring squashed in section: setting groove depth and width by squeeze and gland fill, leaving room for heat and swell, a plastic lid bowing between screws, and what an IP rating means.",
+  },
+  "living-hinge": {
+    title: "Living hinges",
+    gist: "Closing a one-piece box: the hinge's outer strain ≈ π·t ÷ 2L, why only PP or PE will do, gating the melt across the hinge, flexing it warm out of the mold, and sizing it from the guides.",
+  },
+  "electronics-layout": {
+    title: "PCB layout and opening tolerances",
+    gist: "Drop the board on its bosses, move the battery out of the antenna keep-out, leave room for a swelling cell, then size the USB-C opening from the plug overmold and the tolerance stack.",
+  },
+  disassembly: {
+    title: "Design for disassembly",
+    gist: "Take a small speaker apart part by part while a tally counts steps, tools, fastening kinds, glued joints and mixed materials; redesign with one screw type, snaps, a single plastic and >PP< marks, then sort it for recycling.",
+  },
 }
 
 /** The lessons with the English title and gist laid over them; a lesson the overlay lacks stays Chinese. */
