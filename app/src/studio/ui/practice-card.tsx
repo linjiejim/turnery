@@ -3,7 +3,7 @@ import { Link } from "react-router"
 import { CircleCheck, CircleDashed, X } from "lucide-react"
 import { Hint } from "@/components/hint"
 import { Button, IconButton } from "@/components/ui/button"
-import type { Practice } from "@/content/practice"
+import { practiceById, type Practice } from "@/content/practice"
 import { markDone, useProgress } from "@/lib/progress"
 import { t } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -57,11 +57,39 @@ export function PracticeCard({ practice: p, results, rolledBack, onExit, onSolut
       {done && (
         <p className="mt-2 text-small text-success">
           {t("全部做到了。", "All met.")}
-          <Link to={`/lesson/${p.lesson}`} className="ml-1 underline decoration-success/40 underline-offset-4 hover:decoration-success">
-            {t("回到课程", "Back to the lesson")}
-          </Link>
+          <AfterPractice p={p} />
         </p>
       )}
     </section>
   )
+}
+
+const linkClass = "ml-1 underline decoration-success/40 underline-offset-4 hover:decoration-success"
+
+/**
+ * Where to go once a practice is met: a project's next step (a fresh load, so the workbench opens
+ * it like any practice arriving from a link), the learning path after a project's last step, or
+ * back to the lesson.
+ */
+function AfterPractice({ p }: { p: Practice }) {
+  const next = p.next ? practiceById(p.next) : undefined
+  if (next)
+    return (
+      <Link reloadDocument to={`/studio?practice=${next.id}`} className={linkClass}>
+        {t(`下一步：${next.title}`, `Next: ${next.title}`)}
+      </Link>
+    )
+  if (p.project)
+    return (
+      <Link to={`/learn#${p.project.id}`} className={linkClass}>
+        {t("项目完成，回到学习路径", "Project done: back to the learning path")}
+      </Link>
+    )
+  if (p.lesson)
+    return (
+      <Link to={`/lesson/${p.lesson}`} className={linkClass}>
+        {t("回到课程", "Back to the lesson")}
+      </Link>
+    )
+  return null
 }
