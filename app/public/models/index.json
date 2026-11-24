@@ -121,5 +121,47 @@
    "约束只留一个转动自由度"
   ],
   "parts": 3
+ },
+ "mouse_shell": {
+  "kind": "part",
+  "id": "mouse_shell",
+  "title": "无线鼠标外壳",
+  "subtitle": "样条 · 放样曲面 · 抽壳 · 分割线 · 拔模",
+  "level": "高级",
+  "teaches": [
+   "先做大面，圆角在后",
+   "内外圆角同心，壁厚均匀",
+   "分割线放在手指和手掌的交界",
+   "壳体内外都要拔模"
+  ],
+  "features": 9
+ },
+ "toothbrush_handle": {
+  "kind": "part",
+  "id": "toothbrush_handle",
+  "title": "电动牙刷手柄",
+  "subtitle": "变截面放样 · 按键平面 · 包胶槽 · 密封",
+  "level": "进阶",
+  "teaches": [
+   "截面沿长度变化：握得稳，也摸得出方向",
+   "按键放在平面上",
+   "包胶槽边缘要有封胶台阶",
+   "按键和充电口都不开通孔到外面"
+  ],
+  "features": 8
+ },
+ "desk_lamp": {
+  "kind": "assembly",
+  "id": "desk_lamp",
+  "title": "桌面台灯",
+  "subtitle": "配重 · 阻尼铰链 · 散热 · 走线",
+  "level": "进阶",
+  "teaches": [
+   "重心落在底座里面，台灯才不会倒",
+   "阻尼铰链只留一个转动自由度",
+   "LED 的热量导进铝灯头",
+   "电线从铰链的空心轴里穿过去"
+  ],
+  "parts": 7
  }
 }

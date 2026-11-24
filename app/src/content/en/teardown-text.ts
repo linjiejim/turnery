@@ -39,7 +39,14 @@ export type TeardownTextEn = PartTextEn | AssemblyTextEn
 export const UNITS_EN: Record<string, string> = { 个: "" }
 
 /** Materials named in the assemblies, by their Chinese name (ABS, PMMA… stay as they are). */
-export const MATERIALS_EN: Record<string, string> = { 不锈钢: "Stainless steel", 硅胶: "Silicone" }
+export const MATERIALS_EN: Record<string, string> = {
+  不锈钢: "Stainless steel",
+  硅胶: "Silicone",
+  锌合金: "Zinc alloy",
+  "铝 6063": "Aluminum 6063",
+  钢: "Steel",
+  "铝 6063 + PC": "Aluminum 6063 + PC",
+}
 
 /** Manufacturing processes named in the assemblies, by their Chinese name. */
 export const PROCESSES_EN: Record<string, string> = {
@@ -49,6 +56,10 @@ export const PROCESSES_EN: Record<string, string> = {
   "注塑 / 激光切割": "Injection molding / laser cutting",
   标准件: "Standard part",
   模压: "Compression molding",
+  "压铸 + 喷粉": "Die casting + powder coating",
+  "挤出 + 阳极氧化": "Extrusion + anodizing",
+  "挤出 + 注塑": "Extrusion + injection molding",
+  冲压: "Stamping",
 }
 
 /** Words baked into the models' scenes besides the standard planes (those are bakedWords' own). */
@@ -540,6 +551,204 @@ export const TEARDOWN_TEXT_EN: Record<string, TeardownTextEn> = {
       "One pin, two fits: an interference fit in the body's knuckles, so the pin doesn't slide out; a clearance fit in the lid's knuckles, so the lid can turn.",
       "Neighboring knuckles have 0.4 mm of axial clearance between them, so their end faces don't rub as the lid turns. With too much clearance the lid wobbles along the axis: an extra degree of freedom you don't want.",
       "The hinge axis sits outside the back wall, right on the plane where the body and the lid meet, so when the lid opens its back edge swings around the axis without hitting the body.",
+    ],
+  },
+  mouse_shell: {
+    kind: "part",
+    params: {
+      L: "Length",
+      W: "Width",
+      H: "High point",
+      a: "Draft angle",
+      t: "Wall thickness",
+      R: "Shoulder fillet",
+      g: "Split gap",
+      D: "Boss outer diameter",
+    },
+    features: {
+      sk1: {
+        title: "Plan outline",
+        why: "A mouse takes shape in the top view first: narrow at the front, where the fingers spread over the two buttons, and wide at the back, where it carries the palm. The outline is one closed spline, symmetric left to right, so either hand can use it. A spline is smoother than arcs joined end to end: its curvature changes continuously, so the highlights along the sides don't break.",
+        summary: "Top plane · 112 × 62 · closed spline",
+        summaryTemplate: "Top plane · {L} × {W} · closed spline",
+        pitfall: "Keep a spline's control points few and evenly spaced. The more points, the more likely small ripples appear, and the sides show them as soon as light falls on them.",
+      },
+      sk2: {
+        title: "Side spine",
+        why: "In the side view, draw a spine: low at the front, rising to its highest under the hollow of the palm, then dropping away at the back. The high point sits a little behind the middle, so the hollow of your palm settles over it. This one line sets the stance of the whole mouse and matters more than any fillet.",
+        summary: "Right plane · high point 36 · 12 behind the middle",
+        summaryTemplate: "Right plane · high point {H} · 12 behind the middle",
+      },
+      ext1: {
+        title: "Sides (extruded with draft)",
+        why: "Extrude the outline up into a blank and draft its sides at the same time: the higher, the further in. In the mold the shell comes up out of the cavity, and as long as its sides lean in a little, they don't scrape when the mold opens. That's why the parting line runs along the bottom edge: it's the widest point of the whole shape.",
+        summary: "Draft 1° · height 46 · narrowing upward",
+        summaryTemplate: "Draft {a}° · height 46 · narrowing upward",
+        pitfall: "If a side bulges out wider at mid-height than at the bottom edge, it's an undercut: the part is stuck in the cavity, and you have to move the parting line or add a slide.",
+      },
+      loft1: {
+        title: "Main top surface",
+        why: "Take 8 places along the spine and draw a side-to-side arc at each, the top of each arc at the spine's height; loft the arcs into one top surface and use it to cut off the top of the blank. The whole top is one continuous surface from the buttons to the palm rest, so when it's split into parts later, the surfaces on either side of each seam still line up.",
+        summary: "8 sections · one surface for the top",
+        summaryTemplate: "8 sections · one surface for the top",
+        pitfall: "If the sections are spaced very unevenly, or the arcs bend more here and less there, the lofted surface comes out wavy. The fewer the sections, the smoother: use just enough.",
+      },
+      shell1: {
+        title: "Hollow out the shell",
+        why: "Shell it with the bottom face removed: the top and the sides all move inward by the same wall thickness. An injection-molded part wants an even wall: thick spots cool slowly and sink marks appear on the surface, and on a mouse's glossy top they show the most, under your hand and under the light. The draft came before the shell, so the inner walls carry the same draft and the core can come out downward.",
+        summary: "Wall thickness 1.8 · bottom face removed",
+        summaryTemplate: "Wall thickness {t} · bottom face removed",
+      },
+      fil1: {
+        title: "Shoulder fillets (concentric inside and out)",
+        why: "Where the top meets the sides there's a sharp ridge all the way round, and only now does it get its fillet: the big surfaces are settled, and the fillet just makes the transition. R8 on the outside, R8 minus the wall thickness on the inside: the two arcs share a center, so the wall at the shoulder is as thick as everywhere else.",
+        summary: "Outer R8 · inner R8 − 1.8",
+        summaryTemplate: "Outer R{R} · inner R8 − {t}",
+        pitfall: "Fillet the outside first and shell afterwards, and on this surface the kernel can't offset the fillet, so the shell fails; shelling first and then filleting inside and outside, with radii one wall thickness apart, gives the same even wall. Fillet only the outside and the shoulder gets thinner.",
+      },
+      cut1: {
+        title: "Split line: buttons and palm rest",
+        why: "Draw the split line in the top view and cut straight down: a gap down the middle separates the left and right buttons, and one across separates the buttons from the palm rest, so the shell becomes three parts. The cross gap sits in front of the high point, where the fingers end and the palm begins, so you neither feel it nor catch on it; its ends curve forward, the way the fingers spread. The gaps are cut vertically, so their walls run in the mold's opening direction and each of the three parts can still come out of its mold.",
+        summary: "Gap 0.6 · cross gap at y = −6 · 3 parts",
+        summaryTemplate: "Gap {g} · cross gap at y = −6 · 3 parts",
+        pitfall: "A split gap must be the same width everywhere. An uneven gap, or surfaces a hair out of line on either side of it, catches the eye at once.",
+      },
+      ext2: {
+        title: "Screw bosses (drafted)",
+        why: "Two screw bosses under the palm rest grow from the inside of the shell down to 3 mm above the parting plane, and self-tapping screws come up into them through the bottom case. The bosses taper, thick at the root and thin at the tip, with about 0.5° of draft per side, so the core can pull out of them. Each boss reaches up to the outer surface, so it grows into one piece with the shell.",
+        summary: "Ø5.6 · 0.5° draft · Ø2 pilot hole",
+        summaryTemplate: "Ø{D} · 0.5° draft · Ø2 pilot hole",
+        pitfall: "Put a boss right against a side wall and that spot becomes a solid lump with a sink mark on the outside; keep it away from the wall and connect it with a rib.",
+      },
+      rib1: {
+        title: "Button plungers and ribs",
+        why: "Under each button a plunger sits right over a micro switch on the board, so pressing the button presses the switch. A rib along the underside of each button makes it move down as a whole instead of bending; on the palm rest, a cross rib ties the two screw bosses together. The ribs are 60% of the wall thickness, so no sink marks show on the other side.",
+        summary: "Plungers × 2 · rib thickness 0.6 × 1.8",
+        summaryTemplate: "Plungers × 2 · rib thickness 0.6 × {t}",
+        pitfall: "Leave a little free travel between a plunger's tip and its switch; otherwise the button holds the switch down the moment it's assembled.",
+      },
+    },
+    failures: {
+      loft1: "The top surface's loft failed: the arcs' heights change too abruptly, and the surface intersects itself.",
+      shell1: "The shell failed: the wall is too thick for the curvature, and the inner surface intersects itself as it's offset.",
+      fil1: "The shoulder fillet failed: the inner radius, with the wall thickness taken off, is too small, or the surface is too steep for the fillet to roll along.",
+      cut1: "The split line didn't cut the shell into three parts.",
+      ext2: "The screw bosses didn't join the shell into one piece.",
+    },
+  },
+
+  toothbrush_handle: {
+    kind: "part",
+    params: {
+      L: "Length",
+      rb: "Bottom fillet",
+      t: "Wall thickness",
+      g: "TPE thickness",
+      dh: "Button hole diameter",
+      dc: "Charging recess diameter",
+      hc: "Charging recess depth",
+    },
+    features: {
+      sk1: {
+        title: "Six sections",
+        why: "Draw six oval sections along the handle: almost round at the bottom, so it sits on the charger whichever way it faces; wide and flat in the grip, so the moment you hold it you know which way the bristles face; and at the thumb the front bulges out a little more, leaving room for the button. Change the section and the feel changes, which works better than adding a pattern to the surface.",
+        summary: "6 sections · height 0 → 190",
+        summaryTemplate: "6 sections · height 0 → {L}",
+        pitfall: "Space the sections roughly evenly. With uneven spacing the loft swells into bumps between the sections that nobody drew.",
+      },
+      loft1: {
+        title: "Handle body",
+        why: "Loft the six sections into one smooth solid. The sides are a single continuous surface from bottom to top with no seam, so there's no edge to feel in the hand.",
+        summary: "6 sections · smooth",
+        summaryTemplate: "6 sections · smooth",
+      },
+      fil1: {
+        title: "Bottom fillet",
+        why: "Round the bottom edge with R4. The fillet comes before the shell, so the shell offsets it into a concentric inner fillet and the wall at the bottom corner is as thick as the sides.",
+        pitfall: "With a fillet smaller than the wall, the inside corner comes out sharp after the shell, and that's where a dropped handle cracks first.",
+      },
+      cut1: {
+        title: "Button flat",
+        why: "Cut straight across the thumb bulge to get a flat for the button. A flat makes the button easy to find and press, and it makes the edge of the overmold a curve on a plane, which is easy to tool. The cut only reaches z ≥ 80: the grip below is fatter and mustn't be shaved off with it, and the cut sits where the flat's top and bottom ends die out on the curved surface by themselves, with no step.",
+        summary: "10.8 from the centerline · above z = 80",
+        summaryTemplate: "10.8 from the centerline · above z = 80",
+        pitfall: "Cut the flat too deep and it leaves steps at its top and bottom ends; too shallow and it's only a thin sliver with no room for the button.",
+      },
+      shell1: {
+        title: "Hollow out the handle",
+        why: "Shell it with the top face open. The motor, battery and circuit board are built as one chassis that slides in from the top, and a seal ring and a top cap close it. The handle itself is a cup open only at the top, with no seam at the bottom or along the sides.",
+        summary: "Wall thickness 2 · top face removed",
+        summaryTemplate: "Wall thickness {t} · top face removed",
+      },
+      cut2: {
+        title: "Soft-grip overmold pockets",
+        why: "At the button on the front and over the grip at the back, cut a shallow pocket that follows the outer surface; in the second shot TPE fills it, flush with the hard plastic. The pocket's edge is a vertical step all the way round: the mold clamps on the hard plastic just outside it, so the TPE can't flow out, and the TPE's edge is thick enough not to peel up.",
+        summary: "Pocket depth = TPE thickness 1.2 · front and back, 2 places",
+        summaryTemplate: "Pocket depth = TPE thickness {g} · front and back, 2 places",
+        pitfall: "Taper the overmold's edge down to nothing and the mold can't seal on it: the TPE flashes out in a thin film, and a thin edge is easy to pick up with a fingernail.",
+      },
+      hole1: {
+        title: "Button hole",
+        why: "Drill a hole in the middle of the button's overmold area, through the hard wall that's left. The TPE covers the hole completely, so the button is a TPE membrane and your finger presses the switch underneath through it. From outside there's no hole to see, and water can't get in. The hole's edge stays 2 mm from the pocket's edge: a sealing land where the TPE bonds to the hard plastic.",
+        summary: "Ø5 · front wall only",
+        summaryTemplate: "Ø{dh} · front wall only",
+        pitfall: "Make the button a separate hard part with a gap all round it, and water and toothpaste foam seep in through the gap.",
+      },
+      cut3: {
+        title: "Charging recess",
+        why: "Cut a recess in the bottom that sits over the charger's post; the coil wraps around the recess and charges inductively through the plastic, so the handle needs no metal contacts. The recess reaches into the handle, so first grow a cup inside the cavity, then cut the recess inside the cup: the cup's wall and top are one wall thickness too, and the handle stays sealed.",
+        summary: "Ø9 × 12 · cup wall = wall thickness",
+        summaryTemplate: "Ø{dc} × {hc} · cup wall = wall thickness",
+        pitfall: "Cut a 12 mm recess straight into the floor and it goes right through: the inside of the handle is open to the outside.",
+      },
+    },
+    failures: {
+      shell1: "The shell failed: the wall is too thick for the curvature at the thumb.",
+      cut2: "The overmold pocket is too deep and cuts through the hard wall.",
+      cut3: "The charging recess cut through the bottom: the cup isn't tall enough, or the wall isn't thick enough.",
+    },
+  },
+
+  desk_lamp: {
+    kind: "assembly",
+    parts: {
+      base: {
+        name: "Base",
+        note: "The heaviest part of the lamp. Zinc alloy has a density of 6.6, close to steel's, and it can still be die cast with the socket, screw bosses and cable channel in one piece. The wall is 3 thick everywhere, and the socket holds the arm 20 deep, as deep as the arm is wide.",
+      },
+      arm: {
+        name: "Arm Ø20",
+        note: "A length of extruded aluminum tube, simply cut to length: no mold needed. It's hollow, so the cable runs inside. Its lower end goes into the base's socket and is locked with a screw from below.",
+      },
+      cable: {
+        name: "Power cable",
+        note: "Leaves the back of the base, with a strain-relief grommet held in the exit hole, so a tug on the cable doesn't reach the solder joints inside. It runs up inside the arm, turns through one cheek of the hinge into the hollow axle, and ends on the axis.",
+      },
+      hinge: {
+        name: "Friction hinge",
+        note: "A bought-in torque hinge: its seat plugs into the top of the arm, two cheeks clamp the head's lug, and disc springs and a nut press the friction washers together. The tighter the nut, the stiffer it turns. The axle is hollow, and the cable runs through it.",
+      },
+      head: {
+        name: "Head assembly",
+        note: "The aluminum extrusion is both housing and heat sink, with 5 fins on top; the aluminum LED board is mounted against the extrusion's inner top face with a thermal pad in between; a PC diffuser clips in underneath and evens out the bright spots of the individual LEDs. The three are assembled into one unit that turns about the hinge together.",
+        motion: "Head tilt",
+      },
+      weight: {
+        name: "Weight plate",
+        note: "A 6 mm steel plate, fixed with three screws to the screw bosses inside the base. Steel is cheaper than zinc, and at the very bottom it pulls the lamp's center of mass down.",
+      },
+      pad: {
+        name: "Non-slip pad",
+        note: "Covers the whole bottom and hides the weight plate's three screws; it keeps the lamp from sliding and the desk from getting scratched.",
+      },
+    },
+    notes: [
+      "The head reaches 278 mm in front of the base's center, yet the center of mass of the whole 1.9 kg lamp is only 7 mm in front of the center and 94 mm above the desk. As long as the center of mass falls inside the base, the lamp can't tip over; you'd have to tilt it forward to 38° before the center of mass passed the base's edge.",
+      "To keep the center of mass low and back: the heaviest parts go at the bottom (the die-cast base plus the steel plate), and the arm stands behind the base's center, which leaves room to balance the head reaching forward.",
+      "The head can only turn about the hinge axis: the axle through the head's lug blocks the two moves across the axis and the turns about the other two directions, and the two cheeks clamping the lug's ends block the move along the axis. Of the 6 degrees of freedom only 1 is left, the turn about the axis. Its limits run from -25° to 60°, and at either end the head hits neither the arm nor the hinge seat.",
+      "The friction hinge holds the head at any angle with friction torque: level, the head's own weight makes about 0.37 N·m of torque, and the friction torque from the compressed disc springs must be somewhat larger, so the head doesn't sag on its own, yet a push of the hand still turns it.",
+      "The LEDs' heat goes first into the aluminum board, then through the thermal pad into the aluminum extrusion, and finally from the fins on top into the air. Aluminum conducts heat at about 200 W/(m·K) and plastic at around 0.2, roughly a thousand times less, which is why the head's housing is aluminum, not plastic.",
+      "The cable turns from one cheek of the hinge into the hollow axle and stops on the axis. When the head tilts, the cable only twists a little at the center of the axis; it isn't bent back and forth or pinched by the joint.",
     ],
   },
 }

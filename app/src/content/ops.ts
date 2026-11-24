@@ -221,7 +221,7 @@ const OPS_ZH: Op[] = [
       build123d: "loft()",
     },
     lessons: ["1.2.8"],
-    models: [],
+    models: ["toothbrush_handle", "mouse_shell"],
     demo: true,
   },
   {
@@ -244,7 +244,7 @@ const OPS_ZH: Op[] = [
       build123d: "fillet()",
     },
     lessons: ["1.2.6", "5.3.3"],
-    models: ["mug"],
+    models: ["mug", "mouse_shell"],
     demo: true,
   },
   {
@@ -290,7 +290,7 @@ const OPS_ZH: Op[] = [
       build123d: "offset(openings=…)",
     },
     lessons: ["1.2.7", "1.3.4"],
-    models: ["mug", "enclosure"],
+    models: ["mug", "enclosure", "toothbrush_handle"],
     demo: true,
   },
   {
@@ -313,7 +313,7 @@ const OPS_ZH: Op[] = [
       build123d: "draft() / extrude(taper=)",
     },
     lessons: ["1.2.7", "4.4.2"],
-    models: ["enclosure_bottom"],
+    models: ["enclosure_bottom", "mouse_shell"],
     demo: true,
   },
   {
@@ -335,7 +335,7 @@ const OPS_ZH: Op[] = [
       build123d: "薄草图 + extrude(until=Until.NEXT)",
     },
     lessons: ["1.2.7", "4.4.5"],
-    models: ["enclosure_bottom"],
+    models: ["enclosure_bottom", "mouse_shell"],
     demo: true,
   },
   {

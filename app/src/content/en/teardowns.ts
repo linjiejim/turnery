@@ -59,6 +59,31 @@ export const TEARDOWNS_EN: Record<string, TeardownEn> = {
     subtitle: "Knuckles · pin · mates and degrees of freedom",
     teaches: ["The knuckles alternate along a single axis", "Interference fits and clearance fits", "The mates leave a single rotational degree of freedom"],
   },
+  mouse_shell: {
+    title: "Wireless mouse shell",
+    subtitle: "Splines · lofted surface · shell · split line · draft",
+    teaches: ["Big surfaces first, fillets after", "Concentric inner and outer fillets keep the wall even", "The split line goes where the fingers meet the palm", "The shell needs draft inside and out"],
+  },
+  toothbrush_handle: {
+    title: "Electric toothbrush handle",
+    subtitle: "Varying-section loft · button flat · overmold pockets · sealing",
+    teaches: [
+      "The section changes along the length: a steady grip, and you can feel which way it faces",
+      "The button sits on a flat",
+      "An overmold pocket needs a shut-off step at its edge",
+      "Neither the button nor the charging recess leaves an opening to the outside",
+    ],
+  },
+  desk_lamp: {
+    title: "Desk lamp",
+    subtitle: "Counterweight · friction hinge · heat sinking · cable routing",
+    teaches: [
+      "The center of mass stays over the base, so the lamp doesn't tip",
+      "The friction hinge leaves a single rotational degree of freedom",
+      "The LEDs' heat goes into the aluminum head",
+      "The cable runs through the hinge's hollow axle",
+    ],
+  },
 }
 
 /** Difficulty levels, as the baker and the planned cards write them. */
@@ -76,7 +101,6 @@ export const PLANNED_EN: Record<string, { title: string; subtitle: string }> = {
   六角螺栓与螺母: { title: "Hex bolt and nut", subtitle: "Polygon · chamfer · thread" },
   钣金支架: { title: "Sheet metal bracket", subtitle: "Flange · bend · flat pattern" },
   手电筒: { title: "Flashlight", subtitle: "Revolved parts · threads · assembly order" },
-  无线鼠标外壳: { title: "Wireless mouse shell", subtitle: "Surfacing · G2 continuity · mold split" },
 }
 
 /** The model index with the English laid over it; whatever the overlay lacks stays as baked. */
