@@ -20,6 +20,7 @@
     "dist": "node scripts/build.mjs && electron-builder --mac dir --publish never && node scripts/release.mjs"
   },
   "devDependencies": {
+    "@agentclientprotocol/codex-acp": "2.10.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^24.19.2",
     "electron": "^45.2.3",

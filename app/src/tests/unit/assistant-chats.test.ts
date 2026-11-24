@@ -4,7 +4,6 @@ import path from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { UIMessage } from "ai"
 import { activity } from "@/desktop/assistant-activity"
-import { clampLayout, defaultLayout, dockRoom } from "@/desktop/assistant-layout"
 import { chatTitle, forStorage, newChatId, type ChatRecord } from "@/desktop/core/chats"
 import { usageOf } from "@/desktop/core/assistant"
 
@@ -84,25 +83,6 @@ describe("the chat store (~/.turnery/chats)", () => {
     expect(() => store.saveChat(record("../../evil", null, 1))).toThrow()
     store.deleteChat("../index")
     expect(JSON.parse(readFileSync(path.join(home, "chats", "index.json"), "utf8")).length).toBeGreaterThan(0)
-  })
-})
-
-describe("the floating panel's place", () => {
-  it("stays inside the window, below the title bar, at least its minimum size", () => {
-    const l = clampLayout({ ...defaultLayout(1440, 900), x: 5000, y: -20, w: 100, h: 5000 }, 1440, 900)
-    expect(l.w).toBe(320)
-    expect(l.x + l.w).toBeLessThanOrEqual(1440 - 8)
-    expect(l.y).toBeGreaterThanOrEqual(48)
-    expect(l.y + l.h).toBeLessThanOrEqual(900 - 8)
-  })
-})
-
-describe("the docked column", () => {
-  it("leaves the model at least 360 px, and goes back to floating when the window is too narrow", () => {
-    expect(dockRoom(1440)).toBe(1440 - 224 - 380 - 360)
-    const wide = clampLayout({ ...defaultLayout(1440, 900), mode: "dock", dockW: 900 }, 1440, 900)
-    expect(wide).toMatchObject({ mode: "dock", dockW: 476 })
-    expect(clampLayout({ ...defaultLayout(1100, 800), mode: "dock" }, 1100, 800).mode).toBe("float")
   })
 })
 

@@ -10,6 +10,7 @@ import type { ChatRecord } from "../../../app/src/desktop/core/chats"
 import { deleteChat, listChats, readChat, renameChat, saveChat } from "../engine/chats"
 import { currentModel, listModels, setKey, useModel, type SecretBox } from "../engine/models"
 import { tm } from "./lang"
+import type { AgentRunner } from "./agents"
 
 /**
  * Keys are encrypted with the system's store only where that works without nagging: an app that is
@@ -51,7 +52,7 @@ const friendly = (error: unknown) => {
 }
 
 /** Wire the assistant's channels. `engineOf` gives the engine of the window that asks. */
-export function wireAssistant(ipcMain: IpcMain, engineOf: (e: IpcMainInvokeEvent) => Engine) {
+export function wireAssistant(ipcMain: IpcMain, engineOf: (e: IpcMainInvokeEvent) => Engine, agents?: AgentRunner) {
   const running = new Map<string, AbortController>()
   const fetchVia: typeof fetch = (input, init) => net.fetch(input as never, init as never) as never
 
@@ -84,12 +85,26 @@ export function wireAssistant(ipcMain: IpcMain, engineOf: (e: IpcMainInvokeEvent
   ipcMain.handle("turnery:chat-rename", (_e, id: string, title: string) => renameChat(String(id), String(title)))
   ipcMain.handle("turnery:chat-delete", (_e, id: string) => deleteChat(String(id)))
 
-  ipcMain.handle("turnery:assistant-send", async (e, id: string, messages: unknown[], lang?: unknown) => {
+  ipcMain.handle("turnery:assistant-send", async (e, id: string, messages: unknown[], lang?: unknown, chat?: unknown) => {
     const wc: WebContents = e.sender
     const send = (chunk: unknown) => !wc.isDestroyed() && wc.send("turnery:assistant", id, chunk)
     const fail = (errorText: string) => {
       send({ type: "error", errorText })
       send(null)
+    }
+    // An outside agent chosen for the chat window (agents.ts) takes the turn instead.
+    if (agents?.active()) {
+      const stop = new AbortController()
+      running.set(id, stop)
+      wc.once("destroyed", () => stop.abort())
+      try {
+        const took = await agents.turn(e, { id, chat: typeof chat === "string" && chat ? chat : id, messages: messages as never, lang: lang === "en" ? "en" : "zh", send, signal: stop.signal })
+        if (took) return void send(null)
+      } catch (error) {
+        return fail(tm(`没能交给 agent：${(error as Error)?.message ?? error}`, `Couldn’t hand this to the agent: ${(error as Error)?.message ?? error}`))
+      } finally {
+        running.delete(id)
+      }
     }
     const chosen = currentModel(secretBox())
     if (!chosen) return fail(tm("还没有选模型：点对话栏上方的模型名来配置。", "No model chosen yet: click the model name above the chat to set one up."))

@@ -1,15 +1,18 @@
 import * as React from "react"
-import { Code, History, MessageSquare, PanelRightClose, PanelRightOpen, SlidersHorizontal, SquareMousePointer } from "lucide-react"
+import { Code, History, MessageSquare, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles, SquareMousePointer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
 import { IconButton } from "@/components/ui/button"
 import { ResizeHandle } from "@/components/ui/resize-handle"
+import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RIGHT, RAIL } from "../panels"
+import { useAssistant } from "../use-assistant"
 
-export type PanelTab = "details" | "notes" | "params" | "activity" | "code"
+export type PanelTab = "chat" | "details" | "notes" | "params" | "activity" | "code"
 
 const TABS: { value: PanelTab; label: string; icon: React.ReactNode }[] = [
+  { value: "chat", label: t("对话", "Chat"), icon: <Sparkles /> },
   { value: "details", label: t("详情", "Details"), icon: <SquareMousePointer /> },
   { value: "notes", label: t("备注", "Notes"), icon: <MessageSquare /> },
   { value: "params", label: t("参数", "Parameters"), icon: <SlidersHorizontal /> },
@@ -17,10 +20,16 @@ const TABS: { value: PanelTab; label: string; icon: React.ReactNode }[] = [
   { value: "code", label: t("代码", "Code"), icon: <Code /> },
 ]
 
+/** The chat tab spins while a turn runs, so it shows from the other tabs too. */
+function ChatBusy() {
+  return useAssistant().busy ? <Spinner className="size-3" /> : null
+}
+
 /**
- * The right panel: the selected step's or part's details, the notes, parameters, activity and code.
- * Its left edge drags it wider; closed, it is a rail of its tabs' icons (notes and failing checks
- * as badges) and a click on one opens the panel there.
+ * The right panel: the conversation first, then the selected step's or part's details, the notes,
+ * parameters, activity and code. Its left edge drags it wider; closed, it is a rail of its tabs'
+ * icons (notes and failing checks as badges) and a click on one opens the panel there. Without an
+ * open file only the conversation is there.
  */
 export function RightPanel({
   open,
@@ -48,9 +57,10 @@ export function RightPanel({
   checksFailing: number
   /** Where the details go (the timeline renders them there). */
   slot: (el: HTMLDivElement | null) => void
-  children: Record<Exclude<PanelTab, "details">, React.ReactNode>
+  /** The tabs' contents; the file's tabs are left out when no file is open. */
+  children: { chat: React.ReactNode } & Partial<Record<Exclude<PanelTab, "details" | "chat">, React.ReactNode>>
 }) {
-  const tabs = TABS.filter((t) => t.value !== "details" || details)
+  const tabs = TABS.filter((t) => (t.value === "details" ? details : t.value === "chat" || children[t.value as keyof typeof children] !== undefined))
   const badge = (t: PanelTab) => (t === "notes" && openNotes ? String(openNotes) : t === "params" && checksFailing ? "!" : null)
   if (!open)
     return (
@@ -72,6 +82,11 @@ export function RightPanel({
             }}
           >
             {t.icon}
+            {t.value === "chat" && (
+              <span className="absolute -top-0.5 -right-0.5">
+                <ChatBusy />
+              </span>
+            )}
             {badge(t.value) && (
               <span className={cn("absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full px-0.5 text-caption leading-none font-semibold tabular", t.value === "params" ? "bg-warning-subtle text-warning" : "bg-primary text-primary-foreground")}>
                 {badge(t.value)}
@@ -99,6 +114,7 @@ export function RightPanel({
             <TabsTrigger key={t.value} value={t.value}>
               {t.label}
               {t.value === "notes" && openNotes > 0 ? ` ${openNotes}` : ""}
+              {t.value === "chat" && <ChatBusy />}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -106,23 +122,34 @@ export function RightPanel({
           <PanelRightClose />
         </IconButton>
       </div>
+      <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+        {children.chat}
+      </TabsContent>
       {details && (
         <TabsContent value="details" className="relative min-h-0 flex-1">
           <div ref={slot} className="absolute inset-0" />
         </TabsContent>
       )}
-      <TabsContent value="notes" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-        {children.notes}
-      </TabsContent>
-      <TabsContent value="params" className="min-h-0 flex-1 overflow-y-auto">
-        {children.params}
-      </TabsContent>
-      <TabsContent value="activity" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-        {children.activity}
-      </TabsContent>
-      <TabsContent value="code" className="min-h-0 flex-1 overflow-y-auto">
-        {children.code}
-      </TabsContent>
+      {children.notes !== undefined && (
+        <TabsContent value="notes" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+          {children.notes}
+        </TabsContent>
+      )}
+      {children.params !== undefined && (
+        <TabsContent value="params" className="min-h-0 flex-1 overflow-y-auto">
+          {children.params}
+        </TabsContent>
+      )}
+      {children.activity !== undefined && (
+        <TabsContent value="activity" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+          {children.activity}
+        </TabsContent>
+      )}
+      {children.code !== undefined && (
+        <TabsContent value="code" className="min-h-0 flex-1 overflow-y-auto">
+          {children.code}
+        </TabsContent>
+      )}
     </Tabs>
   )
 }

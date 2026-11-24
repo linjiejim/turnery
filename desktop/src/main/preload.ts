@@ -37,7 +37,17 @@ const bridge: TurneryBridge = {
   openExample: () => ipcRenderer.invoke("turnery:open-example"),
   models: () => ipcRenderer.invoke("turnery:models"),
   saveModel: (input) => ipcRenderer.invoke("turnery:models-save", input),
-  assistantSend: (id, messages, lang) => ipcRenderer.invoke("turnery:assistant-send", id, messages, lang),
+  assistantSend: (id, messages, lang, chat) => ipcRenderer.invoke("turnery:assistant-send", id, messages, lang, chat),
+  agents: (check) => ipcRenderer.invoke("turnery:agents", check),
+  saveAgents: (input) => ipcRenderer.invoke("turnery:agents-save", input),
+  agentOptions: (chat) => ipcRenderer.invoke("turnery:agent-options", chat),
+  setAgentOption: (chat, option, value) => ipcRenderer.invoke("turnery:agent-option", chat, option, value),
+  answerPermission: (id, optionId) => ipcRenderer.invoke("turnery:agent-permission", id, optionId),
+  onAgentsChanged: (cb) => {
+    const handle = (_e: IpcRendererEvent, state: Parameters<typeof cb>[0]) => cb(state)
+    ipcRenderer.on("turnery:agents-changed", handle)
+    return () => ipcRenderer.removeListener("turnery:agents-changed", handle)
+  },
   assistantStop: (id) => ipcRenderer.invoke("turnery:assistant-stop", id),
   setLanguage: (lang) => ipcRenderer.invoke("turnery:set-language", lang),
   onAssistant: (listener) => {
