@@ -2911,10 +2911,25 @@ function threeMF(parts: { name: string; body: Shape3D; look?: Appearance }[]): B
     } catch (e) {
       throw new Error(ta(`「${p.name}」没能三角化成 3MF（${describeError(e).message}）；可以先导出 STEP`, `Couldn't triangulate “${p.name}” for 3MF (${describeError(e).message}); you can export STEP for now`))
     }
+    // Each face is meshed with its own copy of its border: one vertex per point as written (0.1 µm),
+    // so faces share their edges, and no triangle left with two corners on one point (at a pole).
     const v: string[] = []
-    for (let k = 0; k < m.vertices.length; k += 3) v.push(`<vertex x="${num(m.vertices[k])}" y="${num(m.vertices[k + 1])}" z="${num(m.vertices[k + 2])}"/>`)
+    const ids = new Map<string, number>()
+    const id = new Uint32Array(m.vertices.length / 3)
+    for (let k = 0; k < m.vertices.length; k += 3) {
+      const at = `x="${num(m.vertices[k])}" y="${num(m.vertices[k + 1])}" z="${num(m.vertices[k + 2])}"`
+      let n = ids.get(at)
+      if (n === undefined) {
+        ids.set(at, (n = v.length))
+        v.push(`<vertex ${at}/>`)
+      }
+      id[k / 3] = n
+    }
     const t: string[] = []
-    for (let k = 0; k < m.triangles.length; k += 3) t.push(`<triangle v1="${m.triangles[k]}" v2="${m.triangles[k + 1]}" v3="${m.triangles[k + 2]}"/>`)
+    for (let k = 0; k < m.triangles.length; k += 3) {
+      const [a, b, c] = [id[m.triangles[k]], id[m.triangles[k + 1]], id[m.triangles[k + 2]]]
+      if (a !== b && b !== c && c !== a) t.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`)
+    }
     const k = colored.indexOf(p)
     const material = k >= 0 ? ` pid="${MATERIALS}" pindex="${k}"` : ""
     return `<object id="${i + 1}" type="model" name="${esc(p.name)}"${material}><mesh><vertices>${v.join("")}</vertices><triangles>${t.join("")}</triangles></mesh></object>`
