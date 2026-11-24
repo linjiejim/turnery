@@ -1,0 +1,45 @@
+{
+  "name": "turnery",
+  "version": "0.1.0",
+  "extends": "jim",
+  "brand": "Turnery",
+  "description": "Turnery 的演示稿主题：jim 的骨架，换上工程蓝、IBM Plex 和蓝图网格。取值照 app/src/styles/turnery-theme.css 与 docs/DESIGN.md。",
+  "mark": "../../../desktop/resources/logo/turnery-mark.svg",
+  "wordmark": "../../../desktop/resources/logo/turnery-wordmark.svg",
+  "markColors": {
+    "#141414": "--fg"
+  },
+  "rules": {
+    "weights": [
+      400,
+      500,
+      600
+    ],
+    "noEmoji": true,
+    "requireMark": true,
+    "forbidWords": [
+      "文生 3D",
+      "AI CAD 软件",
+      "取代 SolidWorks",
+      "赋能",
+      "颠覆"
+    ]
+  },
+  "sources": [
+    {
+      "path": "../../../app/src/styles/turnery-theme.css",
+      "note": "强调色、场景色、代码色、字体栈",
+      "sha256": "440237b43759d56866f375aae9cf8df2966eee0793db57d0d3a1c35980aa3169"
+    },
+    {
+      "path": "../../../docs/DESIGN.md",
+      "note": "旋钮与例外：工程蓝的含义、Plex、中文标题字",
+      "sha256": "70447163568a7df7f4faa348ee14945274e60299682008110239f30404f4d278"
+    },
+    {
+      "path": "../../../docs/launch/README.md",
+      "note": "对外说法与不要说的词",
+      "sha256": "3d2ff1ecad20825c8685d4009426d1eb0a4247703bec7bfe268de34e1a90bfac"
+    }
+  ]
+}

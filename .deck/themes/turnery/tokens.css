@@ -1,0 +1,56 @@
+/* turnery · jim's skeleton with Turnery's knobs (app/src/styles/turnery-theme.css, docs/DESIGN.md).
+ * One accent, 工程蓝: in CAD an under-defined sketch is blue, a fixed one is black,
+ * so blue means "this step / not settled yet" and black means "fixed".
+ * Blueprint paper (two grid scales in hairline colour) is the only decoration.
+ */
+:root {
+  --c-accent: #2759e0;
+  --c-accent-fg: #ffffff;
+  --c-ink-bg: #121212;
+  --c-ink-bg-2: #1c1c1c;
+  --c-ink-line: #2f2f2f;
+  --c-ink-accent: #7ea6ff;
+
+  --c-ok: #287a39; /* scene-good #2f8f43, one step darker so ✓ passes 4.5:1 as text */
+  --c-warn: #b35f12;
+  --c-bad: #cc4136;
+
+  --c-code-keyword: #8a3ffc;
+  --c-code-string: #1a7f37;
+  --c-code-number: #b35900;
+  --c-code-key: #2759e0;
+
+  --font-sans: "IBM Plex Sans Variable", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-display: "IBM Plex Sans Variable", "Turnery Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Plex Sans SC is cut to 500 and 600 only: headings stay there so Latin and Chinese match */
+  --w-hero: 500;
+  --w-head: 600;
+  --tracking-display: -.02em;
+  --tracking-meta: .04em;
+
+  --pattern:
+    linear-gradient(#e8e8e8 1px, transparent 1px) -1px -1px / 5cqw 5cqw,
+    linear-gradient(90deg, #e8e8e8 1px, transparent 1px) -1px -1px / 5cqw 5cqw,
+    linear-gradient(#f2f2f2 1px, transparent 1px) -1px -1px / 1cqw 1cqw,
+    linear-gradient(90deg, #f2f2f2 1px, transparent 1px) -1px -1px / 1cqw 1cqw;
+  --pattern-ink:
+    linear-gradient(#232323 1px, transparent 1px) -1px -1px / 5cqw 5cqw,
+    linear-gradient(90deg, #232323 1px, transparent 1px) -1px -1px / 5cqw 5cqw,
+    linear-gradient(#191919 1px, transparent 1px) -1px -1px / 1cqw 1cqw,
+    linear-gradient(90deg, #191919 1px, transparent 1px) -1px -1px / 1cqw 1cqw;
+}
+
+:root:lang(zh) {
+  --tracking-display: -.005em;
+  --leading-display: 1.2;
+}
+
+/* a measured check, the way the app prints it: ✓ name · asked · measured */
+.turnery-check { display: grid; grid-template-columns: auto auto 1fr auto; gap: .55cqw 1.6cqw; align-items: baseline; font-family: var(--font-mono); font-size: calc(1.1cqw * var(--type-scale)); }
+.turnery-check > .ok { color: var(--c-ok); }
+.turnery-check > .bad { color: var(--c-bad); }
+.turnery-check > .k { color: var(--fg); }
+.turnery-check > .v { color: var(--fg-2); }
+.turnery-check > .m { color: var(--fg-3); text-align: right; }

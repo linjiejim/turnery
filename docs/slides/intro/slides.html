@@ -1,0 +1,226 @@
+<section class="slide layout-cover tone-paper bg-pattern" id="cover" data-section="Turnery" data-title="让 coding agent 建参数化零件">
+  <div class="split">
+    <div class="stack">
+      <span class="wordmark"></span>
+      <h1>让 coding agent<br>建参数化零件</h1>
+      <p class="lead">建出来的东西，你看得懂、核得准、改得动。</p>
+      <div class="meta-row"><span>开源</span><span>macOS · MCP</span><span>turnery.linjiejim.com</span></div>
+    </div>
+    <figure class="frame contain bare multiply r-4x3"><img src="../../media/enclosure.png" alt="传感器外壳：上下盖、四颗沉头螺丝、前壁 USB-C 开口、盖上五条散热槽"></figure>
+  </div>
+  <aside class="notes" data-minutes="0.5">
+    <p class="purpose">一句话立住 Turnery 是什么：给 coding agent 用的参数化 CAD。</p>
+    <ul><li>右边这个外壳是 agent 用一句话需求建出来的，后面会拆开讲。</li><li>关键词是「看得懂、核得准、改得动」，整场就讲这三件事。</li></ul>
+    <p class="transition">先说清楚分工。</p>
+  </aside>
+</section>
+
+<section class="slide layout-statement tone-ink" id="pitch" data-section="一句话" data-title="agent 来建，内核来核对，你来定方向">
+  <span class="kicker">分工</span>
+  <h1>agent 来建，<br>内核来核对，<br><span class="accent">你来定方向。</span></h1>
+  <aside class="notes" data-minutes="0.5">
+    <p class="purpose">最短的说法，先让人记住。</p>
+    <ul><li>agent 负责动手；数字对不对由几何内核量，不由 agent 自己说；方向由人定。</li><li>不要说成「AI CAD 软件」，会被拿去和 Fusion 比功能。</li></ul>
+    <p class="transition">为什么要这样分？看看今天让模型做零件会拿到什么。</p>
+  </aside>
+</section>
+
+<section class="slide layout-ledger tone-paper" id="today" data-section="问题" data-title="说「壁厚改成 3 mm」时会发生什么">
+  <div class="head">
+    <span class="kicker">一个小改动</span>
+    <h2>说「壁厚改成 3 mm」时，会发生什么</h2>
+  </div>
+  <div class="ledger">
+    <div class="row"><span class="k">网格</span><span class="v">没有可改的东西。重新生成一遍，祈祷其他地方别变。</span><span class="m">一句话生成 3D</span></div>
+    <div class="row"><span class="k">脚本</span><span class="v">能改，前提是你读得懂代码、它还能跑。没人告诉你孔还在不在原处。</span><span class="m">OpenSCAD · CadQuery</span></div>
+    <div class="row is-key"><span class="k">Turnery 特征树</span><span class="v">把 t 从 2 改成 3，引用它的地方都跟着变；「壁厚 2」这项核对立刻变红。</span><span class="m">feature tree</span></div>
+  </div>
+  <aside class="notes" data-minutes="1">
+    <p class="purpose">用一个具体的小改动对比三条路线。</p>
+    <ul><li>网格路线：没有参数，只能重来。</li><li>脚本路线：对会读代码的人很好，但改完没人帮你核对。</li><li>特征树：改一个数，相关的都跟着变，而且原来的要求还在、会被重新量。</li></ul>
+    <p class="transition">第一点：交出来的到底是什么。</p>
+  </aside>
+</section>
+
+<section class="slide layout-code tone-paper" id="tree" data-section="01 · 特征树" data-title="交出来的是一棵特征树">
+  <div class="split narrow">
+    <div class="stack">
+      <span class="kicker">交付物</span>
+      <h2>交出来的是一棵特征树</h2>
+      <p>命名的参数、按顺序排的特征，每一步写着它为什么存在。一个 JSON 文件：能 diff，能进 git，一个月后打开还能改。</p>
+      <p class="callout">把 H 从 28 改成 40，螺丝柱自己长到 36 mm。</p>
+    </div>
+    <div class="stack">
+      <pre class="code wrap large">{
+  <span class="tk-p">"id"</span>: <span class="tk-s">"posts"</span>,
+  <span class="tk-p">"name"</span>: <span class="tk-s">"螺丝柱"</span>,
+  <span class="tk-p">"intent"</span>: <span class="tk-s">"柱子从内底一直长到内顶：分型后下半段装热熔螺母，上半段让螺钉穿过。改总高时柱子跟着变"</span>,
+  <span class="tk-p">"op"</span>: <span class="tk-s">"extrude"</span>,
+  <span class="tk-p">"sketch"</span>: <span class="tk-s">"sk_posts"</span>,
+  <span class="tk-p">"until"</span>: <span class="tk-s">"next"</span>
+}</pre>
+      <p class="caption">examples/sensor-enclosure/enclosure.turnery.json 里的一个特征</p>
+    </div>
+  </div>
+  <aside class="notes" data-minutes="1.5">
+    <p class="purpose">第一个要讲清的点：交付物是特征树，不是网格，也不是一段脚本。</p>
+    <ul><li>指着 until: "next"：它写的是「长到下一个面为止」，不是「24 mm」，所以改总高时柱子自己跟着长。</li><li>intent 是写给人看的：一个月后你还知道这一步为什么在这里。</li><li>现场可以演示：打开这个文件，把 H 改成 40。</li></ul>
+    <p class="transition">这棵树是怎么来的？一句话需求。</p>
+  </aside>
+</section>
+
+<section class="slide layout-metrics tone-wash" id="session" data-section="01 · 特征树" data-title="一句话需求，15 次工具调用">
+  <div class="head">
+    <span class="kicker">一个例子</span>
+    <h2>一句话需求，15 次工具调用</h2>
+    <p class="lead">「80×50×28，2 mm 壁厚，R6 圆角，分成底座和盖，四颗 M3 沉头螺丝配热熔螺母，前壁开 USB-C，盖上五条散热槽。」</p>
+  </div>
+  <div class="stats">
+    <div class="stat is-key"><span class="stat-label">Tool calls</span><span class="stat-num">15</span><span class="stat-note">每一步都经过校验</span></div>
+    <div class="stat"><span class="stat-label">Params</span><span class="stat-num">11</span><span class="stat-note">t、H、圆角……都有名字</span></div>
+    <div class="stat"><span class="stat-label">Features</span><span class="stat-num">17</span><span class="stat-note">每个都写着意图</span></div>
+    <div class="stat"><span class="stat-label">Checks</span><span class="stat-num">5</span><span class="stat-note">每次重建都重新量</span></div>
+  </div>
+  <aside class="notes" data-minutes="1">
+    <p class="purpose">用示例项目的真实数字说明规模。</p>
+    <ul><li>这些数字都在 examples/sensor-enclosure 里，可以当场打开对。</li><li>agent 只能通过带 schema 的工具改这棵树，失败的特征会带着原因和建议回来。</li></ul>
+    <p class="transition">一步一步长出来的样子。</p>
+  </aside>
+</section>
+
+<section class="slide layout-media tone-paper" id="steps" data-section="01 · 特征树" data-title="一步一个特征">
+  <div class="head">
+    <div><span class="kicker">回放</span><h2>一步一个特征</h2></div>
+    <p class="lead">时间线可以按特征回放整个建模过程。</p>
+  </div>
+  <figure class="push"><div class="frame contain bare multiply" style="aspect-ratio:3538/478"><img src="../../media/feature-tree-steps.png" alt="外壳按特征逐步成形：从实体、抽壳、分型到螺丝柱、开口和散热槽"></div>
+    <figcaption>传感器外壳，从第一个特征到最后一个</figcaption></figure>
+  <aside class="notes" data-minutes="0.5">
+    <p class="purpose">让人直观看到「特征」是什么。</p>
+    <ul><li>每一格是一个特征之后的状态；窗口里的时间线就是按这个顺序回放。</li></ul>
+    <p class="transition">第二点：建完了，怎么知道它对不对？</p>
+  </aside>
+</section>
+
+<section class="slide layout-split tone-paper" id="check" data-section="02 · 核对" data-title="做没做到，由内核量">
+  <div class="split">
+    <div class="stack">
+      <span class="kicker">要求留在文件里</span>
+      <h2>做没做到，<br>由内核量</h2>
+      <p>「80×50×28、2 mm 壁、四个 M3 孔」变成核对项，每次改动后内核重新量一遍。</p>
+      <div class="turnery-check">
+        <span class="ok">✓</span><span class="k">size</span><span class="v">80 × 50 × 28</span><span class="m">80 × 50 × 28</span>
+        <span class="bad">✕</span><span class="k">wall</span><span class="v">2 mm</span><span class="m">3 mm</span>
+        <span class="ok">✓</span><span class="k">inserts</span><span class="v">4 × M3 热熔螺母</span><span class="m">4 × ⌀4</span>
+        <span class="ok">✓</span><span class="k">screws</span><span class="v">4 × M3 沉头过孔</span><span class="m">4 × ⌀3.4</span>
+        <span class="ok">✓</span><span class="k">seat</span><span class="v">盖子贴合底座</span><span class="m">0 mm</span>
+      </div>
+    </div>
+    <figure class="frame shot r-16x10"><img src="../../media/window-check.png" alt="Turnery 窗口：壁厚改成 3 之后，核对表把「壁厚 2」标红"></figure>
+  </div>
+  <aside class="notes" data-minutes="1.5">
+    <p class="purpose">第二个要讲清的点：数字由内核量，不由 agent 自己说。</p>
+    <ul><li>演示：把 t 改成 3，「壁厚 2」立刻变红：要求 2 mm，实际 3 mm。</li><li>不开窗口也能跑：turnery check 零件 --no-app，可以放进 CI。</li><li>被问「LLM 空间能力差」时，就指这一页：所以才要内核来量。</li></ul>
+    <p class="transition">第三点：说不清的时候怎么办？</p>
+  </aside>
+</section>
+
+<section class="slide layout-split tone-wash" id="note" data-section="03 · 指给它看" data-title="说不清的地方，指给它看">
+  <div class="split reverse narrow">
+    <div class="stack">
+      <span class="kicker">双向</span>
+      <h2>说不清的地方，<br>指给它看</h2>
+      <p>点前壁，写「这里开 USB-C 口，离底 6 mm」。agent 下一次调用就读到这条备注，连同那个面和坐标。</p>
+      <p>反过来，它拿不准是哪个面时，会请你点一下。</p>
+    </div>
+    <figure class="frame shot r-16x10"><img src="../../media/window-note.png" alt="在零件的面上给 agent 留备注"></figure>
+  </div>
+  <aside class="notes" data-minutes="1">
+    <p class="purpose">第三个要讲清的点：人和 agent 之间可以指着说。</p>
+    <ul><li>备注钉在面上：agent 收到的是这个面、它来自哪个特征，以及你写的话。</li><li>request_pick：agent 主动请你点一个面。</li><li>选择器按意思写（顶面、外环的边），每次重建重新解析，没有会过期的面编号。</li></ul>
+    <p class="transition">还有一件常被问的事：模型从哪来？</p>
+  </aside>
+</section>
+
+<section class="slide layout-statement tone-accent" id="no-model" data-section="模型" data-title="Turnery 不调模型">
+  <span class="kicker">你的 agent，你的订阅</span>
+  <h1>接上 Claude Code 或 Codex，<br>Turnery 不调用任何模型。</h1>
+  <p class="lead">不需要 API key。没有 agent 也行：内置助手用你自己选的模型和 key，key 留在你的电脑上。</p>
+  <aside class="notes" data-minutes="0.5">
+    <p class="purpose">打消「又要一个订阅」的顾虑。</p>
+    <ul><li>内置助手支持 DeepSeek、OpenRouter、Anthropic、OpenAI、Gemini、Kimi、智谱、通义、Ollama 等。</li><li>它只能调 Turnery 的建模命令，碰不到别的文件。</li></ul>
+    <p class="transition">把这些设计选择放在一起看。</p>
+  </aside>
+</section>
+
+<section class="slide layout-cards tone-paper" id="design" data-section="设计" data-title="背后的四个设计选择">
+  <div class="head">
+    <span class="kicker">为什么可靠</span>
+    <h2>背后的四个设计选择</h2>
+  </div>
+  <div class="cards">
+    <div class="card is-key"><span class="card-index">01 · schema</span><h3>工具，不是生成代码</h3><p>agent 只能通过校验过的工具改树。失败会带着原因和修法回来。</p></div>
+    <div class="card"><span class="card-index">02 · selector</span><h3>按意思选面</h3><p>「顶面、只要外环的边」，每次重建重新解析，不存面编号。</p></div>
+    <div class="card"><span class="card-index">03 · look / measure</span><h3>agent 能看、能量</h3><p>渲染视图和剖面，距离由内核返回，不靠它自己算。</p></div>
+    <div class="card"><span class="card-index">04 · check</span><h3>要求存下来</h3><p>尺寸、壁厚、孔、间隙，每次改动后重新核对。</p></div>
+  </div>
+  <aside class="notes" data-minutes="1">
+    <p class="purpose">把前面三点背后的机制归拢成四条。</p>
+    <ul><li>「拓扑命名问题怎么办」：第二条就是答案，解析结果数量不对会报错并列出候选。</li><li>「为什么不直接写 build123d」：第一条，每一步有名字和意图，人能点着改；需要代码时可以导出 build123d。</li></ul>
+    <p class="transition">和同类项目比，Turnery 站在哪？</p>
+  </aside>
+</section>
+
+<section class="slide layout-ledger tone-wash" id="peers" data-section="同类" data-title="Turnery 和同类项目">
+  <div class="head">
+    <span class="kicker">2026 年 11 月</span>
+    <h2>如果你想要的是……</h2>
+  </div>
+  <div class="ledger">
+    <div class="row"><span class="k">agent 写 CAD 代码</span><span class="v">text-to-cad、agentcad、CADAM 等。Turnery 的源文件是不用读代码就能改的特征树，需要时导出 build123d。</span><span class="m">代码路线</span></div>
+    <div class="row"><span class="k">完整的开源 CAD</span><span class="v">SolidCraft、Chili3D、Zoo。Turnery 不做通用 CAD，只做「agent 建、内核核、人定向」这一段。</span><span class="m">通用 CAD</span></div>
+    <div class="row"><span class="k">在现有 CAD 里加 agent</span><span class="v">freecad-mcp、Fusion 和 Onshape 的 MCP。Turnery 不需要任何 CAD 软件，文件是仓库里的 JSON。</span><span class="m">插件路线</span></div>
+  </div>
+  <aside class="notes" data-minutes="1">
+    <p class="purpose">坦诚定位，不贬低别人。</p>
+    <ul><li>torno 的想法最接近（面上钉备注、每次构建重测），要承认；区别是 Turnery 的模型是特征树。</li><li>我们没在别处见到集中在一个工具里的：语义选择器、持久核对表、钉在面上的备注、请你点一个面。</li></ul>
+    <p class="transition">说完长处，也说清还缺什么。</p>
+  </aside>
+</section>
+
+<section class="slide layout-compare tone-paper" id="status" data-section="现状" data-title="现在做到哪了">
+  <div class="head">
+    <span class="kicker">0.13，更新很快</span>
+    <h2>现在做到哪了</h2>
+  </div>
+  <div class="compare">
+    <div class="side after">
+      <span class="side-label">已经能用</span>
+      <ul class="list ok"><li>单零件，以及共享参数的多零件装配</li><li>标准紧固件、真实螺纹、零件清单</li><li>导入 STEP 开发板，围着它做外壳</li><li>工程图、核对表、按特征回放的时间线</li><li>导出 STEP、STL、build123d</li></ul>
+    </div>
+    <div class="side before">
+      <span class="side-label">还不行</span>
+      <ul class="list no"><li>只有 macOS 包，而且还没签名</li><li>没有草图约束求解，草图用参数和表达式写</li><li>没有「代码特征」</li><li>贴合只按顺序摆放一次，没有运动</li><li>导入的 STEP 的面在窗口里还点不到</li></ul>
+    </div>
+  </div>
+  <aside class="notes" data-minutes="1">
+    <p class="purpose">诚实交代边界，减少后面的质疑。</p>
+    <ul><li>Windows 和 Linux 在计划里。</li><li>STEP 能导出、能导入成参考体，但不会变回特征树，这一点直说。</li></ul>
+    <p class="transition">最后，怎么开始。</p>
+  </aside>
+</section>
+
+<section class="slide layout-end tone-paper bg-pattern" id="start" data-section="开始" data-title="用 turnery 建一个外壳">
+  <span class="kicker">试一试</span>
+  <h1>用 turnery<br>建一个外壳。</h1>
+  <p class="lead">装上插件，对 agent 说要建什么。还没有 agent？先在浏览器里试同一个内核。</p>
+  <div class="actions">
+    <span class="chip">/plugin marketplace add linjiejim/turnery</span>
+    <span class="chip">turnery.linjiejim.com/studio</span>
+  </div>
+  <aside class="notes" data-minutes="0.5">
+    <p class="purpose">给一个能马上做的动作。</p>
+    <ul><li>Claude Code：/plugin marketplace add，再 /plugin install turnery@turnery。</li><li>Codex 和 WorkBuddy 也有插件市场入口；其他 MCP 客户端手动加 turnery mcp。</li></ul>
+    <p class="transition">谢谢，欢迎提问。</p>
+  </aside>
+</section>
