@@ -8,6 +8,7 @@ import type { Feature, Point, SketchShape, Tree } from "@/studio/dsl"
 import { Kernel } from "@/studio/kernel/build"
 import { initNodeKernel } from "@/studio/kernel/node"
 import { DESKTOP_TOOLS, STUDIO_TOOLS } from "@/studio/tools"
+import { getOC, importSTEP, measureShapeVolumeProperties } from "replicad"
 
 let k: Kernel
 beforeAll(async () => {
@@ -68,6 +69,66 @@ describe("revolve start and symmetric", () => {
     expect(sym.body?.bbox[0][1]).toBeCloseTo(-10, 3)
     expect(sym.body?.bbox[1][1]).toBeCloseTo(10, 3)
     expect(ring({ start: 10, symmetric: true }).features[1].message).toMatch(/start 和 symmetric 只写一个/)
+  })
+})
+
+describe("revolve profiles that end on the axis", () => {
+  /** A half section on the front plane turned about Z; `id` names the revolve, its sketch is `id` + "s". */
+  const turn = (points: unknown[], id = "r", mode?: "cut"): Feature[] => [
+    { id: `${id}s`, op: "sketch", on: { plane: "XZ" }, shapes: [{ type: "polyline", points } as never] },
+    { id, op: "revolve", sketch: `${id}s`, axis: "Z", ...(mode ? { mode } : {}) } as Feature,
+  ]
+  const q = 8.8 * Math.SQRT1_2
+
+  it("takes an arc of more than 90° that comes onto the axis", () => {
+    // From [6.7, −5.7] round to [0, 8.8]: about 130°, all of it at x ≥ 0.
+    expect(states(build(turn([[0, -5.7], [6.7, -5.7], { to: [0, 8.8], via: [6.22, 6.22] }])))).toEqual(["rs:ok", "r:ok"])
+    // An exact quarter circle onto the axis.
+    expect(states(build(turn([[0, 0], [8.8, 0], { to: [0, 8.8], via: [q, q] }])))).toEqual(["rs:ok", "r:ok"])
+    // A spline that comes onto the axis.
+    expect(states(build(turn([[0, 0], [8.8, 0], { spline: [[q, q], [0, 8.8]] }])))).toEqual(["rs:ok", "r:ok"])
+  })
+
+  it("still refuses a profile that really crosses the axis", () => {
+    const crossing = /轮廓跨过了旋转轴/
+    expect(build(turn([[0, -5], [5, -5], { to: [0, 5], via: [-1, 0] }])).features[1].message).toMatch(crossing)
+    expect(build(turn([[-1, 0], [5, 0], [5, 5], [-1, 5]])).features[1].message).toMatch(crossing)
+  })
+
+  it("exports a hollow ball whose dome ends on the axis as a STEP that reads back whole", async () => {
+    // The float of LetPot Drop: a Ø20 ball with a magnet pocket underneath and a cavity whose dome is an
+    // arc through rounded points, so its centre sits 0.1 µm off the axis and it turns into a surface of
+    // revolution rather than a sphere. STEP leaves out the edge that closes the dome at the pole, and a
+    // reader could only put it back where the generating circle ends: the cavity came back inside out.
+    const ball = [[0, 10], { to: [4.1, -9.1209], via: [10, 0] }, [4.1, -6.7], [0, -6.7]]
+    const cavity = [[0, -5.7], [6.7045, -5.7], { to: [8.8, 0], via: [8.2595, -3.0365] }, { to: [0, 8.8], via: [6.2225, 6.2225] }]
+    const sphere = [[0, 8.8], { to: [0, -8.8], via: [8.8, 0] }]
+    const roundTrip = async (features: Feature[]) => {
+      const r = build(features)
+      expect(r.features.every((f) => f.state === "ok"), states(r).join()).toBe(true)
+      const back = await importSTEP((await k.exportBody("step"))!)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const oc = getOC() as any
+      const check = new oc.BRepCheck_Analyzer(back.wrapped, true)
+      const valid = check.IsValid() as boolean
+      check.delete()
+      const volume = measureShapeVolumeProperties(back).volume
+      back.delete()
+      return { valid, volume, built: r.body!.volume }
+    }
+    const halves: Feature = { id: "h", op: "split", by: { plane: "XY", offset: 0 }, parts: ["下", "上"] }
+    // Drawn as a B-spline the dome is still the same arc: the volume of the cavity on its own.
+    expect(build(turn(cavity)).body!.volume).toBeCloseTo(2620.04, 1)
+    for (const features of [
+      turn(cavity),
+      [...turn(ball), ...turn(cavity, "cavity", "cut")],
+      [...turn(ball), ...turn(cavity, "cavity", "cut"), halves],
+      [...turn(ball), ...turn(sphere, "cavity", "cut"), halves],
+    ]) {
+      const { valid, volume, built } = await roundTrip(features)
+      expect(valid, features.map((f) => f.id).join()).toBe(true)
+      expect(volume).toBeCloseTo(built, 1)
+    }
   })
 })
 

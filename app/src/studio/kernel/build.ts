@@ -45,6 +45,7 @@ import { bounded, compoundOf, countOf, edgesOf, facesOf, solidsOf } from "./topo
 import { dimensionsOf, type Dim, type Frame, type StepGeom } from "./dims"
 import { cylinderAxis, runChecks, type CheckBodies, type CheckResult } from "./check"
 import { pathPoints, planeFace, ribTool, splineBeziers, tapered, thinProfile, untilNext } from "./features2"
+import { axisSide, polesAtCurveEnds, reach } from "./revolve-profile"
 import { stepAscii, zipStore } from "../zip"
 import { makeDrawing, MESH_DRAWING_TRIANGLES, type DrawingData } from "./drawing"
 import { METRIC, standardHole } from "../holes"
@@ -1770,17 +1771,16 @@ export class Kernel {
       case "revolve": {
         const sk = this.sketchOf(f.sketch)
         const { plane } = sk
-        const drawing = regionOf(sk, f.sketch)
-        const P = PLANES[plane.name]
+        let drawing = regionOf(sk, f.sketch)
         const axis = AXIS[f.axis]
         const angle = f.angle !== undefined ? n(f.angle) : 360
         if (!(angle > 0 && angle <= 360)) throw new InputError(ta("旋转角度要在 0–360° 之间", "The revolve angle must be between 0 and 360°"))
         // The profile may touch the axis but not cross it.
-        if (!plane.custom && plane.origin[P.axis] === 0) {
-          const bb = drawing.boundingBox.bounds
-          const across = (lo: number, hi: number) => lo < -1e-6 && hi > 1e-6
-          if ((dot(axis, P.y) > 0.999 && across(bb[0][0], bb[1][0])) || (dot(axis, P.x) > 0.999 && across(bb[0][1], bb[1][1])))
-            throw new InputError(ta("轮廓跨过了旋转轴：旋转体只画轴一侧的半截面", "The profile crosses the revolve axis: for a revolve, draw only the half section on one side of the axis"))
+        const side = axisSide(plane, axis)
+        if (side) {
+          const [lo, hi] = reach(drawing, side)
+          if (lo < -1e-6 && hi > 1e-6) throw new InputError(ta("轮廓跨过了旋转轴：旋转体只画轴一侧的半截面", "The profile crosses the revolve axis: for a revolve, draw only the half section on one side of the axis"))
+          drawing = polesAtCurveEnds(drawing, side)
         }
         const mode = f.mode ?? "add"
         if (f.symmetric && f.start !== undefined) throw new InputError(ta("start 和 symmetric 只写一个", "Write only one of start and symmetric"))
