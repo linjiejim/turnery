@@ -82,12 +82,34 @@ describe("spline and rounded-corner points", () => {
     expect(square.body?.volume).toBeCloseTo(400, 3)
     const bulge = plate([[0, 0], [20, 0], { spline: [[25, 10], [20, 20]] }, [0, 20]])
     expect(states(bulge)).toEqual(["s:ok", "e:ok"])
-    expect(bulge.body!.bbox[1][0]).toBeGreaterThan(25)
+    // Through [25, 10] square to x: the middle point is the farthest out (it used to bulge past it).
+    expect(bulge.body!.bbox[1][0]).toBeCloseTo(25, 3)
     expect(k.inspect("faces", undefined, { kind: "freeform" })).toMatch(/自由曲面/)
     const round = plate([[0, 0], { to: [20, 0], r: 3 }, [20, 20], [0, 20]])
     expect(states(round)).toEqual(["s:ok", "e:ok"])
     // A corner rounded by R3 loses 9 − 9π/4 ≈ 1.93 mm².
     expect(round.body!.volume).toBeCloseTo(400 - (9 - (9 * Math.PI) / 4), 1)
+  })
+
+  it("runs through points that head back along −x without twisting between them", () => {
+    // Nine points on a semicircle of R10, from +x round to −x; the outline closes along the x axis.
+    // Every span used to end heading +x, so the curve kinked into an S at each point, 0.2–0.5 mm off.
+    const arc = Array.from({ length: 8 }, (_, i) => {
+      const a = ((i + 1) * Math.PI) / 8
+      return [10 * Math.cos(a), 10 * Math.sin(a)]
+    })
+    const r = build([
+      { id: "s", op: "sketch", on: { plane: "XY" }, shapes: [{ type: "polyline", points: [[10, 0], { spline: arc }] } as never] },
+      { id: "e", op: "extrude", sketch: "s", distance: 1 },
+    ])
+    expect(states(r)).toEqual(["s:ok", "e:ok"])
+    const edges = k.display().edges!
+    let off = 0
+    for (let i = 0; i < edges.length; i += 3) if (edges[i + 1] > 1e-3) off = Math.max(off, Math.abs(Math.hypot(edges[i], edges[i + 1]) - 10))
+    expect(off).toBeLessThan(0.01)
+    expect(r.body!.volume).toBeCloseTo(50 * Math.PI, 0)
+    expect(r.body!.bbox[1][1]).toBeCloseTo(10, 2)
+    expect(r.body!.bbox[0][0]).toBeCloseTo(-10, 2)
   })
 
   it("follows a spline in an open path (thin walls) and a sweep path", () => {

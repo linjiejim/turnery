@@ -56,19 +56,48 @@ export function pathPoints(points: { to: V2; via?: V2; r?: number; spline?: V2[]
   return rounded.filter((p, i) => i === 0 || Math.hypot(p[0] - rounded[i - 1][0], p[1] - rounded[i - 1][1]) > 1e-9)
 }
 
-/** A smooth curve through the points (Catmull-Rom, the ends held straight), as short segments. */
+/**
+ * A smooth curve through the points, one cubic Bézier per span ([start, control, control, end]):
+ * centripetal Catmull-Rom, so it doesn't loop or overshoot between unevenly spaced points. The
+ * tangent at each point is that of the parabola through it and its two neighbours; at the two
+ * ends, of the parabola through the first or last three points (a lone span is straight).
+ */
+export function splineBeziers(points: V2[]): [V2, V2, V2, V2][] {
+  const p = points.filter((q, i) => i === 0 || Math.hypot(q[0] - points[i - 1][0], q[1] - points[i - 1][1]) > 1e-9)
+  const n = p.length
+  if (n < 2) return []
+  // Knots spaced by the square root of each chord.
+  const t = [0]
+  for (let i = 1; i < n; i++) t.push(t[i - 1] + Math.sqrt(Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1])))
+  /** Derivative at knot `x` of the parabola through points a, a + 1, a + 2. */
+  const slope = (a: number, x: number): V2 => {
+    const [ta, tb, tc] = [t[a], t[a + 1], t[a + 2]]
+    const la = (2 * x - tb - tc) / ((ta - tb) * (ta - tc))
+    const lb = (2 * x - ta - tc) / ((tb - ta) * (tb - tc))
+    const lc = (2 * x - ta - tb) / ((tc - ta) * (tc - tb))
+    return [la * p[a][0] + lb * p[a + 1][0] + lc * p[a + 2][0], la * p[a][1] + lb * p[a + 1][1] + lc * p[a + 2][1]]
+  }
+  const d: V2[] =
+    n === 2
+      ? [0, 1].map((): V2 => [(p[1][0] - p[0][0]) / t[1], (p[1][1] - p[0][1]) / t[1]])
+      : p.map((_, i) => slope(Math.min(Math.max(i - 1, 0), n - 3), t[i]))
+  return p.slice(1).map((end, i): [V2, V2, V2, V2] => {
+    const h = (t[i + 1] - t[i]) / 3
+    return [p[i], [p[i][0] + d[i][0] * h, p[i][1] + d[i][1] * h], [end[0] - d[i + 1][0] * h, end[1] - d[i + 1][1] * h], end]
+  })
+}
+
+/** The same curve as `splineBeziers`, as short segments. */
 export function splinePoints(pts: V2[], per = 16): V2[] {
-  if (pts.length < 2) return pts
-  const at = (i: number): V2 => (i < 0 ? [2 * pts[0][0] - pts[1][0], 2 * pts[0][1] - pts[1][1]] : i >= pts.length ? [2 * pts[pts.length - 1][0] - pts[pts.length - 2][0], 2 * pts[pts.length - 1][1] - pts[pts.length - 2][1]] : pts[i])
-  const out: V2[] = [pts[0]]
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)]
+  const spans = splineBeziers(pts)
+  if (!spans.length) return pts.slice(0, 1)
+  const out: V2[] = [spans[0][0]]
+  for (const [a, b, c, e] of spans) {
     for (let k = 1; k <= per; k++) {
-      const t = k / per
-      const t2 = t * t
-      const t3 = t2 * t
-      const c = (a: number, b: number, c2: number, d: number) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t2 + (-a + 3 * b - 3 * c2 + d) * t3)
-      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])])
+      const s = k / per
+      const r = 1 - s
+      const w = [r * r * r, 3 * r * r * s, 3 * r * s * s, s * s * s]
+      out.push([w[0] * a[0] + w[1] * b[0] + w[2] * c[0] + w[3] * e[0], w[0] * a[1] + w[1] * b[1] + w[2] * c[1] + w[3] * e[1]])
     }
   }
   return out

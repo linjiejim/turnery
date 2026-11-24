@@ -44,7 +44,7 @@ import { overlapVolume, Pieces, relation, TooComplex } from "./pieces"
 import { bounded, compoundOf, countOf, edgesOf, facesOf, solidsOf } from "./topo"
 import { dimensionsOf, type Dim, type Frame, type StepGeom } from "./dims"
 import { cylinderAxis, runChecks, type CheckBodies, type CheckResult } from "./check"
-import { pathPoints, planeFace, ribTool, tapered, thinProfile, untilNext } from "./features2"
+import { pathPoints, planeFace, ribTool, splineBeziers, tapered, thinProfile, untilNext } from "./features2"
 import { stepAscii, zipStore } from "../zip"
 import { makeDrawing, MESH_DRAWING_TRIANGLES, type DrawingData } from "./drawing"
 import { METRIC, standardHole } from "../holes"
@@ -1904,7 +1904,7 @@ export class Kernel {
           if (p.r !== undefined && !next) throw new InputError(ta("路径的终点不是拐角，不能倒圆角：r 写在中间的点上", "The path's end point isn't a corner and can't be rounded: put r on a point in between"))
           // path.corner rounds the corners between two straight segments a point doesn't round itself.
           const r = p.r ?? (corner > 0 && next && straight(p) && straight(next) ? corner : undefined)
-          pen = penTo(pen, { ...p, r })
+          pen = penTo(pen, pts[i].to, { ...p, r })
         })
         const path = sketchOn(pen.done(), plane)
         const prof = f.profile
@@ -3168,12 +3168,13 @@ function evalPoints(points: Point[], n: (v: number | string) => number): PathPoi
 }
 
 /**
- * One point of a sketch outline or a sweep path, drawn from where the pen is: a line, a
+ * One point of a sketch outline or a sweep path, drawn from where the pen is (`from`): a line, a
  * three-point arc or a smooth spline through each point, then the corner rounded by `r`.
  */
-function penTo(pen: ReturnType<typeof draw>, p: PathPoint): ReturnType<typeof draw> {
+function penTo(pen: ReturnType<typeof draw>, from: V2, p: PathPoint): ReturnType<typeof draw> {
   if (p.via) pen = pen.threePointsArcTo(p.to, p.via)
-  else if (p.spline) for (const q of p.spline) pen = pen.smoothSplineTo(q)
+  // The same curve as an open path's spline (splinePoints), span by span.
+  else if (p.spline) for (const [, c1, c2, end] of splineBeziers([from, ...p.spline])) pen = pen.cubicBezierCurveTo(end, c1, c2)
   else pen = pen.lineTo(p.to)
   if (p.r === undefined) return pen
   if (!(p.r > 0)) throw new InputError(ta("拐角圆角半径必须大于 0", "The corner radius must be greater than 0"))
@@ -3247,7 +3248,7 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
         if (!last.via && !last.spline && Math.hypot(last.to[0] - first[0], last.to[1] - first[1]) < 1e-9) pts.pop()
         if (pts.length < 3 && !pts.some((p) => p.via || p.spline)) throw new InputError(ta("轮廓至少要 3 个点才能围成面", "An outline needs at least 3 points to enclose a region"))
         let pen = draw(first)
-        for (const p of pts.slice(1)) pen = penTo(pen, p)
+        pts.slice(1).forEach((p, i) => (pen = penTo(pen, pts[i].to, p)))
         try {
           d = pen.close()
         } catch {
