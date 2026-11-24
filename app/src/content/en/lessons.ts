@@ -198,9 +198,25 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "Sight lines and reach",
     gist: "Drag a screen and controls around a seated mannequin: the normal line of sight and optimum viewing zone, screen distance and height, normal and maximum reach, and checking both ends, P5 woman and P95 man.",
   },
+  "materials-finishes": {
+    title: "Materials and finishes",
+    gist: "How roughness and metalness shape a highlight; gloss, matte, textured and soft-touch plastics; bead-blasted anodized aluminum, brushed steel and paint; and which finishes show fingerprints, scratches and dents.",
+  },
+  "sink-marks": {
+    title: "Sink marks on gloss",
+    gist: "How thick rib roots and bosses pull sink marks into the show face, finding them in the reflections of a row of lamps, ribs at 40–60 % of the wall and coring out thick spots, and how gloss magnifies sink while texture hides it.",
+  },
+  "texture-draft": {
+    title: "Texture and draft",
+    gist: "Etched, EDM (VDI 3400) and laser textures; a texture's micro-undercuts up close; draft by texture depth, drag marks when it's short, and 2–3 times the draft on the core side.",
+  },
   "perspective-ellipses": {
     title: "Perspective and ellipses",
     gist: "The viewport is your eye: the horizon is at eye height and horizontal edges vanish on it, in one-, two- and three-point perspective; drag a line onto an ellipse's minor axis and it lies on the cylinder's axis; the further from the horizon, the rounder the ellipse.",
+  },
+  "product-lighting": {
+    title: "Lighting a product shot",
+    gist: "Drag a key, fill and rim light into place at a 2:1 to 4:1 ratio, use the rim to lift a dark product off the background, turn the studio to place highlights, and use a dolly zoom to see wide-angle distortion and why product shots use long lenses.",
   },
   "gap-flush": {
     title: "Gap and flush",
