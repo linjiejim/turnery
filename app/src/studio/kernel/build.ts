@@ -364,6 +364,7 @@ const KEPT = new WeakMap<Step, Kept>()
 const DIRTY = new WeakSet<Step>()
 /** Bumped when what a record holds, or how a step is built, changes in a way the app's build hash misses. */
 const STORE_VERSION = 1
+const SKIPPED = () => ta("前面的特征失败了，这一步没有重建", "An earlier feature failed: this step wasn't rebuilt")
 /** A step that took longer than this to build is kept right away (Kernel.rebuild). */
 const KEEP_AT_ONCE_MS = 1000
 
@@ -685,6 +686,8 @@ export class Kernel {
       if (!kept && this.store && step.result.ms > KEEP_AT_ONCE_MS && i < tree.features.length - 1) this.persist(Infinity, false)
     }
     this.disposeFrom(tree.features.length)
+    // Before the checks, which can't stop half way: every step is built and kept for the next rebuild.
+    if (hooks.stop?.()) throw new BuildStopped()
 
     // The geometry is now stable: show it while exact interference/check results
     // are deferred to an independent worker or calculated below for explicit checks.
@@ -728,14 +731,21 @@ export class Kernel {
 
     let last = this.lastBuilt(this.steps.length)
     let body: BodyStats | null = null
-    if (!this.componentOnly && last?.body) {
+    while (!this.componentOnly && last?.body) {
       try {
         body = stats(last.body)
+        break
       } catch (e) {
-        // A body the kernel can't measure is the error of the step that made it, not the whole rebuild's.
-        const ex = explain(last.feature.op, describeError(e))
-        Object.assign(last.result, { state: "error", message: ex.message, hint: ex.hint })
-        last = this.lastBuilt(this.steps.indexOf(last))
+        // A body the kernel can't measure (a profile revolved about an axis outside its plane) is the error of
+        // the step that made it, not the whole rebuild's; what was built on it is skipped. Measured here, on
+        // the last body only: measuring every step's took over a second a step on a lofted part.
+        const shape = last.body
+        const at = this.steps.findIndex((s) => s.ownsBody && (KEPT.get(s)?.body ? KEPT.get(s)!.body!.shape : s.body) === shape)
+        const maker = at >= 0 ? at : this.steps.indexOf(last)
+        const ex = explain(this.steps[maker].feature.op, describeError(e))
+        Object.assign(this.steps[maker].result, { state: "error", message: ex.message, hint: ex.hint })
+        for (const s of this.steps.slice(maker + 1)) if (s.result.state === "ok") Object.assign(s.result, { state: "skipped", message: SKIPPED() })
+        last = this.lastBuilt(maker)
       }
     }
     const features = this.steps.map((s) => s.result)
@@ -1679,7 +1689,7 @@ export class Kernel {
   }
 
   private skip(f: Feature, key: string, prev: Step | null, tree: Tree): Step {
-    return this.base(f, key, prev, tree, { state: "skipped", message: ta("前面的特征失败了，这一步没有重建", "An earlier feature failed: this step wasn't rebuilt") })
+    return this.base(f, key, prev, tree, { state: "skipped", message: SKIPPED() })
   }
 
   private run(f: Feature, key: string, prev: Step | null, tree: Tree): Step {

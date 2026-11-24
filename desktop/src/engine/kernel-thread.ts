@@ -14,7 +14,7 @@ export type KernelRequest = {
   args: unknown[]
   /** The language the kernel's messages are written in, as the engine has it now: the thread kept the one it started with otherwise. */
   lang?: AgentLang
-  /** The host's stop count when it sent this: a rebuild stops between features once the count moves on (see `stop`). */
+  /** The host's stop count when it sent this: a rebuild stops between features once the count moves on (see `stop`). -1: never stops. */
   gen?: number
 }
 export type KernelReply =
@@ -45,7 +45,7 @@ const ready = initNodeKernel().then(
       {
         progress: (progress) => post({ type: "progress", progress, gen }),
         preview: (display) => post({ type: "preview", display, gen }),
-        stop: () => stopCount !== null && Atomics.load(stopCount, 0) !== gen,
+        stop: () => stopCount !== null && gen >= 0 && Atomics.load(stopCount, 0) !== gen,
       },
       store,
     ),

@@ -954,8 +954,8 @@ export class Engine {
         contextNote = found.note ? `\n${found.note}${ta("。", ".")}` : ""
       } else doc.context = null
       this.assetsKeys.delete(path)
-      await this.ensureKernel(doc, true)
-    } else if (!doc.report || LOAD_FAILED.some((p) => doc.error?.startsWith(p))) await this.ensureKernel(doc)
+      await this.ensureKernel(doc, true, true)
+    } else if (!doc.report || LOAD_FAILED.some((p) => doc.error?.startsWith(p))) await this.ensureKernel(doc, false, true)
     this.active = path
     if (ctx.session) this.sessions.set(ctx.session, path)
     await this.joinProject(path)
@@ -1422,7 +1422,7 @@ export class Engine {
     if (text === null) await this.save(doc, "agent")
     doc.unwatch = this.opts.files.watch(path, () => this.onDisk(() => this.fileChanged(doc)))
     try {
-      await this.ensureKernel(doc)
+      await this.ensureKernel(doc, false, true)
     } catch (e) {
       // Cancelled before it ever showed: as if it hadn't been opened (opening it again carries on).
       if (e instanceof BuildStopped) this.closePart(path, false)
@@ -1841,21 +1841,24 @@ export class Engine {
   }
 
   /**
-   * Make the kernel hold this part's current tree (with its shared parameters). `by`: who asked, when it's
+   * Make the kernel hold this part's current tree (with its shared parameters). `opening`: the part is being
+   * opened or shown (the person may cancel that); an edit being applied never is. `by`: who asked, when it's
    * the window (its loads give way when it opens another part).
    */
-  private async ensureKernel(doc: Doc, force = false, by?: Actor) {
+  private async ensureKernel(doc: Doc, force = false, opening = false, by?: Actor) {
     let sourcesChanged = false
     if (!force && this.slot === doc.path && this.built.get(doc.path) === doc.tree) {
       sourcesChanged = await this.syncAssets(doc, doc.tree)
       if (!sourcesChanged) return doc.report!
     }
-    return this.withLoading(doc, true, by, async () => {
+    return this.withLoading(doc, opening, by, async () => {
       this.checkStop()
       await this.select(doc)
       sourcesChanged = (await this.syncAssets(doc, doc.tree)) || sourcesChanged
       if (force || sourcesChanged || this.built.get(doc.path) !== doc.tree) {
         this.checkStop()
+        // Not built until this rebuild is done: one that is stopped half way leaves the part to build again.
+        this.built.delete(doc.path)
         const tree = doc.tree
         doc.report = await this.opts.kernel.rebuild(this.effective(doc, tree), { background: true })
         this.built.set(doc.path, tree)
@@ -1925,6 +1928,7 @@ export class Engine {
     await this.opts.kernel.preparePreview?.(doc.path, this.effective(doc, tree), full.assets, full.components, context, this.project && inside(this.project.root, doc.path) ? this.project.root : null)
     this.checkStop()
     await this.opts.kernel.setAssets?.(full.assets)
+    this.checkStop()
     await this.opts.kernel.setComponents?.(full.components)
     this.checkStop()
     await this.opts.kernel.setContext?.(context)
@@ -2034,7 +2038,7 @@ export class Engine {
       if (!doc) throw new Error(ta("这个零件已经关闭了", "This part has been closed"))
       // The person cancelled its load: the window doesn't start it again by asking to draw it (opening it does).
       if (CANCELLED.some((p) => doc.error?.startsWith(p)) && this.built.get(doc.path) !== doc.tree) throw new BuildStopped()
-      await this.ensureKernel(doc, false, "user")
+      await this.ensureKernel(doc, false, true, "user")
       const k = this.opts.kernel
       switch (call.op) {
         case "display":

@@ -1,6 +1,6 @@
 // Cancelling a load: the person stops opening a part (or opens another), the window is free at once, and
 // nothing of the stopped load turns up on the part opened next.
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -202,6 +202,44 @@ describe("cancelling a load", () => {
     await expect(engine.kernelCall("/p/big.turnery.json", { op: "display" })).resolves.toMatchObject({ index: 0 })
   })
 
+  it("doesn't let a cancel stop a whole-tree edit half applied", async () => {
+    const { engine, kernel, mem, open } = setup()
+    expect((await open("/p/a.turnery.json")).ok).toBe(true)
+    kernel.slow.add("/p/a.turnery.json")
+    const tree = { params: {}, features: [...JSON.parse(PART).features, { id: "s2", op: "sketch", on: { plane: "XY", offset: 5 }, shapes: [{ type: "rect", w: 4, h: 4 }] }] }
+    const edit = engine.run("set_tree", { tree }, { actor: "agent" })
+    for (let i = 0; i < 100 && !kernel.busy; i++) await new Promise((r) => setTimeout(r, 2))
+    expect(engine.snapshot().loading?.cancellable).toBe(false)
+    expect(await engine.cancelLoading()).toBe(false)
+    kernel.finish()
+    expect((await edit).ok).toBe(true)
+    // Applied in full: saved, and the window can draw it.
+    expect(JSON.parse(String(mem.disk.get("/p/a.turnery.json"))).features).toHaveLength(2)
+    await expect(engine.kernelCall("/p/a.turnery.json", { op: "display" })).resolves.toMatchObject({ index: 0 })
+  })
+
+  it("builds a part again after a cancelled forced rebuild, instead of taking the half built one", async () => {
+    const { engine, kernel, mem, open, loadingBig } = setup()
+    kernel.slow.clear()
+    expect((await open("/p/a.turnery.json")).ok).toBe(true)
+    // Opened inside an assembly: its kernel must take the context, so it is built again (forced).
+    mem.disk.set("/p/asm.turnery-asm.json", JSON.stringify({ params: {}, features: [{ id: "c", op: "component", file: "big.turnery.json" }] }))
+    expect((await open("/p/big.turnery.json")).ok).toBe(true)
+    kernel.slow.add("/p/big.turnery.json")
+    const inside = engine.run("open_part", { path: "/p/big.turnery.json", context: "/p/asm.turnery-asm.json" }, { actor: "user" })
+    await loadingBig()
+    await engine.cancelLoading()
+    expect((await inside).cancelled).toBe(true)
+    // Drawing it doesn't take the half built kernel; opening it again builds it.
+    kernel.built = []
+    await expect(engine.kernelCall("/p/big.turnery.json", { op: "display" })).rejects.toBeInstanceOf(BuildStopped)
+    const again = open("/p/big.turnery.json")
+    await loadingBig()
+    kernel.finish()
+    expect((await again).ok).toBe(true)
+    expect(kernel.built).toEqual(["/p/big.turnery.json"])
+  })
+
   it("doesn't offer to cancel an edit being applied", async () => {
     const { engine, kernel, open } = setup()
     expect((await open("/p/a.turnery.json")).ok).toBe(true)
@@ -236,6 +274,40 @@ describe("stopping the kernel thread", () => {
       p.postMessage({ id, ok: true, result: op === 'use' ? false : op === 'persist' ? 0 : null, heapMB: 1 });
     });
   `
+
+  it("doesn't hang when a load is cancelled while the thread is still starting, and starts one thread at a time", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "turnery-cancel-"))
+    const file = path.join(dir, "worker.mjs")
+    const started = path.join(dir, "started")
+    // Slow to come up (the wasm loading), and counts how many threads were started.
+    await writeFile(file, `
+      import { appendFileSync } from 'node:fs';
+      appendFileSync(${JSON.stringify(started)}, 'x');
+      ${WORKER.replace("p.postMessage({ type: 'ready' });", "setTimeout(() => p.postMessage({ type: 'ready' }), 1500);")}
+    `)
+    const kernel = new ThreadKernel(pathToFileURL(file))
+    const tree: Tree = { params: { how: "steps" }, features: [] } as unknown as Tree
+    try {
+      // The app starts the thread at launch; the first open arrives before it is ready.
+      void kernel.start().catch(() => {})
+      await kernel.use("a")
+      expect((await readFile(started, "utf8")).length).toBe(1)
+      // Thread ended (cancelled mid-rebuild), then a rebuild that has to start a new, slow thread is cancelled.
+      const stuck = kernel.rebuild({ params: { how: "stuck" }, features: [] } as unknown as Tree).catch((e) => e)
+      await new Promise((r) => setTimeout(r, 50))
+      expect(await kernel.cancel()).toBe("reset")
+      expect(await stuck).toBeInstanceOf(BuildStopped)
+      const starting = kernel.rebuild(tree).catch((e) => e)
+      await new Promise((r) => setTimeout(r, 100))
+      expect(await kernel.cancel()).toBe("reset")
+      expect(await starting).toBeInstanceOf(BuildStopped)
+      // Free again: the next call gets a working thread.
+      await expect(kernel.use("b")).resolves.toBe(false)
+    } finally {
+      await kernel.dispose()
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
 
   it("stops a rebuild between steps, or ends a stuck thread and starts afresh", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "turnery-cancel-"))

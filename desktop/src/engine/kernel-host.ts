@@ -58,8 +58,12 @@ export class ThreadKernel implements KernelHost {
   private closed = false
   /** Bumped to stop the rebuild under way (shared with the thread, which checks it between features). */
   private readonly stopCount = new Int32Array(new SharedArrayBuffer(4))
-  /** The rebuild under way, if any (`cancel` waits for it to stop). */
+  /** The rebuild (or file reading, or component preparation) under way, if any: `cancel` waits for it to stop. */
   private building: Promise<unknown> | null = null
+  /** Rejects the thread being started (it was ended before it was ready). */
+  private abortSpawn: ((e: Error) => void) | null = null
+  /** Bumped whenever a thread is ended: a start still on its way then doesn't put its thread in place. */
+  private spawns = 0
   private persistTimer: ReturnType<typeof setTimeout> | null = null
   /** Built steps the thread hasn't kept yet (its last `persist` said so, or something was built since). */
   private unkept = false
@@ -84,8 +88,11 @@ export class ThreadKernel implements KernelHost {
   }
 
   private async spawn(): Promise<void> {
+    const n = this.spawns
     const steps = process.env.TURNERY_NO_STEP_CACHE ? null : await this.steps
     if (this.closed) throw new Error(ta("建模内核已关闭", "The modeling kernel is closed"))
+    // Ended (cancelled, replaced) while finding the folder: no thread for that start.
+    if (n !== this.spawns) throw new BuildStopped()
     // OpenCascade prints (STEP statistics, warnings) to stdout. Under `turnery mcp` stdout is the
     // protocol channel, so the thread gets its own streams and its chatter goes to stderr.
     const workerData: KernelThreadData = { stop: this.stopCount.buffer as SharedArrayBuffer, ...(steps ? { steps } : {}) }
@@ -94,6 +101,7 @@ export class ThreadKernel implements KernelHost {
     worker.stderr.on("data", (b: Buffer) => process.stderr.write(b))
     this.worker = worker
     return new Promise<void>((resolve, reject) => {
+      this.abortSpawn = reject
       worker.on("message", (m: KernelReply) => {
         if ("type" in m) {
           // Left over from a rebuild that was stopped: not the part being opened now.
@@ -105,9 +113,11 @@ export class ThreadKernel implements KernelHost {
             this.preview = m.display
             this.onPreview(m.display, this.slot)
           } else if (m.type === "ready") {
+            if (this.worker === worker) this.abortSpawn = null
             this.setPhase({ phase: "ready" })
             resolve()
           } else {
+            if (this.worker === worker) this.abortSpawn = null
             this.setPhase({ phase: "error", message: m.error })
             reject(new Error(m.error))
           }
@@ -125,6 +135,7 @@ export class ThreadKernel implements KernelHost {
         if (this.worker !== worker) return
         this.worker = null
         this.started = null
+        this.abortSpawn = null
         for (const p of this.pending.values()) p.reject(new Error(ta(`建模内核意外退出（${why}），下一次调用会自动重启`, `The modeling kernel quit unexpectedly (${why}); the next call restarts it`)))
         this.pending.clear()
         reject(new Error(why))
@@ -139,19 +150,62 @@ export class ThreadKernel implements KernelHost {
     this.onPhase()
   }
 
-  private async call<T>(op: KernelRequest["op"], args: unknown[]): Promise<T> {
+  /** `gen`: the stop count when the work this call is part of began (a rebuild takes it before reading its cache). */
+  private async call<T>(op: KernelRequest["op"], args: unknown[], gen = Atomics.load(this.stopCount, 0)): Promise<T> {
     if (this.closed) throw new Error(ta("建模内核已关闭", "The modeling kernel is closed"))
-    const gen = Atomics.load(this.stopCount, 0)
-    if (this.stale || !this.worker) await this.restart()
+    // `started`, not `worker`: a thread being started has no worker yet, and starting a second one would orphan it.
+    if (this.stale || !this.started) await this.restart()
     else await this.start()
     // Stopped while the thread was starting: this call belonged to the load that was cancelled.
     if (gen !== Atomics.load(this.stopCount, 0)) throw new BuildStopped()
+    this.persistLater()
+    return this.post<T>(op, args, gen)
+  }
+
+  /** Hand the current thread a request. `gen` -1: never stopped (bringing a replacement thread up to date). */
+  private post<T>(op: KernelRequest["op"], args: unknown[], gen: number): Promise<T> {
     const id = ++this.seq
-    if (op !== "persist") this.persistLater()
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
       this.worker!.postMessage({ id, op, args, lang: agentLang(), gen } satisfies KernelRequest)
     })
+  }
+
+  /** The rebuild, file reading or component preparation a cancel should wait for. */
+  private track<T>(job: Promise<T>): Promise<T> {
+    this.building = job
+    const done = () => {
+      if (this.building === job) this.building = null
+    }
+    void job.then(done, done)
+    return job
+  }
+
+  /** End the thread (the next call starts another); whatever waits on it is told `why`. */
+  private endThread(why: Error) {
+    const old = this.worker
+    this.spawns++
+    this.worker = null
+    this.started = null
+    this.abortSpawn?.(why)
+    this.abortSpawn = null
+    for (const p of this.pending.values()) p.reject(why)
+    this.pending.clear()
+    if (old) {
+      old.removeAllListeners("exit")
+      void old.terminate()
+    }
+  }
+
+  /**
+   * Keep what the thread built, on the thread as it is: not through `call`, which would first replace a thread
+   * grown too big, and the steps with it. `flush`: wait for the folder's upkeep too (the thread is about to end).
+   */
+  private async keepBuilt(budgetMs: number, flush = false): Promise<number> {
+    if (!this.started || this.closed) return 0
+    await this.started
+    if (!this.worker) return 0
+    return this.post<number>("persist", [budgetMs, flush], -1)
   }
 
   /**
@@ -170,7 +224,7 @@ export class ThreadKernel implements KernelHost {
     if (this.closed || !this.worker || !this.unkept) return
     if (this.pending.size) return this.persistLater()
     try {
-      const left = await this.call<number>("persist", [PERSIST_SLICE_MS])
+      const left = await this.keepBuilt(PERSIST_SLICE_MS)
       if (left > 0) this.persistLater(20)
       else this.unkept = false
     } catch {
@@ -195,39 +249,21 @@ export class ThreadKernel implements KernelHost {
     const stopped = await Promise.race([busy.then(() => true, () => true), new Promise<boolean>((r) => (timer = setTimeout(() => r(false), STOP_GRACE_MS)))])
     clearTimeout(timer)
     if (stopped) return "stopped"
-    const old = this.worker
-    this.worker = null
-    this.started = null
+    this.endThread(new BuildStopped())
     this.stale = false
     // Nothing to replay into the next thread: the part that was loading isn't open in it.
     this.slot = ""
     this.slots = new Map([["", newSlot()]])
-    for (const p of this.pending.values()) p.reject(new BuildStopped())
-    this.pending.clear()
-    if (old) {
-      old.removeAllListeners("exit")
-      void old.terminate()
-    }
     return "reset"
   }
 
   /** A fresh thread holding the same files and tree as the old one. */
   private async restart() {
-    const old = this.worker
     this.stale = false
-    this.worker = null
-    this.started = null
-    if (old) {
-      old.removeAllListeners("exit")
-      void old.terminate()
-    }
+    if (this.worker || this.started) this.endThread(new Error(ta("建模内核换了一个新线程，请再试一次", "The modeling kernel moved to a new thread: try again")))
     await this.start()
-    const send = (op: KernelRequest["op"], args: unknown[]) =>
-      new Promise((resolve, reject) => {
-        const id = ++this.seq
-        this.pending.set(id, { resolve, reject })
-        this.worker!.postMessage({ id, op, args, lang: agentLang() } satisfies KernelRequest)
-      })
+    // Not stopped by a cancel: the engine counts on the part it last built being there.
+    const send = (op: KernelRequest["op"], args: unknown[]) => this.post(op, args, -1)
     // The other parts' kernels are gone with the old thread: the next `use` of each says it's empty.
     const cur = this.slots.get(this.slot) ?? newSlot()
     this.slots = new Map([[this.slot, cur]])
@@ -272,7 +308,8 @@ export class ThreadKernel implements KernelHost {
   async setAssets(list: { name: string; bytes: Uint8Array | null; error?: string }[]) {
     this.cancelDiagnostics()
     this.cur.assets = list
-    await this.call<void>("setAssets", [list])
+    // Reading a big STEP takes a while: a cancel waits for it, then ends the thread.
+    await this.track(this.call<void>("setAssets", [list]))
   }
 
   /** An assembly's components and the context of a part edited inside one; kept for a replacement thread too. */
@@ -281,13 +318,13 @@ export class ThreadKernel implements KernelHost {
     const gen = Atomics.load(this.stopCount, 0)
     this.progress = { stage: "prepare", completed: 0, total: list.length }
     this.onPhase()
-    const job = this.pool.prepare(list, (completed, total, label) => {
-      if (gen !== Atomics.load(this.stopCount, 0)) return
-      this.progress = { stage: "prepare", completed, total, label }
-      this.onPhase()
-    })
-    this.building = job
-    const prepared = await job.finally(() => this.building === job && (this.building = null))
+    const prepared = await this.track(
+      this.pool.prepare(list, (completed, total, label) => {
+        if (gen !== Atomics.load(this.stopCount, 0)) return
+        this.progress = { stage: "prepare", completed, total, label }
+        this.onPhase()
+      }),
+    )
     // Cancelled while the components were being built: the assembly isn't opened.
     if (gen !== Atomics.load(this.stopCount, 0)) throw new BuildStopped()
     this.cur.components = prepared
@@ -301,16 +338,11 @@ export class ThreadKernel implements KernelHost {
   }
 
   rebuild(tree: Tree, options: { background?: boolean } = {}) {
-    const job = this.rebuildNow(tree, options)
-    this.building = job
-    void job.then(
-      () => this.building === job && (this.building = null),
-      () => this.building === job && (this.building = null),
-    )
-    return job
+    // The stop count now, before the cache is read: a cancel from here on stops this rebuild.
+    return this.track(this.rebuildNow(tree, options, Atomics.load(this.stopCount, 0)))
   }
 
-  private async rebuildNow(tree: Tree, { background = false }: { background?: boolean } = {}) {
+  private async rebuildNow(tree: Tree, { background = false }: { background?: boolean }, gen: number) {
     const slot = this.slot
     const generation = (this.generations.get(slot) ?? 0) + 1
     this.generations.set(slot, generation)
@@ -324,7 +356,7 @@ export class ThreadKernel implements KernelHost {
       this.preview = null
       if (cached) this.onPreview(cached.display, slot)
       const deferred = background && assembly
-      const r = await this.call<BuildReport>("rebuild", [tree, { interferences: cached?.interferences, deferChecks: deferred }])
+      const r = await this.call<BuildReport>("rebuild", [tree, { interferences: cached?.interferences, deferChecks: deferred }], gen)
       if (process.env.TURNERY_PROFILE) process.stderr.write(`REBUILD ${slot} ${Math.round(r.ms)} ms${r.kept ? ` (${r.kept}/${tree.features.length} steps from the store)` : ""}\n`)
       this.cur.lastTree = tree
       if (key && this.preview && !r.paramError && r.features.every((f) => f.state !== "error" && f.state !== "skipped")) {
@@ -435,7 +467,7 @@ export class ThreadKernel implements KernelHost {
     // What was built and not kept yet (a CLI command that ends at once): kept now, for a while at most.
     if (this.worker && this.unkept && !this.pending.size) {
       let timer: ReturnType<typeof setTimeout> | undefined
-      await Promise.race([this.call<number>("persist", [Infinity, true]).catch(() => 0), new Promise((r) => (timer = setTimeout(r, 5000)))])
+      await Promise.race([this.keepBuilt(Infinity, true).catch(() => 0), new Promise((r) => (timer = setTimeout(r, 5000)))])
       clearTimeout(timer)
     }
     this.closed = true
