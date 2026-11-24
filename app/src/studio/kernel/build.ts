@@ -46,7 +46,8 @@ import { overlapVolume, Pieces, relation, TooComplex } from "./pieces"
 import { bounded, compoundOf, countOf, edgesOf, facesOf, solidsOf } from "./topo"
 import { dimensionsOf, type Dim, type Frame, type StepGeom } from "./dims"
 import { cylinderAxis, runChecks, type CheckBodies, type CheckResult } from "./check"
-import { pathPoints, planeFace, ribTool, tapered, thinProfile, untilNext } from "./features2"
+import { pathPoints, planeFace, ribTool, splineBeziers, tapered, thinProfile, untilNext } from "./features2"
+import { axisSide, polesAtCurveEnds, reach } from "./revolve-profile"
 import { stepAscii, zipStore } from "../zip"
 import { makeDrawing, MESH_DRAWING_TRIANGLES, type DrawingData } from "./drawing"
 import { METRIC, standardHole } from "../holes"
@@ -2126,17 +2127,16 @@ export class Kernel {
       case "revolve": {
         const sk = this.sketchOf(f.sketch)
         const { plane } = sk
-        const drawing = regionOf(sk, f.sketch)
-        const P = PLANES[plane.name]
+        let drawing = regionOf(sk, f.sketch)
         const axis = AXIS[f.axis]
         const angle = f.angle !== undefined ? n(f.angle) : 360
         if (!(angle > 0 && angle <= 360)) throw new InputError(ta("旋转角度要在 0–360° 之间", "The revolve angle must be between 0 and 360°"))
         // The profile may touch the axis but not cross it.
-        if (!plane.custom && plane.origin[P.axis] === 0) {
-          const bb = drawing.boundingBox.bounds
-          const across = (lo: number, hi: number) => lo < -1e-6 && hi > 1e-6
-          if ((dot(axis, P.y) > 0.999 && across(bb[0][0], bb[1][0])) || (dot(axis, P.x) > 0.999 && across(bb[0][1], bb[1][1])))
-            throw new InputError(ta("轮廓跨过了旋转轴：旋转体只画轴一侧的半截面", "The profile crosses the revolve axis: for a revolve, draw only the half section on one side of the axis"))
+        const side = axisSide(plane, axis)
+        if (side) {
+          const [lo, hi] = reach(drawing, side)
+          if (lo < -1e-6 && hi > 1e-6) throw new InputError(ta("轮廓跨过了旋转轴：旋转体只画轴一侧的半截面", "The profile crosses the revolve axis: for a revolve, draw only the half section on one side of the axis"))
+          drawing = polesAtCurveEnds(drawing, side)
         }
         const mode = f.mode ?? "add"
         if (f.symmetric && f.start !== undefined) throw new InputError(ta("start 和 symmetric 只写一个", "Write only one of start and symmetric"))
@@ -2260,7 +2260,7 @@ export class Kernel {
           if (p.r !== undefined && !next) throw new InputError(ta("路径的终点不是拐角，不能倒圆角：r 写在中间的点上", "The path's end point isn't a corner and can't be rounded: put r on a point in between"))
           // path.corner rounds the corners between two straight segments a point doesn't round itself.
           const r = p.r ?? (corner > 0 && next && straight(p) && straight(next) ? corner : undefined)
-          pen = penTo(pen, { ...p, r })
+          pen = penTo(pen, pts[i].to, { ...p, r })
         })
         const path = sketchOn(pen.done(), plane)
         const prof = f.profile
@@ -3267,10 +3267,25 @@ function threeMF(parts: { name: string; body: Shape3D; look?: Appearance }[]): B
     } catch (e) {
       throw new Error(ta(`「${p.name}」没能三角化成 3MF（${describeError(e).message}）；可以先导出 STEP`, `Couldn't triangulate “${p.name}” for 3MF (${describeError(e).message}); you can export STEP for now`))
     }
+    // Each face is meshed with its own copy of its border: one vertex per point as written (0.1 µm),
+    // so faces share their edges, and no triangle left with two corners on one point (at a pole).
     const v: string[] = []
-    for (let k = 0; k < m.vertices.length; k += 3) v.push(`<vertex x="${num(m.vertices[k])}" y="${num(m.vertices[k + 1])}" z="${num(m.vertices[k + 2])}"/>`)
+    const ids = new Map<string, number>()
+    const id = new Uint32Array(m.vertices.length / 3)
+    for (let k = 0; k < m.vertices.length; k += 3) {
+      const at = `x="${num(m.vertices[k])}" y="${num(m.vertices[k + 1])}" z="${num(m.vertices[k + 2])}"`
+      let n = ids.get(at)
+      if (n === undefined) {
+        ids.set(at, (n = v.length))
+        v.push(`<vertex ${at}/>`)
+      }
+      id[k / 3] = n
+    }
     const t: string[] = []
-    for (let k = 0; k < m.triangles.length; k += 3) t.push(`<triangle v1="${m.triangles[k]}" v2="${m.triangles[k + 1]}" v3="${m.triangles[k + 2]}"/>`)
+    for (let k = 0; k < m.triangles.length; k += 3) {
+      const [a, b, c] = [id[m.triangles[k]], id[m.triangles[k + 1]], id[m.triangles[k + 2]]]
+      if (a !== b && b !== c && c !== a) t.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`)
+    }
     const k = colored.indexOf(p)
     const material = k >= 0 ? ` pid="${MATERIALS}" pindex="${k}"` : ""
     return `<object id="${i + 1}" type="model" name="${esc(p.name)}"${material}><mesh><vertices>${v.join("")}</vertices><triangles>${t.join("")}</triangles></mesh></object>`
@@ -3534,12 +3549,13 @@ function evalPoints(points: Point[], n: (v: number | string) => number): PathPoi
 }
 
 /**
- * One point of a sketch outline or a sweep path, drawn from where the pen is: a line, a
+ * One point of a sketch outline or a sweep path, drawn from where the pen is (`from`): a line, a
  * three-point arc or a smooth spline through each point, then the corner rounded by `r`.
  */
-function penTo(pen: ReturnType<typeof draw>, p: PathPoint): ReturnType<typeof draw> {
+function penTo(pen: ReturnType<typeof draw>, from: V2, p: PathPoint): ReturnType<typeof draw> {
   if (p.via) pen = pen.threePointsArcTo(p.to, p.via)
-  else if (p.spline) for (const q of p.spline) pen = pen.smoothSplineTo(q)
+  // The same curve as an open path's spline (splinePoints), span by span.
+  else if (p.spline) for (const [, c1, c2, end] of splineBeziers([from, ...p.spline])) pen = pen.cubicBezierCurveTo(end, c1, c2)
   else pen = pen.lineTo(p.to)
   if (p.r === undefined) return pen
   if (!(p.r > 0)) throw new InputError(ta("拐角圆角半径必须大于 0", "The corner radius must be greater than 0"))
@@ -3613,7 +3629,7 @@ function sketchDrawing(shapes: SketchShape[], scope: Scope, mirrorText = false):
         if (!last.via && !last.spline && Math.hypot(last.to[0] - first[0], last.to[1] - first[1]) < 1e-9) pts.pop()
         if (pts.length < 3 && !pts.some((p) => p.via || p.spline)) throw new InputError(ta("轮廓至少要 3 个点才能围成面", "An outline needs at least 3 points to enclose a region"))
         let pen = draw(first)
-        for (const p of pts.slice(1)) pen = penTo(pen, p)
+        pts.slice(1).forEach((p, i) => (pen = penTo(pen, pts[i].to, p)))
         try {
           d = pen.close()
         } catch {

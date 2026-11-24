@@ -1,5 +1,7 @@
 // A minimal ZIP writer (stored, no compression) for exporting one STL per part.
-// UTF-8 names (flag bit 11), so 「上盖.stl」 opens as itself.
+// UTF-8 names (flag bit 11), so 「上盖.stl」 opens as itself. Made on Unix (host 3): macOS's unzip
+// ignores the flag and recodes the names of files made on DOS from code page 437, which APFS refuses
+// ("Illegal byte sequence"); a Unix name goes through as its bytes.
 
 const CRC = (() => {
   const t = new Uint32Array(256)
@@ -41,7 +43,7 @@ export function zipStore(files: { name: string; data: Uint8Array }[]): Blob {
     const cd = new Uint8Array(46 + name.length)
     const cv = new DataView(cd.buffer)
     cv.setUint32(0, 0x02014b50, true)
-    cv.setUint16(4, 20, true)
+    cv.setUint16(4, (3 << 8) | 20, true) // made by: Unix, spec 2.0
     cv.setUint16(6, 20, true)
     cv.setUint16(8, 0x0800, true)
     cv.setUint16(10, 0, true)
@@ -49,6 +51,7 @@ export function zipStore(files: { name: string; data: Uint8Array }[]): Blob {
     cv.setUint32(20, f.data.length, true)
     cv.setUint32(24, f.data.length, true)
     cv.setUint16(28, name.length, true)
+    cv.setUint32(38, 0o100644 << 16 >>> 0, true) // a plain file, rw-r--r--
     cv.setUint32(42, offset, true)
     cd.set(name, 46)
     central.push(cd)

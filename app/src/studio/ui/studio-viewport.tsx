@@ -993,7 +993,9 @@ export function StudioViewport({
         <div className="absolute inset-0 grid place-items-center">
           <div className="flex items-center gap-2 rounded-md border bg-background px-4 py-3 text-body">
             <Spinner className="size-4" />
-            {t("正在加载建模内核（OpenCascade）…", "Loading the modeling kernel (OpenCascade)…")} {kernel.loadedMB > 0 ? `${kernel.loadedMB.toFixed(1)} MB` : ""}
+            {t("正在加载建模内核（OpenCascade）…", "Loading the modeling kernel (OpenCascade)…")}
+            {/* The worker counts the wasm as it arrives, uncompressed; the build knows its whole size. */}
+            {kernel.loadedMB > 0 && <span className="tabular text-muted-foreground">{Math.min(99, Math.round(((kernel.loadedMB * 1048576) / __KERNEL_WASM_BYTES__) * 100))}%</span>}
           </div>
         </div>
       )}

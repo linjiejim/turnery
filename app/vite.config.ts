@@ -1,5 +1,7 @@
 /// <reference types="vitest/config" />
 import { execFileSync } from 'node:child_process'
+import { statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -30,6 +32,9 @@ function commit() {
 }
 const COMMIT = commit()
 
+/** The kernel's wasm, uncompressed: the workbench counts its download against this (studio-viewport.tsx). */
+const KERNEL_WASM_BYTES = statSync(createRequire(import.meta.url).resolve('replicad-opencascadejs/wasm')).size
+
 /**
  * /version.json names the live build. A tab open on an older one compares it with the commit in its bundle
  * and offers a reload (components/new-version-prompt.tsx). Caddy serves it with `no-cache` (docs/deploy.md).
@@ -44,7 +49,7 @@ const versionFile: Plugin = {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), desktopPage, versionFile],
-  define: { __TURNERY_COMMIT__: JSON.stringify(COMMIT) },
+  define: { __TURNERY_COMMIT__: JSON.stringify(COMMIT), __KERNEL_WASM_BYTES__: JSON.stringify(KERNEL_WASM_BYTES) },
   // Kernel tests (OpenCascade in wasm) run side by side: a busy machine can take seconds per build.
   test: { testTimeout: 30_000 },
   resolve: {

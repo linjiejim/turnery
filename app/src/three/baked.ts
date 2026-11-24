@@ -5,9 +5,10 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
 import { datumPlane, label, linearDim } from "./build"
 import type { MaterialKit } from "./materials"
 import type { OpId } from "@/content/ops"
-import { localizeIndex } from "@/content/en/teardowns"
-import { localizeManifest, sceneWordsEn } from "@/content/en/teardown-text"
-import { isEn } from "@/lib/i18n"
+import { EN } from "@/content/en/ready"
+import { fetchJson, modelsBase as base, type ModelIndexEntry } from "./model-index"
+
+export { loadIndex, type ModelIndexEntry } from "./model-index"
 
 /**
  * Models baked offline from build123d (models/turnerybake). A manifest describes
@@ -95,45 +96,23 @@ export type AssemblyManifest = {
 
 export type Manifest = PartManifest | AssemblyManifest
 
-export type ModelIndexEntry = {
-  kind: "part" | "assembly"
-  id: string
-  title: string
-  subtitle: string
-  level: string
-  teaches: string[]
-  features?: number
-  parts?: number
-}
-
-const base = `${import.meta.env.BASE_URL}models`
-const json = new Map<string, Promise<unknown>>()
-const fetchJson = <T,>(url: string) => {
-  if (!json.has(url)) json.set(url, fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${url}`)))))
-  return json.get(url) as Promise<T>
-}
-
-/** The model index; on English pages with the catalog text in English (content/en/teardowns.ts). */
 const VIEWS_EN: Record<string, string> = { 前: "Front", 上: "Top", 右: "Right", 后: "Back", 下: "Bottom", 左: "Left" }
 
 /** Words baked into a model's scene (「前视基准面」, 「分度圆 Ø27」): in English on English pages. */
 export function bakedWords(text: string) {
-  if (!isEn) return text
-  return sceneWordsEn(text.replace(/([前上右后下左])视基准面/g, (_, v: string) => `${VIEWS_EN[v]} plane`))
+  if (!EN) return text
+  return EN.sceneWordsEn(text.replace(/([前上右后下左])视基准面/g, (_, v: string) => `${VIEWS_EN[v]} plane`))
 }
 
-export const loadIndex = () => {
-  const index = fetchJson<Record<string, ModelIndexEntry>>(`${base}/index.json`)
-  return isEn ? index.then((raw) => localizeIndex(raw)) : index
-}
 export const loadManifest = (id: string) => {
   const manifest = fetchJson<Manifest>(`${base}/${id}/manifest.json`)
   // English pages: the header's title, subtitle, level and "what it teaches", as in the index, and
   // the steps, parameters and parts (content/en/teardown-text.ts).
-  return isEn
+  const en = EN
+  return en
     ? manifest.then((m) => {
-        const { title, subtitle, level, teaches } = localizeIndex({ [id]: { ...m, id } as unknown as ModelIndexEntry })[id]
-        return localizeManifest({ ...m, title, subtitle, level, teaches })
+        const { title, subtitle, level, teaches } = en.localizeIndex({ [id]: { ...m, id } as unknown as ModelIndexEntry })[id]
+        return en.localizeManifest({ ...m, title, subtitle, level, teaches })
       })
     : manifest
 }
