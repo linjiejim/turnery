@@ -373,6 +373,16 @@ describe("turnery: the engine", () => {
     expect([...entries.keys()]).toEqual(["主体.stl", "块.stl"])
     expect(triangles(entries.get("主体.stl")!)).toBe(ring)
     expect(triangles(entries.get("块.stl")!)).toBe(12)
+    // macOS's unzip ignores the UTF-8 flag and turns the names of files made on DOS (host 0) from code
+    // page 437 into Latin-1, which APFS refuses ("Illegal byte sequence"). Made on Unix (host 3), the
+    // bytes go through as they are; the Unix mode then has to be set too, or the files come out 000.
+    const view = new DataView(zip.buffer, zip.byteOffset)
+    const central: { host: number; flags: number; mode: number }[] = []
+    for (let at = view.getUint32(zip.length - 6, true); view.getUint32(at, true) === 0x02014b50; ) {
+      central.push({ host: view.getUint8(at + 5), flags: view.getUint16(at + 8, true), mode: view.getUint32(at + 38, true) >>> 16 })
+      at += 46 + view.getUint16(at + 28, true) + view.getUint16(at + 30, true) + view.getUint16(at + 32, true)
+    }
+    expect(central).toEqual([0, 1].map(() => ({ host: 3, flags: 0x0800, mode: 0o100644 })))
   }, 30_000)
 
   it("refuses look without a window, and window-only commands from the agent", async () => {
