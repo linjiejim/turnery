@@ -4,6 +4,33 @@ English · [简体中文](CHANGELOG.zh-CN.md)
 
 What changed in each version of Turnery, the desktop app. The first time you open Turnery after an update, “See what’s new” shows the same notes.
 
+## 0.14.0 · 2026-11-25
+
+### Heads-up
+
+- Turnery keeps the steps it builds for your parts on this Mac (up to 1 GB, in `~/.turnery/cache/steps`), so they open quickly next time. Deleting the folder is safe: the parts are just built again.
+
+### New
+
+- **Cancel loading.** The loading card has “Cancel loading”, and opening another part while one is still loading stops that load at once. Parts an agent opens, and edits being applied, are never cancelled.
+- **Codex in the chat.** The chat can be answered by Codex installed on this Mac and signed in with your own account. It models through Turnery, and its answers, tool calls and permission requests show in the chat. The chat is now the first tab of the right panel.
+- **What’s new after an update.** After an update, Turnery says “Updated to x · See what’s new”, which opens the notes for that version.
+- Website: an industrial design track: a product design topic, 35 new interactive lessons, 7 cards, 3 teardowns and a five-step project, P3.
+
+### Improved
+
+- **Big parts open much faster.** A part you have opened before opens again in about a second, and changing a late feature rebuilds from that step only. Opening a part for the first time is 2–4 times faster.
+- Website: pages respond at once. A bar at the top shows while a page loads, a page starts downloading when you point at its link, and the first visit downloads half as much.
+- Website: when a new version of the site is out, an open page offers to refresh.
+
+### Fixed
+
+- Spline points in a sketch make a smooth curve through every point, instead of twisting into an S between them.
+- An arc of more than 90° that ends on a revolve’s axis is no longer refused as crossing the axis.
+- A hollow ball (a part with a round cavity) exports to STEP as a complete solid.
+- Exported 3MF files share the vertices where faces meet, so slicers no longer report open edges.
+- An STL zip with Chinese file names opens with macOS’s own unzip.
+
 ## 0.13.0 · 2026-11-23
 
 ### Heads-up
