@@ -192,6 +192,24 @@ const LESSONS_ZH: LessonMeta[] = [
     gist: "开模方向、拔模分析着色、纹理要更大的拔模、分型线、侧孔倒扣与滑块，以及均匀壁厚。",
     load: () => import("./draft-analysis"),
   },
+  {
+    id: "undercuts",
+    codes: ["4.4.4"],
+    title: "倒扣、侧抽、拾件",
+    track: "T4",
+    minutes: 9,
+    gist: "沿开模方向两边都看不见的面就是倒扣：转动开模方向实时看红色，侧孔、内侧卡扣、唇边分别选滑块、斜顶、碰穿、拾件、强脱或改设计，再算模具费和周期的账。",
+    load: () => import("./undercuts"),
+  },
+  {
+    id: "snap-fits",
+    codes: ["4.4.6"],
+    title: "卡扣：悬臂梁怎么算、怎么脱模",
+    track: "T4",
+    minutes: 9,
+    gist: "悬臂卡扣按 ε = 1.5·t·y / L² 实时算应变、按应变着色，渐缩梁、材料许用应变与反复拆装，导入角与退出角（自锁），以及在钩子下面开窗让它能脱模。",
+    load: () => import("./snap-fits"),
+  },
   // ---------------------------------------------------------------- T5 曲线曲面
   {
     id: "nurbs-curves",
@@ -309,6 +327,24 @@ const LESSONS_ZH: LessonMeta[] = [
     minutes: 9,
     gist: "推拉控制笼做出把手，实时 Catmull–Clark 细分、折痕做硬边，找出星形点，再转成 NURBS 看面片和星形点周围的连续性。",
     load: () => import("./subd-modeling"),
+  },
+  {
+    id: "shell-split",
+    codes: ["5.6.1"],
+    title: "外观件拆件：分型线、止口与装配",
+    track: "T5",
+    minutes: 8,
+    gist: "把一体外壳拆成上下壳：分在最宽处才只有一条线，分型线与高光和美工线，剖开看止口怎样定位、挡住视线，螺丝从底面沿开模方向装。",
+    load: () => import("./shell-split"),
+  },
+  {
+    id: "styling-dfm",
+    codes: ["5.6.2"],
+    title: "造型件的 DFM 回检",
+    track: "T5",
+    minutes: 7,
+    gist: "给造型件跑拔模、壁厚、倒扣三项检查且不动 A 面：内壁加拔模、从内侧掏空厚的拇指位、把分型线移到腰线，改前改后对比到三项全绿。",
+    load: () => import("./styling-dfm"),
   },
   // ---------------------------------------------------------------- T6 产品设计
   {

@@ -94,6 +94,14 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "Injection molding: draft and parting lines",
     gist: "Pull direction, draft analysis shading, why textured faces need more draft, parting lines, side holes as undercuts and the slides that form them, and uniform wall thickness.",
   },
+  undercuts: {
+    title: "Undercuts, side actions and pickouts",
+    gist: "An undercut is a face neither direction of the pull can see: turn the pull and watch the red update live, solve a side hole, an inside catch and a lip with a slide, lifter, shut-off, pickout, bump-off or redesign, then tally mold cost and cycle time.",
+  },
+  "snap-fits": {
+    title: "Snap fits: sizing a cantilever and molding it",
+    gist: "Live cantilever strain from ε = 1.5·t·y / L² with a strain-colored beam, the tapered beam, material limits and repeated assembly, lead versus return angle (self-locking), and a window under the hook so it can be molded.",
+  },
 
   // T5
   "nurbs-curves": {
@@ -148,6 +156,14 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "SubD push-pull and conversion to NURBS",
     gist: "Push and pull a control cage into a handle with live Catmull–Clark subdivision, crease a sharp edge, find the star points, then convert to NURBS and see the patches and the continuity around star points.",
   },
+  "shell-split": {
+    title: "Splitting a styled housing: parting line, lip and assembly",
+    gist: "Split a one-piece housing into two shells: only the widest section gives a single line, the parting line against the highlight and a shadow groove, the lip and groove in section, and screws from the bottom along the pull direction.",
+  },
+  "styling-dfm": {
+    title: "DFM review of a styled part",
+    gist: "Run draft, wall-thickness and undercut checks on a styled part without touching the Class-A surface: draft the inner walls, core out the thick thumb pad from inside, move the parting line to the character line, before and after until all three pass.",
+  },
 
   // T6
   "visual-thinning": {
@@ -166,11 +182,11 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "Proportion, massing and scale",
     gist: "A kettle's primary, secondary and tertiary masses; squint at the outline and measure the primary's share; the visual center of mass and the tipping angle; a real-size hand beside the same form from 5 to 50 cm, and why sizes set by the hand can't be scaled.",
   },
-  "anthropometry": {
+  anthropometry: {
     title: "Body dimensions and percentiles",
     gist: "Hand breadth as a distribution, and percentiles; why an opening sized to the average shuts out half; clearance to P95 and reach to P5; one size, sizes or adjustable; and why there is no average person.",
   },
-  "grip": {
+  grip: {
     title: "Grip and handles",
     gist: "Power and precision grips; how handle diameter depends on the grip and the size of the hand; non-round sections for torque and orientation; and why to skip finger grooves.",
   },
