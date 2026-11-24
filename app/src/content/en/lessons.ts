@@ -78,6 +78,10 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
   },
 
   // T4
+  "process-cost": {
+    title: "Process overview: choosing by quantity",
+    gist: "Seven ways to make one tray (three kinds of printing, CNC, urethane casting, molding, sheet metal); unit cost = one-off cost ÷ quantity + cost per part, on a log chart: drag the quantity, find the break-evens, change the assumptions and watch them move; then material, geometry, tolerance and lead time.",
+  },
   "print-overhang": {
     title: "3D printing: overhangs and orientation",
     gist: "Overhang angles and the 45° rule, turning the part to do without supports, why the bond between layers is the weakest, and designing slopes in place of overhanging faces.",
@@ -114,6 +118,34 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
   },
 
   // T6
+  "visual-thinning": {
+    title: "Visual thinning",
+    gist: "Measure how thick a product looks from where the user really sits or stands: a tucked, curved-under or chamfered base faces down, away from the light, and is foreshortened; a top chamfer reads as top; a dark base and the parting line change only the bright band, not the outline.",
+  },
+  "fillet-hierarchy": {
+    title: "Fillet hierarchy and corners",
+    gist: "Rank the vertical, top and bottom fillets; equal radii make a spherical corner, unequal ones a torus if the biggest goes first, and the wrong order fails or leaves a crease; finish corners with a corner blend and check them with zebra stripes.",
+  },
+  "character-lines": {
+    title: "Character lines and highlights",
+    gist: "Drag a strip lamp and watch the highlight travel: a hard crease gives a light/shadow edge, a soft crease a thin line of light, and on a fading line the highlight leaves before the crease ends; a line catches light over about twice its crease angle.",
+  },
+  "proportion-scale": {
+    title: "Proportion, massing and scale",
+    gist: "A kettle's primary, secondary and tertiary masses; squint at the outline and measure the primary's share; the visual center of mass and the tipping angle; a real-size hand beside the same form from 5 to 50 cm, and why sizes set by the hand can't be scaled.",
+  },
+  "perspective-ellipses": {
+    title: "Perspective and ellipses",
+    gist: "The viewport is your eye: the horizon is at eye height and horizontal edges vanish on it, in one-, two- and three-point perspective; drag a line onto an ellipse's minor axis and it lies on the cylinder's axis; the further from the horizon, the rounder the ellipse.",
+  },
+  "gap-flush": {
+    title: "Gap and flush",
+    gist: "A cover in a base: the tolerance chain behind gap and flush, worst case versus RSS, 1000 simulated assemblies; tighten the biggest link or shorten the chain with a common datum, then hide what's left with a designed step and a shadow line.",
+  },
+  "stiffness-ribs": {
+    title: "A feel for stiffness: wall thickness and ribs",
+    gist: "A simply supported ABS panel under a center load: double the wall and deflection drops to 1/8 for twice the mass; ribs instead of thickness, running with the bending, height beating thickness; molded ribs 40–60 % of the wall and no taller than about 3 walls, or they sink and won't fill.",
+  },
   seals: {
     title: "Seals and O-ring grooves",
     gist: "An O-ring squashed in section: setting groove depth and width by squeeze and gland fill, leaving room for heat and swell, a plastic lid bowing between screws, and what an IP rating means.",
