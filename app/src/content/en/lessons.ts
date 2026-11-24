@@ -108,6 +108,18 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
     title: "Curvature combs and G0 / G1 / G2 continuity",
     gist: "Read a curvature comb, drag control points to make G0, G1 and G2, and see why the arcs of a rounded rectangle are only G1.",
   },
+  "surface-from-curves": {
+    title: "Surfaces from curves",
+    gist: "One panel built five ways (loft, one- and two-rail sweeps, network, edge curves) with their isoparms and deviation; matching curve sets to commands; why a loft twists or folds with misordered or reversed sections, and ripples through too many.",
+  },
+  "surface-matching": {
+    title: "Surface continuity and matching",
+    gist: "Rows 0, 1 and 2 of control points set G0, G1 and G2 when matching; check the seam with zebra stripes, break it and match again, see how matching reshapes a face with too few control points, and choose the master.",
+  },
+  "trim-stitch": {
+    title: "Trim, split, join and close",
+    gist: "Show naked edges, see why the join tolerance mustn't just be raised, extend and trim, match and cap six surfaces into a closed solid (the volume appears), and see how split differs from trim.",
+  },
   "offset-thicken": {
     title: "Offset and thicken",
     gist: "Drag the wall thickness and watch the surface offset along its normals: why it self-intersects (a swallowtail) once the radius on the offset side is smaller than the wall, inward versus outward, the minimum-radius check, and three fixes.",
@@ -115,6 +127,10 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
   "zebra-stripes": {
     title: "Zebra stripes: judging surfaces by their reflections",
     gist: "Stripes that break, kink or flow smoothly mean G0, G1 or G2; pick out the G2 surface in a blind test, and see how fillets and blends differ in their highlights.",
+  },
+  "curvature-analysis": {
+    title: "Curvature analysis and draft analysis",
+    gist: "Principal, Gaussian and mean curvature maps, a blind hunt for a 0.3 mm dent, why developable surfaces unroll flat, and draft analysis with the parting line on a styled body.",
   },
   "patch-layout": {
     title: "Patch layout: primary, transition and fillet surfaces",
@@ -149,6 +165,22 @@ export const LESSONS_EN: Record<string, { title: string; gist: string }> = {
   "proportion-scale": {
     title: "Proportion, massing and scale",
     gist: "A kettle's primary, secondary and tertiary masses; squint at the outline and measure the primary's share; the visual center of mass and the tipping angle; a real-size hand beside the same form from 5 to 50 cm, and why sizes set by the hand can't be scaled.",
+  },
+  "anthropometry": {
+    title: "Body dimensions and percentiles",
+    gist: "Hand breadth as a distribution, and percentiles; why an opening sized to the average shuts out half; clearance to P95 and reach to P5; one size, sizes or adjustable; and why there is no average person.",
+  },
+  "grip": {
+    title: "Grip and handles",
+    gist: "Power and precision grips; how handle diameter depends on the grip and the size of the hand; non-round sections for torque and orientation; and why to skip finger grooves.",
+  },
+  "button-feel": {
+    title: "Button feel: the force–travel curve",
+    gist: "Press a silicone key cut in half and watch its force–travel curve draw itself: F1, F2 and the return stroke, the snap ratio, tuning the web's thickness and angle, and why too much snap makes a key stick.",
+  },
+  "reach-vision": {
+    title: "Sight lines and reach",
+    gist: "Drag a screen and controls around a seated mannequin: the normal line of sight and optimum viewing zone, screen distance and height, normal and maximum reach, and checking both ends, P5 woman and P95 man.",
   },
   "perspective-ellipses": {
     title: "Perspective and ellipses",
