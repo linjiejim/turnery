@@ -109,4 +109,38 @@ describe("turnery: 3MF export", () => {
     expect(Math.min(...zs)).toBe(0)
     expect(Math.max(...zs)).toBe(4)
   }, 60_000)
+
+  it("shares the vertices where faces meet, so every edge joins exactly two triangles", async () => {
+    // Each face used to bring its own copy of its corners: strict 3MF checks then saw every edge
+    // between two faces as an open (non-manifold) edge.
+    const mem = memFiles()
+    const engine = new Engine({ kernel: new DirectKernel(), files: mem.files })
+    const run = (name: string, input: unknown) => engine.run(name, input, AGENT)
+    await run("open_part", { path: "p", create: true })
+    await run("sketch", { id: "s", on: { plane: "XY" }, shapes: [{ type: "rect", w: 20, h: 10 }] })
+    await run("extrude", { id: "e", sketch: "s", distance: 8 })
+    await run("sketch", { id: "c", on: { plane: "XY", offset: 8 }, shapes: [{ type: "circle", d: 6 }] })
+    await run("extrude", { id: "boss", sketch: "c", distance: 5 })
+    await run("sketch", { id: "b", on: { plane: "XZ" }, shapes: [{ type: "polyline", points: [[0, 10.5], { to: [0, 15.5], via: [2.5, 13] }] }] })
+    await run("revolve", { id: "knob", sketch: "b", axis: "Z" })
+    expect((await run("export", { path: "out/p.3mf" })).ok).toBe(true)
+    const text = new TextDecoder().decode((await mem.files.readBytes("/work/out/p.3mf"))!)
+    const mesh = text.slice(text.indexOf("<mesh>"), text.indexOf("</mesh>"))
+    const vertices = [...mesh.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"\/>/g)].map((m) => `${m[1]},${m[2]},${m[3]}`)
+    expect(new Set(vertices).size).toBe(vertices.length)
+    const directed = new Map<string, number>()
+    let triangles = 0
+    for (const m of mesh.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)) {
+      const [a, b, c] = [Number(m[1]), Number(m[2]), Number(m[3])]
+      expect(new Set([a, b, c]).size, "a triangle with two corners on one vertex").toBe(3)
+      for (const [p, q] of [[a, b], [b, c], [c, a]]) directed.set(`${p}>${q}`, (directed.get(`${p}>${q}`) ?? 0) + 1)
+      triangles++
+    }
+    expect(triangles).toBeGreaterThan(100)
+    // Closed and consistently wound: each edge once each way.
+    for (const [edge, n] of directed) {
+      expect(n, edge).toBe(1)
+      expect(directed.get(edge.split(">").reverse().join(">")), `${edge} has no triangle on its other side`).toBe(1)
+    }
+  }, 60_000)
 })
