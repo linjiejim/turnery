@@ -78,9 +78,12 @@ Turnery 的窗口和网站共用上面「随网站发布」的前端组件（Rea
 | `@ai-sdk/react` | 4.0 | Apache-2.0 | 内置助手的对话面板 | <https://github.com/vercel/ai> |
 | react-markdown、remark-gfm | 10.1.0 / 4.0.1 | MIT | 内置助手回复里的 Markdown 渲染 | <https://github.com/remarkjs/react-markdown> |
 | replicad-opencascadejs | 1.1.0 | LGPL-2.1-only | 几何内核，见上一节 | 同上 |
+| `@agentclientprotocol/sdk` | 2.9.1 | Apache-2.0 | 对话窗口用 ACP 和本机的 coding agent 说话 | <https://github.com/agentclientprotocol/typescript-sdk> |
+| `@agentclientprotocol/codex-acp`（单文件产物，在 `dist/agents/codex-acp.mjs`，许可证在旁边的 `codex-acp.LICENSE`） | 2.10.0 | Apache-2.0 | 把用户自己装的 Codex CLI 接到对话窗口；不含 Codex 本身 | <https://github.com/agentclientprotocol/codex-acp> |
 
 - **OpenCascade 的 wasm 怎么分发**：和网站一样是单独的文件，在 `Turnery.app/Contents/Resources/app/dist/vendor/opencascade/`（`replicad_single.js` + `replicad_single.wasm`，旁边附 `LICENSE`）。安装包不打 asar，替换这两个文件就能换成自己编译的版本。
 - 只在构建时用、不进安装包：electron-builder（MIT）、esbuild（MIT）。
+- **Codex**：安装包不带 Codex（`@openai/codex`）。codex-acp 的开发依赖会把它装进 `desktop/node_modules`，但构建只拷 codex-acp 自己的单文件；运行时用的是用户自己装、自己登录的 `codex`（见 `docs/specs/2026-11-24-turnery-local-agents.md`）。
 
 ### jim-uiux 组件
 

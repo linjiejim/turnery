@@ -80,6 +80,25 @@ await mkdir(ocOut, { recursive: true })
 await cp(path.join(oc, "LICENSE"), path.join(ocOut, "LICENSE"))
 for (const f of ["replicad_single.js", "replicad_single.wasm"]) await cp(path.join(oc, "dist", f), path.join(ocOut, f))
 await writeFile(path.join(ocOut, "package.json"), `${JSON.stringify({ type: "module" })}\n`)
+// ACP adapters for the chat window's outside agents (docs/specs/2026-11-24-turnery-local-agents.md):
+// codex-acp (Apache-2.0) ships as one bundled file. It runs the person's own `codex`, never a copy of ours.
+const agentsOut = path.join(dist, "agents")
+const codexAcp = path.join(root, "node_modules/@agentclientprotocol/codex-acp")
+await mkdir(agentsOut, { recursive: true })
+await cp(path.join(codexAcp, "dist/index.js"), path.join(agentsOut, "codex-acp.mjs"))
+await cp(path.join(codexAcp, "LICENSE"), path.join(agentsOut, "codex-acp.LICENSE"))
+// Electron's binary runs the adapter as Node (ELECTRON_RUN_AS_NODE); what the adapter starts must not inherit that.
+await writeFile(
+  path.join(agentsOut, "launch.mjs"),
+  [
+    "// Runs an ACP adapter (the file named after this one) with Electron's Node, without passing",
+    "// ELECTRON_RUN_AS_NODE on to the agent it starts.",
+    "delete process.env.ELECTRON_RUN_AS_NODE",
+    "const [file] = process.argv.splice(2, 1)",
+    "await import(new URL(file, import.meta.url).href)",
+    "",
+  ].join("\n"),
+)
 
 const vite = path.join(appDir, "node_modules/.bin/vite")
 const run = (args, env = {}) =>

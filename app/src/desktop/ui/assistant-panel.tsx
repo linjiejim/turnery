@@ -1,17 +1,19 @@
 import * as React from "react"
 import type { UIMessage } from "ai"
-import { ArrowUp, Check, ChevronRight, History, Settings2, Square, SquarePen, Trash2, X } from "lucide-react"
+import { ArrowUp, Check, ChevronRight, History, Settings2, ShieldQuestion, Square, SquarePen, Trash2, X } from "lucide-react"
 import { Button, IconButton } from "@/components/ui/button"
 import { Input, Textarea } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Segmented } from "@/components/ui/segmented"
+import { Select } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Markdown } from "@/studio/ui/markdown"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/i18n"
 import { turnery } from "../bridge"
 import type { TurnUsage } from "../core/assistant"
-import type { ModelSettings } from "../core/protocol"
+import type { AgentInfo, AgentOption, AgentsState, ModelSettings } from "../core/protocol"
+import type { AgentNotice, PermissionCard } from "../core/acp-stream"
 import { activity } from "../assistant-activity"
 import { useAssistant, type Assistant } from "../use-assistant"
 import { ModelSettingsDialog } from "./model-settings"
@@ -20,37 +22,42 @@ import { ago, commandLabel, useNow } from "./words"
 type ToolPart = { type: string; state?: string; input?: Record<string, unknown>; output?: { ok?: boolean; text?: string; images?: string[]; imagesDropped?: number }; errorText?: string }
 
 /**
- * The built-in assistant: say what to build or change; it works with the same commands an outside
- * agent has. `head` is the strip the window frames it with (drag handle, dock and minimize buttons).
+ * The conversation, the right panel's first tab: say what to build or change. The built-in assistant
+ * works with the same commands an outside agent has; or the person's own agent answers (Codex).
  */
-export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<HTMLDivElement>; actions: React.ReactNode } }) {
+export function AssistantPanel() {
   const chat = useAssistant()
   const { draft: text, setDraft: setText } = chat
   const [settings, setSettings] = React.useState<ModelSettings | null>(null)
+  const [agents, setAgents] = React.useState<AgentsState | null>(null)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   React.useEffect(() => {
     void turnery.models().then(setSettings)
+    void turnery.agents().then(setAgents)
+    // Changed in another window too: a send goes to whoever answers now, so this window shows that.
+    return turnery.onAgentsChanged(setAgents)
   }, [])
 
   const current = settings?.presets.find((p) => p.id === settings.current)
-  const usable = Boolean(current && (current.keyless || current.hasKey) && (current.model || current.defaultModel))
+  /** The outside agent answering instead of the built-in assistant (null: the built-in one). */
+  const agent = agents && agents.use !== "builtin" ? (agents.agents.find((a) => a.id === agents.use) ?? null) : null
+  const usable = agent ? !agent.problem : Boolean(current && (current.keyless || current.hasKey) && (current.model || current.defaultModel))
   const submit = () => {
     if (chat.send(text)) setText("")
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div {...head.props} className={cn("flex h-10 shrink-0 items-center gap-0.5 border-b pr-1.5 pl-3", head.props?.className)}>
+      <div className="flex h-10 shrink-0 items-center gap-0.5 border-b pr-1.5 pl-3">
         <ChatTitle chat={chat} />
         <span className="flex-1" />
         <HistoryButton chat={chat} />
         <IconButton label={t("新对话", "New chat")} size="icon-sm" disabled={chat.busy || chat.messages.length === 0} onClick={chat.newChat}>
           <SquarePen />
         </IconButton>
-        {head.actions}
       </div>
 
-      <Conversation chat={chat} usable={usable} onSettings={() => setSettingsOpen(true)} />
+      <Conversation chat={chat} agent={agent} usable={usable} onSettings={() => setSettingsOpen(true)} />
 
       <form
         className="shrink-0 border-t p-3"
@@ -64,8 +71,8 @@ export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<
             rows={3}
             value={text}
             disabled={!usable}
-            aria-label={t("对助手说", "Message the assistant")}
-            placeholder={usable ? t("例如：把壁厚改成 3，再核对一遍", "For example: make the walls 3 mm thick, then check again") : t("先配置模型", "Set up a model first")}
+            aria-label={agent ? t(`对 ${agent.name} 说`, `Message ${agent.name}`) : t("对助手说", "Message the assistant")}
+            placeholder={usable ? t("例如：把壁厚改成 3，再核对一遍", "For example: make the walls 3 mm thick, then check again") : agent ? t(`先把 ${agent.name} 装好、登录`, `Install and sign in to ${agent.name} first`) : t("先配置模型", "Set up a model first")}
             className="resize-none pr-11"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -87,18 +94,65 @@ export function AssistantPanel({ head }: { head: { props?: React.HTMLAttributes<
             )}
           </div>
         </div>
-        <button
-          type="button"
-          className="mt-1.5 flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings2 className="size-3.5 shrink-0" />
-          <span className="truncate">{current ? `${current.name} · ${current.model || current.defaultModel || t("还没填模型名", "No model name yet")}` : t("配置模型", "Set up model")}</span>
-        </button>
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1">
+          <button
+            type="button"
+            className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings2 className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {agent ? (agent.problem ? t(`${agent.name} · 还不能用`, `${agent.name} · not ready`) : agent.name) : current ? `${current.name} · ${current.model || current.defaultModel || t("还没填模型名", "No model name yet")}` : t("配置模型", "Set up model")}
+            </span>
+          </button>
+          {agent && !agent.problem && <AgentOptions chat={chat} agent={agent} />}
+        </div>
       </form>
-      <ModelSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={setSettings} />
+      <ModelSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={setSettings} onAgents={setAgents} />
     </div>
   )
+}
+
+/**
+ * The agent's model, reasoning and permission choices for this conversation: what its session
+ * offers (or offered last time), applied to the session at once and kept as the defaults.
+ */
+function AgentOptions({ chat, agent }: { chat: Assistant; agent: AgentInfo }) {
+  const [options, setOptions] = React.useState<AgentOption[]>([])
+  // Read again when a turn starts and ends (the agent may change them); they're only locked while it runs.
+  React.useEffect(() => {
+    let alive = true
+    void turnery.agentOptions(chat.id).then((o) => alive && setOptions(o))
+    return () => {
+      alive = false
+    }
+  }, [chat.id, chat.busy, agent.id])
+  const label: Record<string, string> = { model: t("模型", "Model"), reasoning_effort: t("推理强度", "Reasoning"), mode: t("权限", "Permissions") }
+  return (
+    <>
+      {options.map((o) => (
+        <Select
+          key={o.id}
+          aria-label={label[o.id] ?? o.name}
+          className="h-6 w-auto max-w-40 gap-1 border-0 bg-transparent px-1.5 text-caption text-muted-foreground shadow-none hover:bg-accent hover:text-foreground"
+          disabled={chat.busy}
+          value={o.value}
+          onValueChange={(v) => {
+            setOptions((all) => all.map((x) => (x.id === o.id ? { ...x, value: v } : x)))
+            void turnery.setAgentOption(chat.id, o.id, v).then(setOptions)
+          }}
+          options={o.choices.map((c) => ({ value: c.value, label: o.id === "mode" ? (MODE_LABEL[c.value] ?? c.name) : c.name }))}
+        />
+      ))}
+    </>
+  )
+}
+
+/** Codex's permission modes, said the way the chat window says them. */
+const MODE_LABEL: Record<string, string> = {
+  "read-only": t("只读，改动先问", "Read-only, asks first"),
+  "workspace-write": t("可改项目文件", "Can edit project files"),
+  agent: t("自动审查", "Auto review"),
 }
 
 /** The conversation's name; click to rename it. */
@@ -201,7 +255,7 @@ function HistoryButton({ chat }: { chat: Assistant }) {
 }
 
 /** The messages, kept at the bottom while the answer grows unless the person scrolled up to read. */
-function Conversation({ chat, usable, onSettings }: { chat: Assistant; usable: boolean; onSettings: () => void }) {
+function Conversation({ chat, agent, usable, onSettings }: { chat: Assistant; agent: AgentInfo | null; usable: boolean; onSettings: () => void }) {
   const box = React.useRef<HTMLDivElement>(null)
   const stuck = React.useRef(true)
   React.useEffect(() => {
@@ -226,11 +280,22 @@ function Conversation({ chat, usable, onSettings }: { chat: Assistant; usable: b
       {chat.messages.length === 0 ? (
         <div className="pt-6 text-body text-muted-foreground">
           <p className="text-heading font-semibold text-foreground">{t("用说的来建和改", "Build and change by talking")}</p>
-          <p className="mt-2">{t("说出要做什么，助手在这个零件上一步步做，做完核对你说的数字。", "Say what you want. The assistant works on this part step by step, then checks the numbers you gave.")}</p>
-          <p className="mt-1 text-small text-faint-foreground">{t("它只能用 Turnery 的建模命令，碰不到别的文件。", "It can only use Turnery’s modeling commands and can’t touch other files.")}</p>
+          {agent ? (
+            <>
+              <p className="mt-2">{t(`说出要做什么，${agent.name} 在这个项目里一步步做，你在窗口里看到每一步。`, `Say what you want. ${agent.name} works in this project step by step, and you see every step in the window.`)}</p>
+              <p className="mt-1 text-small text-faint-foreground">
+                {t(`用的是你自己的 ${agent.name} 和它的订阅。改文件、跑会改东西的命令、用别的工具之前，它会先在这里问你。`, `It’s your own ${agent.name} on its own subscription. Before it edits files, runs commands that change things or uses other tools, it asks you here first.`)}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2">{t("说出要做什么，助手在这个零件上一步步做，做完核对你说的数字。", "Say what you want. The assistant works on this part step by step, then checks the numbers you gave.")}</p>
+              <p className="mt-1 text-small text-faint-foreground">{t("它只能用 Turnery 的建模命令，碰不到别的文件。", "It can only use Turnery’s modeling commands and can’t touch other files.")}</p>
+            </>
+          )}
           {!usable && (
             <Button className="mt-4" variant="primary" onClick={onSettings}>
-              {t("先配置模型", "Set up a model first")}
+              {agent ? t(`看看 ${agent.name} 差什么`, `See what ${agent.name} needs`) : t("先配置模型", "Set up a model first")}
             </Button>
           )}
         </div>
@@ -264,6 +329,8 @@ const Message = React.memo(function Message({ message, live }: { message: UIMess
         if (p.type === "reasoning") return p.text.trim() ? <Reasoning key={i} text={p.text} live={live && p.state === "streaming"} /> : null
         if (p.type === "text") return p.text.trim() ? <Markdown key={i} text={p.text} streaming={live && p.state === "streaming"} /> : null
         if (p.type.startsWith("tool-")) return <ToolRow key={i} part={p as ToolPart} />
+        if (p.type === "data-permission") return <PermissionRow key={i} id={(p as { id?: string }).id ?? ""} card={(p as { data: PermissionCard }).data} live={live} />
+        if (p.type === "data-notice") return <NoticeRow key={i} notice={(p as { data: AgentNotice }).data} live={live} />
         return null
       })}
       {usage && !live && <UsageLine usage={usage} />}
@@ -300,6 +367,86 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
       </summary>
       <div className="mt-1 border-l pl-3 whitespace-pre-wrap">{text.trim()}</div>
     </details>
+  )
+}
+
+/**
+ * The agent's own words for its choices, in Chinese (Codex's, codex-acp 2.10). Translated sentence
+ * by sentence, never by kind: two choices of one kind can mean different things ("continue without
+ * running it" and "tell Codex what to do differently" are both a rejection). Anything else shows as
+ * the agent wrote it.
+ */
+const CHOICE_ZH: Record<string, string> = {
+  Allow: "允许",
+  "Allow for this session": "这次对话都允许",
+  Deny: "拒绝",
+  Cancel: "取消",
+  "Yes, proceed": "可以，继续",
+  "Yes, just this once": "可以，只这一次",
+  "Yes, and don't ask again for this command in this session": "可以，这次对话里这个命令不用再问",
+  "Yes, and allow this host for this conversation": "可以，这次对话里允许访问这个网站",
+  "Yes, and allow these permissions for this session": "可以，这次对话里给它这些权限",
+  "Yes, and don't ask again for these files": "可以，这些文件不用再问",
+  "No, continue without running it": "不行，不运行它，接着做",
+  "No, and tell Codex what to do differently": "不行，我来告诉它怎么改",
+  "Yes, implement this plan": "可以，按这个计划做",
+}
+const choiceLabel = (label: string) => (CHOICE_ZH[label] ? t(CHOICE_ZH[label], label) : label)
+
+/** The agent asks before doing something: what it wants to do, and the person's answer. */
+function PermissionRow({ id, card, live }: { id: string; card: PermissionCard; live: boolean }) {
+  const [sent, setSent] = React.useState<string | null>(null)
+  const answer = card.answer ?? sent
+  const chosen = card.options.find((o) => o.id === answer)
+  const open = !answer && live
+  return (
+    <div className={cn("rounded-md border px-2.5 py-2", open && "border-warning")} role={open ? "alert" : undefined}>
+      <div className="flex items-start gap-2 text-small">
+        <ShieldQuestion className={cn("mt-0.5 size-3.5 shrink-0", open ? "text-warning" : "text-muted-foreground")} />
+        <span className="min-w-0 flex-1 font-medium">{card.title || commandLabel(`agent-${card.kind ?? "other"}`)}</span>
+      </div>
+      {card.detail && card.detail !== card.title && <pre className="mt-1 max-h-32 overflow-auto font-mono text-caption whitespace-pre-wrap text-muted-foreground">{card.detail}</pre>}
+      {open ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {card.options.map((o) => (
+            <Button
+              key={o.id}
+              size="sm"
+              variant={o.kind === "allow_once" ? "primary" : o.kind.startsWith("allow") ? "secondary" : "ghost"}
+              onClick={() => {
+                setSent(o.id)
+                void turnery.answerPermission(id, o.id)
+              }}
+            >
+              {choiceLabel(o.label)}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-caption text-faint-foreground">
+          {chosen ? t(`你选了：${choiceLabel(chosen.label)}`, `You chose: ${chosen.label}`) : t("没有回答，已取消", "Not answered; cancelled")}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The agent waits for an approval that never came here: the person's own agent setup took it (an
+ * approval app hooked into Codex). Gone once the wait is over.
+ */
+function NoticeRow({ notice, live }: { notice: AgentNotice; live: boolean }) {
+  if (notice.kind !== "approval-elsewhere" || !notice.active || !live) return null
+  return (
+    <div role="status" className="flex items-start gap-2 rounded-md border border-warning px-2.5 py-2 text-small">
+      <ShieldQuestion className="mt-0.5 size-3.5 shrink-0 text-warning" />
+      <p>
+        {t(
+          "它在等你批准一步操作，但审批没有发到这里：你可能给它配了自己的审批工具（比如接在 PermissionRequest 钩子上的应用）。去那里批准或拒绝，或者点停止。",
+          "It’s waiting for you to approve a step, but the approval didn’t come here: you may have set up your own approval tool for it (an app on its PermissionRequest hook, for example). Approve or deny it there, or click Stop.",
+        )}
+      </p>
+    </div>
   )
 }
 

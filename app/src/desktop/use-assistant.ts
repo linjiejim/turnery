@@ -16,7 +16,7 @@ export const MAX_STEPS = 30
  */
 function ipcTransport(): ChatTransport<UIMessage> {
   return {
-    sendMessages: async ({ messages, abortSignal }) => {
+    sendMessages: async ({ messages, abortSignal, body }) => {
       const id = `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       let off = () => {}
       const stream = new ReadableStream<UIMessageChunk>({
@@ -44,7 +44,9 @@ function ipcTransport(): ChatTransport<UIMessage> {
         },
       })
       // Old pictures stay out of the message: only the latest views matter to the model.
-      void turnery.assistantSend(id, trimMessages(messages), locale).catch(() => undefined)
+      // The conversation's id: an outside agent keeps one session per conversation.
+      const chat = typeof (body as { chat?: unknown } | undefined)?.chat === "string" ? (body as { chat: string }).chat : undefined
+      void turnery.assistantSend(id, trimMessages(messages), locale, chat).catch(() => undefined)
       return stream
     },
     reconnectToStream: async () => null,
@@ -125,7 +127,7 @@ function useAssistantState(project: string | null, part: string | null) {
   const send = (text: string) => {
     const t = text.trim()
     if (!t || busy) return false
-    void chat.sendMessage({ text: t })
+    void chat.sendMessage({ text: t }, { body: { chat: meta.id } })
     return true
   }
   const newChat = () => {

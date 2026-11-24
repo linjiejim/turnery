@@ -229,9 +229,26 @@ export interface TurneryBridge {
   models(): Promise<ModelSettings>
   /** Choose a preset and what to use from it. `key`: left out = keep the stored one; a string replaces it ("" forgets it). */
   saveModel(input: { preset: string; model?: string; baseURL?: string; vision?: boolean | null; key?: string }): Promise<ModelSettings>
-  /** Start a turn of the built-in assistant; its stream arrives through onAssistant under the same id. */
-  assistantSend(id: string, messages: unknown[], lang?: "zh" | "en"): Promise<void>
+  /**
+   * Start a turn of the chat window (the built-in assistant, or the outside agent chosen in
+   * `agents`); its stream arrives through onAssistant under the same id. `chat`: the conversation's id.
+   */
+  assistantSend(id: string, messages: unknown[], lang?: "zh" | "en", chat?: string): Promise<void>
   assistantStop(id: string): Promise<void>
+  /**
+   * Who answers in the chat window, and the outside agents found on this computer. Only the agent
+   * in use is started to ask who is signed in; `status`: every agent; `recheck`: find them again.
+   */
+  agents(check?: "status" | "recheck"): Promise<AgentsState>
+  /** `use`: who answers, "builtin" or an agent id. `agent` + `path`: where that agent's program is ("" or null: find it). */
+  saveAgents(input: { use?: string; agent?: string; path?: string | null }): Promise<AgentsState>
+  /** The chosen agent's options for this conversation (model, reasoning, permissions). */
+  agentOptions(chat: string): Promise<AgentOption[]>
+  setAgentOption(chat: string, option: string, value: string): Promise<AgentOption[]>
+  /** Who answers changed (in this window or another): every chat window shows the same. */
+  onAgentsChanged(cb: (state: AgentsState) => void): () => void
+  /** Answer an agent's permission card (`null`: cancel). */
+  answerPermission(id: string, optionId: string | null): Promise<boolean>
   /** The window's language, so the app's menus and dialogs speak it too. */
   setLanguage(lang: "zh" | "en"): Promise<void>
   /** Chunks of a turn's UI message stream; `null` ends it. */
@@ -286,6 +303,31 @@ export type { BuildReport, DisplayData, PickInfo, Tree }
 /** What the model settings dialog shows for one provider preset. */
 export type ModelPreset = { id: string; name: string; defaultModel: string; defaultBaseURL: string; defaultVision: boolean; keyless: boolean; model: string; baseURL: string; vision: boolean | null; hasKey: boolean; keyNote: string }
 export type ModelSettings = { current: string | null; presets: ModelPreset[]; keysEncrypted: boolean }
+
+/** An outside coding agent the chat window can use (docs/specs/2026-11-24-turnery-local-agents.md). */
+export type AgentInfo = {
+  id: string
+  name: string
+  /** Its program, as found (null: not installed, or not on the PATH). */
+  path: string | null
+  version: string | null
+  minVersion: string
+  /** The commands to install it and to sign in to it, for the person to run in a terminal. */
+  install: string
+  login: string
+  problem: null | "missing" | "old" | "signed-out" | "failed"
+  /** The account's label as the agent reports it (a plan name, never an email). */
+  account: string | null
+  /** Signed in, as the agent says; null: it couldn't tell (or wasn't asked: `checked` false). */
+  signedIn: boolean | null
+  detail: string | null
+  /** Started and asked who is signed in (otherwise only found). */
+  checked: boolean
+}
+export type AgentsState = { use: string; agents: AgentInfo[] }
+
+/** One of an agent's options in the chat window, with its value for this conversation. */
+export type AgentOption = { id: string; name: string; value: string; choices: { value: string; name: string; description?: string }[] }
 
 export const PRODUCT = "Turnery"
 /** File name endings Turnery owns. */

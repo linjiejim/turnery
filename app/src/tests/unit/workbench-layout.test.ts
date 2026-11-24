@@ -1,7 +1,6 @@
 // The desktop window's side panels (docs/specs/2026-11-11-turnery-workbench-layout.md): their widths
-// as laid out, and how the docked conversation leaves the model its room beside them; 后退 / 前进.
+// as laid out (the conversation is the right panel's first tab); 后退 / 前进.
 import { describe, expect, it } from "vitest"
-import { clampLayout, defaultLayout, dockRoom } from "@/desktop/assistant-layout"
 import { LEFT, RAIL, RIGHT, VIEW_MIN, defaultPanels, panelWidths } from "@/desktop/panels"
 import { arrive, renameVisits, type Visits } from "@/desktop/visits"
 
@@ -25,19 +24,6 @@ describe("side panels", () => {
     expect(w.left).toBe(LEFT.initial)
     expect(w.right).toBe(1000 - LEFT.initial - VIEW_MIN)
     expect(1000 - w.left - w.right).toBeGreaterThanOrEqual(VIEW_MIN)
-  })
-})
-
-describe("the docked conversation beside the panels", () => {
-  it("gets what the panels as laid out leave", () => {
-    expect(dockRoom(1440)).toBe(1440 - 224 - 380 - 360)
-    expect(dockRoom(1440, 0 + RAIL)).toBe(1440 - RAIL - 360)
-  })
-
-  it("floats when the panels leave no room to dock", () => {
-    const l = { ...defaultLayout(1440, 900), mode: "dock" as const }
-    expect(clampLayout(l, 1440, 900, 224 + 380).mode).toBe("dock")
-    expect(clampLayout(l, 1440, 900, 400 + 560).mode).toBe("float")
   })
 })
 

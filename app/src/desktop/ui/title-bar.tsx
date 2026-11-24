@@ -33,8 +33,8 @@ export function TitleBar({
   onSetup: () => void
   /** 「接入 Agent」 in the bar: until an agent has worked here (the menu and the status bar keep it after). */
   setup: boolean
-  /** The built-in assistant's button: shows or puts away the conversation; spins while a turn runs. */
-  chat: { open: boolean; onToggle: () => void }
+  /** The conversation's button (its tab in the right panel): shows or puts it away; spins while a turn runs. None on the start page. */
+  chat: { open: boolean; onToggle: () => void } | null
   /** The left panel: open (it holds the brand and the traffic lights), closed, or none at all (the start page). */
   sidebar: boolean | null
   onSidebar: () => void
@@ -110,9 +110,11 @@ export function TitleBar({
           </>
         )}
         <LanguageMenu size="icon-sm" />
-        <IconButton label={chat.open ? t("收起对话", "Hide chat") : t("对话", "Chat")} size="icon-sm" aria-pressed={chat.open} className={cn(chat.open && "bg-selected text-primary")} onClick={chat.onToggle}>
-          {busy ? <Spinner /> : <MessageSquare />}
-        </IconButton>
+        {chat && (
+          <IconButton label={chat.open ? t("收起对话", "Hide chat") : t("对话", "Chat")} size="icon-sm" aria-pressed={chat.open} className={cn(chat.open && "bg-selected text-primary")} onClick={chat.onToggle}>
+            {busy ? <Spinner /> : <MessageSquare />}
+          </IconButton>
+        )}
         {setup && (
           <Button size="sm" variant="secondary" className="ml-1" onClick={onSetup}>
             <Plug />

@@ -10,6 +10,7 @@
 
 - 建模能力和网页版 Turnery 工作台是同一套：特征树 JSON、语义选择器、OpenCascade 内核（`app/src/studio`）。
 - AI 来自你自己的 agent（这时 Turnery 不调用任何模型，也不需要 key），或者来自内置助手：窗口标题栏的「对话」按钮，用你自己配的模型和 key（`~/.turnery/providers.json`，或环境变量 `TURNERY_API_KEY_<预设>`）。命令行是 `turnery model`、`turnery ask "<一句话>"`。助手只能调建模命令；它和外部 agent 各记各的「自你上次调用以来」。
+- 对话窗口也可以交给你本机的 Codex：点对话栏下方的模型名，「谁来回答」选 Codex。用的是你自己装的 `codex`（≥ 0.171.0）和你用 `codex login` 登录的 ChatGPT 订阅；Turnery 不替你登录，也不碰它的凭证。Codex 在项目文件夹里工作，建模命令直接执行，改文件、跑会改东西的命令、用别的工具之前会在对话里先问你。设置存在 `~/.turnery/agents.json`。协议是 ACP（适配器 codex-acp 打包在 `dist/agents/`）。
 - 零件就是一个 `.turnery.json` 文件（特征树 JSON），可以放进 git、可以直接编辑；备注在旁边的 `.notes.json`。
 - 一个文件夹就是一个项目：左栏列出里面的装配和零件。「文件 → 新建项目」建一个文件夹，里面放同名的空装配和共享参数文件；装配的特征树底部「+ 零件」新建零件（放在 `parts/` 下，共用项目参数）、放进已有零件或 STEP。
 - 新建项目缺省放在 `~/.turnery/projects/` 下，不改名就用时间命名（`YYYYMMDDhhmmss`）。打开项目时优先打开和文件夹同名的装配。

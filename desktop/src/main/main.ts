@@ -17,6 +17,7 @@ import { agentLang, setAgentLang } from "../../../app/src/lib/agent-lang"
 import { serveEngine } from "../engine/rpc"
 import { agentSetup } from "./setup"
 import { wireAssistant } from "./assistant"
+import { wireAgents, type AgentRunner } from "./agents"
 import { createUpdater } from "./updater"
 
 declare const __TURNERY_VERSION__: string
@@ -66,6 +67,8 @@ app.on("open-file", (e, file) => {
 
 let engineReady = false
 let lastAgentCall = Date.now()
+/** Outside agents in the chat window (agents.ts). */
+let agents: AgentRunner | null = null
 
 // ---------------------------------------------------------------- workspaces
 
@@ -340,7 +343,20 @@ async function routeAgent(command: string, input: unknown, ctx: CallContext): Pr
     if (command !== "open_part") await ws.engine.run("open_part", { path: p }, { ...ctx, part: undefined })
     return ws
   }
-  return mine ?? lastUsed() ?? fresh()
+  // No window yet and no file named: the window of the project the agent works in (its folder is
+  // the cwd), as for an agent started from Turnery's chat window.
+  const here = ctx.cwd ? projectAt(canonical(ctx.cwd)) : undefined
+  return mine ?? here ?? lastUsed() ?? fresh()
+}
+
+/** The window whose project holds this folder: the deepest one when projects are nested (`/w` and `/w/sub`). */
+function projectAt(dir: string) {
+  let best: Workspace | undefined
+  for (const w of workspaces) {
+    const r = w.engine.projectRoot
+    if (r !== null && (r === dir || inside(r, dir)) && (!best || r.length > best.engine.projectRoot!.length)) best = w
+  }
+  return best
 }
 
 /** An empty workspace (its window shown without taking focus), or a new one. */
@@ -689,7 +705,8 @@ function wireIpc() {
   ipcMain.handle("turnery:open-project-at", (e, root: string) => openProjectAt(wsOf(e), String(root)))
   ipcMain.handle("turnery:recent-projects", () => recentProjects())
   ipcMain.handle("turnery:open-example", (e) => openExample(wsOf(e)))
-  wireAssistant(ipcMain, (e) => wsOf(e).engine)
+  agents = wireAgents(ipcMain, (e) => wsOf(e).engine, DIST)
+  wireAssistant(ipcMain, (e) => wsOf(e).engine, agents)
   ipcMain.handle("turnery:pick-file", (e, kind: "part" | "step") => pickFileDialog(wsOf(e), kind === "step" ? "step" : "part"))
   ipcMain.handle("turnery:reveal", (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle("turnery:export", (e, format: ExportFormat) => exportDialog(wsOf(e), format))
@@ -772,6 +789,7 @@ if (!app.requestSingleInstanceLock()) {
       updater.installOnQuit()
       clearEngineInfo(process.pid)
       void rpc.close()
+      agents?.dispose()
       for (const ws of [...workspaces]) ws.dispose()
     })
   })

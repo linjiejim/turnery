@@ -18,8 +18,7 @@ import { turnery } from "./bridge"
 import type { DocState, PickRequest, ShowRequest, Snapshot } from "./core/protocol"
 import { useDesktopNotes, useDesktopStudio, useEngine, type Compose } from "./use-desktop"
 import { AssistantProvider } from "./use-assistant"
-import { useAssistantLayout } from "./assistant-layout"
-import { AssistantDock, AssistantFloat } from "./ui/assistant-window"
+import { AssistantPanel } from "./ui/assistant-panel"
 import { StatusBar, type StatusTarget } from "./ui/status-bar"
 import { AgentSetupDialog } from "./ui/agent-setup"
 import { AddPartMenu } from "./ui/assembly"
@@ -56,13 +55,12 @@ export function DesktopApp() {
   const [treeHover, setTreeHover] = React.useState<Hover | null>(null)
   const [stepSlot, setStepSlot] = React.useState<HTMLDivElement | null>(null)
   const [setupOpen, setSetupOpen] = React.useState(false)
-  /** The tab chosen last (never 「详情」, which comes and goes with the selection). */
-  const [tab, setTab] = React.useState<Exclude<PanelTab, "details">>("notes")
+  /** The tab chosen last (never 「详情」, which comes and goes with the selection). The conversation first. */
+  const [tab, setTab] = React.useState<Exclude<PanelTab, "details">>("chat")
   const panels = usePanels()
   const history = useHistory(doc)
   /** Where the camera was left in each file, for coming back to it (the view closes while a file loads). */
   const [cameras] = React.useState(() => new Map<string, ViewCamera>())
-  const chatLayout = useAssistantLayout(panels.widths.left + (doc ? panels.widths.right : 0))
   const agentSeen = useAgentSeen(snapshot)
   /** 「工程图」 over the 3D view; parameters stay editable beside it. */
   const [sheet, setSheet] = React.useState(false)
@@ -305,6 +303,15 @@ export function DesktopApp() {
     chooseTab(to)
   }
   const hasSidebar = Boolean(doc || snapshot?.project || snapshot?.parts.length || snapshot?.loading)
+  /** The conversation is the right panel's first tab: the 对话 button brings it up, or puts the panel away. */
+  /** Without an open file the conversation is the panel's only tab. */
+  const panelTab: PanelTab = !doc ? "chat" : details && detailsFront ? "details" : tab
+  const chatShown = panels.panels.right.open && panelTab === "chat"
+  const toggleChat = () => {
+    if (chatShown) return panels.toggleRight(false)
+    chooseTab("chat")
+    panels.toggleRight(true)
+  }
   const loading = snapshot?.loading ?? (doc && !doc.error && snapshot?.kernel.phase !== "error" && (!studio.display || studio.display.provisional || presented !== studio.display) ? { path: doc.path, name: doc.name, startedAt: 0, progress: { stage: "mesh" as const, completed: 0, total: 1 } } : null)
   return (
     <WordsContext.Provider value={DESKTOP_WORDS}>
@@ -353,7 +360,7 @@ export function DesktopApp() {
         doc={doc}
         onSetup={() => setSetupOpen(true)}
         setup={!agentSeen}
-        chat={{ open: chatLayout.layout.mode !== "hidden", onToggle: chatLayout.toggle }}
+        chat={hasSidebar ? { open: chatShown, onToggle: toggleChat } : null}
         sidebar={hasSidebar ? panels.panels.left.open : null}
         onSidebar={panels.toggleLeft}
       />
@@ -440,32 +447,33 @@ export function DesktopApp() {
             )}
           </div>
         </main>
-        {doc && (
+        {hasSidebar && (
           <RightPanel
             open={panels.panels.right.open}
             width={panels.widths.right}
             onWidth={(w, save) => panels.update((p) => ({ ...p, right: { ...p.right, w } }), save)}
             onOpen={panels.toggleRight}
-            tab={details && detailsFront ? "details" : tab}
+            tab={panelTab}
             onTab={chooseTab}
             details={Boolean(details)}
-            openNotes={doc.notes.filter((n) => n.status === "open").length}
-            checksFailing={doc.report?.checks?.filter((c) => !c.invalid && !c.pass).length ?? 0}
+            openNotes={doc?.notes.filter((n) => n.status === "open").length ?? 0}
+            checksFailing={doc?.report?.checks?.filter((c) => !c.invalid && !c.pass).length ?? 0}
             slot={setStepSlot}
           >
             {{
-              notes: <NotesPanel doc={doc} onLocate={notes.locateNote} onWrite={() => notes.setCompose({ text: "" })} />,
-              activity: <ActivityPanel doc={doc} />,
-              params: <ParamsPanel studio={studio} onHover={setTreeHover} annotations={notes} />,
-              code: <CodePanel studio={studio} />,
+              chat: <AssistantPanel />,
+              ...(doc && {
+                notes: <NotesPanel doc={doc} onLocate={notes.locateNote} onWrite={() => notes.setCompose({ text: "" })} />,
+                activity: <ActivityPanel doc={doc} />,
+                params: <ParamsPanel studio={studio} onHover={setTreeHover} annotations={notes} />,
+                code: <CodePanel studio={studio} />,
+              }),
             }}
           </RightPanel>
         )}
-        {chatLayout.layout.mode === "dock" && <AssistantDock state={chatLayout} />}
       </div>
       <StatusBar snapshot={snapshot} doc={doc} pick={pick} onGo={goStatus} agentSeen={agentSeen} sheet={sheet && Boolean(doc)} onSheet={setSheet} />
       </div>
-      {chatLayout.layout.mode === "float" && <AssistantFloat state={chatLayout} />}
       <AgentSetupDialog open={setupOpen} onOpenChange={setSetupOpen} />
       <NoteComposer
         text={notes.compose?.text ?? null}

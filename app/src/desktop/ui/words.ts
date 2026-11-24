@@ -36,6 +36,18 @@ const COMMAND_LABELS: Record<string, string> = {
   resolve_note: t("回复备注", "Reply to note"),
   request_pick: t("等你点选", "Wait for your pick"),
   show: t("指给你看", "Show you"),
+  // An outside agent's own tools (ACP tool kinds, core/acp-stream.ts).
+  "agent-execute": t("运行命令", "Run a command"),
+  "agent-read": t("读取", "Read"),
+  "agent-edit": t("修改文件", "Edit a file"),
+  "agent-delete": t("删除文件", "Delete a file"),
+  "agent-move": t("移动文件", "Move a file"),
+  "agent-search": t("搜索", "Search"),
+  "agent-fetch": t("联网", "Fetch"),
+  "agent-think": t("想一想", "Think"),
+  "agent-switch_mode": t("切换模式", "Switch mode"),
+  "agent-mcp": t("用别的工具", "Use another tool"),
+  "agent-other": t("其他操作", "Other action"),
 }
 
 /** 「做拉伸」「核对需求」 */
