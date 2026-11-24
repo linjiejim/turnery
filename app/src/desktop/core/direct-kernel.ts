@@ -3,7 +3,7 @@
 // (initNodeKernel in Node).
 import { getOC } from "replicad"
 import type { Tree } from "../../studio/dsl"
-import { Kernel, type BuildHooks, type BuildReport, type ComponentSource, type ContextSource } from "../../studio/kernel/build"
+import { Kernel, type BuildHooks, type BuildReport, type ComponentSource, type ContextSource, type StepStore } from "../../studio/kernel/build"
 import type { MeasureSpec } from "../../studio/kernel/measure"
 import type { KernelHost } from "./engine"
 import type { KernelPhase, V3 } from "./protocol"
@@ -20,11 +20,18 @@ export const KERNEL_SLOTS = 4
 
 export class DirectKernel implements KernelHost {
   private readonly hooks: BuildHooks
-  constructor(hooks: BuildHooks = {}) { this.hooks = hooks }
+  /** Where the parts' kernels keep what they built between sessions (none: tests, unless they give one). */
+  private readonly store: StepStore | null
+  constructor(hooks: BuildHooks = {}, store: StepStore | null = null) {
+    this.hooks = hooks
+    this.store = store
+    this.k = new Kernel(false, store)
+    this.slots = new Map([["", this.k]])
+  }
   readonly phase: KernelPhase = { phase: "ready" }
-  private k = new Kernel()
+  private k: Kernel
   /** One kernel per part (by path), most recently used last. */
-  private slots = new Map<string, Kernel>([["", this.k]])
+  private slots: Map<string, Kernel>
 
   /**
    * Make `slot`'s kernel the one the next calls go to. True when it starts empty (never used, or
@@ -34,11 +41,13 @@ export class DirectKernel implements KernelHost {
     let k = this.slots.get(slot)
     const fresh = !k
     if (k) this.slots.delete(slot)
-    else k = new Kernel()
+    else k = new Kernel(false, this.store)
     this.slots.set(slot, k)
     for (const [name, old] of this.slots) {
       if (this.slots.size <= KERNEL_SLOTS) break
       if (old === k) continue
+      // What it built and hadn't kept yet goes to the store first: opening that part again reads it back.
+      old.persist()
       old.dispose()
       this.slots.delete(name)
     }
@@ -94,6 +103,16 @@ export class DirectKernel implements KernelHost {
   async exportBody(format: "step" | "stl" | "3mf", index?: number) {
     const blob = await this.k.exportBody(format, index)
     return blob ? new Uint8Array(await blob.arrayBuffer()) : null
+  }
+  /**
+   * Keep what the parts' kernels built in the store, the current part first, within about `budgetMs`
+   * (the host calls it when idle). Returns how many steps are left.
+   */
+  async persist(budgetMs = Infinity) {
+    const t0 = performance.now()
+    let left = 0
+    for (const k of [this.k, ...[...this.slots.values()].filter((x) => x !== this.k)]) left += k.persist(Math.max(0, budgetMs - (performance.now() - t0)))
+    return left
   }
   dispose() {
     for (const k of this.slots.values()) k.dispose()

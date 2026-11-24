@@ -63,6 +63,8 @@ export class ComponentPool {
   private memory = new Map<string, CompiledComponent>()
   private cache: Promise<ComponentCache | null>
   private closed = false
+  /** Bumped by `abort`: a preparation under way stops starting components. */
+  private round = 0
 
   constructor(private readonly file: URL) {
     // The bundle includes the kernel and replicad. Include the external WASM too,
@@ -134,8 +136,9 @@ export class ComponentPool {
     }
     jobs.sort((a, b) => cost(sources[b.i]) - cost(sources[a.i]))
     let next = 0
+    const round = this.round
     await Promise.all(Array.from({ length: Math.min(jobs.length, 4, Math.max(1, availableParallelism() - 1)) }, async (_, runnerIndex) => {
-      while (next < jobs.length && !this.closed) {
+      while (next < jobs.length && !this.closed && round === this.round) {
         const { i, key } = jobs[next++]
         try {
           const started = performance.now()
@@ -157,6 +160,12 @@ export class ComponentPool {
     await Promise.all(this.runners.splice(0).map((r) => r.worker.terminate()))
     await cache?.trim()
     return output
+  }
+
+  /** Stop a preparation under way (the load was cancelled): its threads end now, what is cached stays. */
+  abort() {
+    this.round++
+    for (const r of this.runners.splice(0)) void r.worker.terminate()
   }
 
   async dispose() {

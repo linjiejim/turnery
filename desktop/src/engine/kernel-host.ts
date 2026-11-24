@@ -11,7 +11,8 @@ import type { Dim } from "../../../app/src/studio/kernel/dims"
 import type { DrawingData } from "../../../app/src/studio/kernel/drawing"
 import type { MeasureResult, MeasureSpec } from "../../../app/src/studio/kernel/measure"
 import type { PickInfo } from "../../../app/src/studio/annotations"
-import type { KernelReply, KernelRequest } from "./kernel-thread"
+import type { KernelReply, KernelRequest, KernelThreadData } from "./kernel-thread"
+import { BuildStopped } from "../../../app/src/studio/kernel/build"
 import { agentLang, ta } from "../../../app/src/lib/agent-lang"
 import { ComponentPool } from "./component-pool"
 import path from "node:path"
@@ -20,6 +21,12 @@ import { AssemblyCache, assemblyKey } from "./assembly-cache"
 
 /** Same limit as the browser studio's worker. */
 const RECYCLE_MB = 1400
+/** A stopped rebuild ends at the next feature; one stuck inside a long feature gets this long before its thread is ended. */
+const STOP_GRACE_MS = 600
+/** Idle this long after a call before keeping what was built (so a string of edits isn't held up writing). */
+const PERSIST_IDLE_MS = 400
+/** One `persist` call's share of the thread: calls from the window wait at most about this long behind it. */
+const PERSIST_SLICE_MS = 120
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void }
 
@@ -49,15 +56,29 @@ export class ThreadKernel implements KernelHost {
   private slots = new Map<string, Slot>([["", newSlot()]])
   /** Disposed: a late call (a file change already on its way) must not start a new thread. */
   private closed = false
+  /** Bumped to stop the rebuild under way (shared with the thread, which checks it between features). */
+  private readonly stopCount = new Int32Array(new SharedArrayBuffer(4))
+  /** The rebuild (or file reading, or component preparation) under way, if any: `cancel` waits for it to stop. */
+  private building: Promise<unknown> | null = null
+  /** Rejects the thread being started (it was ended before it was ready). */
+  private abortSpawn: ((e: Error) => void) | null = null
+  /** Bumped whenever a thread is ended: a start still on its way then doesn't put its thread in place. */
+  private spawns = 0
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
+  /** Built steps the thread hasn't kept yet (its last `persist` said so, or something was built since). */
+  private unkept = false
+  /** Where the main thread keeps built steps: one folder per build of the app, beside the components'. */
+  private readonly steps: Promise<string | null>
 
   constructor(
     private readonly file: URL,
     private readonly onPhase: () => void = () => {},
-    private readonly onPreview: (display: DisplayData) => void = () => {},
+    private readonly onPreview: (display: DisplayData, slot: string) => void = () => {},
     private readonly onDiagnostics: (path: string, report: BuildReport) => void = () => {},
   ) {
     this.pool = new ComponentPool(file)
     this.cache = this.pool.directory.then((dir) => dir ? new AssemblyCache(path.join(dir, "assemblies")) : null)
+    this.steps = this.pool.directory.then((dir) => (dir ? path.join(path.dirname(path.dirname(dir)), "steps", path.basename(dir)) : null))
   }
 
   /** Start the thread now (the app does this at launch so the first command is fast). */
@@ -66,26 +87,37 @@ export class ThreadKernel implements KernelHost {
     return this.started
   }
 
-  private spawn(): Promise<void> {
+  private async spawn(): Promise<void> {
+    const n = this.spawns
+    const steps = process.env.TURNERY_NO_STEP_CACHE ? null : await this.steps
+    if (this.closed) throw new Error(ta("建模内核已关闭", "The modeling kernel is closed"))
+    // Ended (cancelled, replaced) while finding the folder: no thread for that start.
+    if (n !== this.spawns) throw new BuildStopped()
     // OpenCascade prints (STEP statistics, warnings) to stdout. Under `turnery mcp` stdout is the
     // protocol channel, so the thread gets its own streams and its chatter goes to stderr.
-    const worker = new Worker(this.file, { stdout: true, stderr: true })
+    const workerData: KernelThreadData = { stop: this.stopCount.buffer as SharedArrayBuffer, ...(steps ? { steps } : {}) }
+    const worker = new Worker(this.file, { stdout: true, stderr: true, workerData })
     worker.stdout.on("data", (b: Buffer) => process.stderr.write(b))
     worker.stderr.on("data", (b: Buffer) => process.stderr.write(b))
     this.worker = worker
     return new Promise<void>((resolve, reject) => {
+      this.abortSpawn = reject
       worker.on("message", (m: KernelReply) => {
         if ("type" in m) {
+          // Left over from a rebuild that was stopped: not the part being opened now.
+          if ((m.type === "progress" || m.type === "preview") && m.gen !== undefined && m.gen !== Atomics.load(this.stopCount, 0)) return
           if (m.type === "progress") {
             this.progress = m.progress
             this.onPhase()
           } else if (m.type === "preview") {
             this.preview = m.display
-            this.onPreview(m.display)
+            this.onPreview(m.display, this.slot)
           } else if (m.type === "ready") {
+            if (this.worker === worker) this.abortSpawn = null
             this.setPhase({ phase: "ready" })
             resolve()
           } else {
+            if (this.worker === worker) this.abortSpawn = null
             this.setPhase({ phase: "error", message: m.error })
             reject(new Error(m.error))
           }
@@ -97,12 +129,13 @@ export class ThreadKernel implements KernelHost {
         if (m.ok) {
           if (m.heapMB > RECYCLE_MB) this.stale = true
           p.resolve(m.result)
-        } else p.reject(new Error(m.error))
+        } else p.reject(m.stopped ? new BuildStopped() : new Error(m.error))
       })
       const crashed = (why: string) => {
         if (this.worker !== worker) return
         this.worker = null
         this.started = null
+        this.abortSpawn = null
         for (const p of this.pending.values()) p.reject(new Error(ta(`建模内核意外退出（${why}），下一次调用会自动重启`, `The modeling kernel quit unexpectedly (${why}); the next call restarts it`)))
         this.pending.clear()
         reject(new Error(why))
@@ -117,34 +150,120 @@ export class ThreadKernel implements KernelHost {
     this.onPhase()
   }
 
-  private async call<T>(op: KernelRequest["op"], args: unknown[]): Promise<T> {
+  /** `gen`: the stop count when the work this call is part of began (a rebuild takes it before reading its cache). */
+  private async call<T>(op: KernelRequest["op"], args: unknown[], gen = Atomics.load(this.stopCount, 0)): Promise<T> {
     if (this.closed) throw new Error(ta("建模内核已关闭", "The modeling kernel is closed"))
-    if (this.stale || !this.worker) await this.restart()
+    // `started`, not `worker`: a thread being started has no worker yet, and starting a second one would orphan it.
+    if (this.stale || !this.started) await this.restart()
     else await this.start()
+    // Stopped while the thread was starting: this call belonged to the load that was cancelled.
+    if (gen !== Atomics.load(this.stopCount, 0)) throw new BuildStopped()
+    this.persistLater()
+    return this.post<T>(op, args, gen)
+  }
+
+  /** Hand the current thread a request. `gen` -1: never stopped (bringing a replacement thread up to date). */
+  private post<T>(op: KernelRequest["op"], args: unknown[], gen: number): Promise<T> {
     const id = ++this.seq
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
-      this.worker!.postMessage({ id, op, args, lang: agentLang() } satisfies KernelRequest)
+      this.worker!.postMessage({ id, op, args, lang: agentLang(), gen } satisfies KernelRequest)
     })
   }
 
-  /** A fresh thread holding the same files and tree as the old one. */
-  private async restart() {
+  /** The rebuild, file reading or component preparation a cancel should wait for. */
+  private track<T>(job: Promise<T>): Promise<T> {
+    this.building = job
+    const done = () => {
+      if (this.building === job) this.building = null
+    }
+    void job.then(done, done)
+    return job
+  }
+
+  /** End the thread (the next call starts another); whatever waits on it is told `why`. */
+  private endThread(why: Error) {
     const old = this.worker
-    this.stale = false
+    this.spawns++
     this.worker = null
     this.started = null
+    this.abortSpawn?.(why)
+    this.abortSpawn = null
+    for (const p of this.pending.values()) p.reject(why)
+    this.pending.clear()
     if (old) {
       old.removeAllListeners("exit")
       void old.terminate()
     }
+  }
+
+  /**
+   * Keep what the thread built, on the thread as it is: not through `call`, which would first replace a thread
+   * grown too big, and the steps with it. `flush`: wait for the folder's upkeep too (the thread is about to end).
+   */
+  private async keepBuilt(budgetMs: number, flush = false): Promise<number> {
+    if (!this.started || this.closed) return 0
+    await this.started
+    if (!this.worker) return 0
+    return this.post<number>("persist", [budgetMs, flush], -1)
+  }
+
+  /**
+   * Keep what the thread built (kernel/build.ts, StepStore) once it has been idle a moment, a slice at a
+   * time: the next call from the window waits at most one slice behind it.
+   */
+  private persistLater(delay = PERSIST_IDLE_MS) {
+    this.unkept = true
+    if (this.persistTimer) clearTimeout(this.persistTimer)
+    this.persistTimer = setTimeout(() => void this.persistSlice(), delay)
+    this.persistTimer.unref?.()
+  }
+
+  private async persistSlice() {
+    this.persistTimer = null
+    if (this.closed || !this.worker || !this.unkept) return
+    if (this.pending.size) return this.persistLater()
+    try {
+      const left = await this.keepBuilt(PERSIST_SLICE_MS)
+      if (left > 0) this.persistLater(20)
+      else this.unkept = false
+    } catch {
+      /* a thread that went away kept what it had */
+    }
+  }
+
+  /**
+   * Stop the rebuild under way (the person cancelled the load, or opened another part). It stops at the
+   * next feature, keeping the ones built; one stuck inside a long feature has its thread ended (the parts
+   * it held are read back from the store when opened again). `reset`: the thread was ended, so it holds
+   * no part now.
+   */
+  async cancel(): Promise<"idle" | "stopped" | "reset"> {
+    Atomics.add(this.stopCount, 0, 1)
+    this.pool.abort()
+    this.progress = null
+    this.onPhase()
+    const busy = this.building
+    if (!busy) return "idle"
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const stopped = await Promise.race([busy.then(() => true, () => true), new Promise<boolean>((r) => (timer = setTimeout(() => r(false), STOP_GRACE_MS)))])
+    clearTimeout(timer)
+    if (stopped) return "stopped"
+    this.endThread(new BuildStopped())
+    this.stale = false
+    // Nothing to replay into the next thread: the part that was loading isn't open in it.
+    this.slot = ""
+    this.slots = new Map([["", newSlot()]])
+    return "reset"
+  }
+
+  /** A fresh thread holding the same files and tree as the old one. */
+  private async restart() {
+    this.stale = false
+    if (this.worker || this.started) this.endThread(new Error(ta("建模内核换了一个新线程，请再试一次", "The modeling kernel moved to a new thread: try again")))
     await this.start()
-    const send = (op: KernelRequest["op"], args: unknown[]) =>
-      new Promise((resolve, reject) => {
-        const id = ++this.seq
-        this.pending.set(id, { resolve, reject })
-        this.worker!.postMessage({ id, op, args, lang: agentLang() } satisfies KernelRequest)
-      })
+    // Not stopped by a cancel: the engine counts on the part it last built being there.
+    const send = (op: KernelRequest["op"], args: unknown[]) => this.post(op, args, -1)
     // The other parts' kernels are gone with the old thread: the next `use` of each says it's empty.
     const cur = this.slots.get(this.slot) ?? newSlot()
     this.slots = new Map([[this.slot, cur]])
@@ -183,24 +302,31 @@ export class ThreadKernel implements KernelHost {
     if (!directory) return
     const key = assemblyKey([tree, assets ?? [], components, context])
     const display = await this.projectPreview.read(file, key, path.basename(directory), root)
-    if (display) this.onPreview(display)
+    if (display) this.onPreview(display, file)
   }
 
   async setAssets(list: { name: string; bytes: Uint8Array | null; error?: string }[]) {
     this.cancelDiagnostics()
     this.cur.assets = list
-    await this.call<void>("setAssets", [list])
+    // Reading a big STEP takes a while: a cancel waits for it, then ends the thread.
+    await this.track(this.call<void>("setAssets", [list]))
   }
 
   /** An assembly's components and the context of a part edited inside one; kept for a replacement thread too. */
   async setComponents(list: ComponentSource[]) {
     this.cancelDiagnostics()
+    const gen = Atomics.load(this.stopCount, 0)
     this.progress = { stage: "prepare", completed: 0, total: list.length }
     this.onPhase()
-    const prepared = await this.pool.prepare(list, (completed, total, label) => {
-      this.progress = { stage: "prepare", completed, total, label }
-      this.onPhase()
-    })
+    const prepared = await this.track(
+      this.pool.prepare(list, (completed, total, label) => {
+        if (gen !== Atomics.load(this.stopCount, 0)) return
+        this.progress = { stage: "prepare", completed, total, label }
+        this.onPhase()
+      }),
+    )
+    // Cancelled while the components were being built: the assembly isn't opened.
+    if (gen !== Atomics.load(this.stopCount, 0)) throw new BuildStopped()
     this.cur.components = prepared
     await this.call<void>("setComponents", [prepared])
   }
@@ -211,7 +337,12 @@ export class ThreadKernel implements KernelHost {
     await this.call<void>("setContext", [ctx])
   }
 
-  async rebuild(tree: Tree, { background = false }: { background?: boolean } = {}) {
+  rebuild(tree: Tree, options: { background?: boolean } = {}) {
+    // The stop count now, before the cache is read: a cancel from here on stops this rebuild.
+    return this.track(this.rebuildNow(tree, options, Atomics.load(this.stopCount, 0)))
+  }
+
+  private async rebuildNow(tree: Tree, { background = false }: { background?: boolean }, gen: number) {
     const slot = this.slot
     const generation = (this.generations.get(slot) ?? 0) + 1
     this.generations.set(slot, generation)
@@ -223,10 +354,10 @@ export class ThreadKernel implements KernelHost {
       const cache = await this.cache
       const cached = key ? await cache?.get(key) : null
       this.preview = null
-      if (cached) this.onPreview(cached.display)
+      if (cached) this.onPreview(cached.display, slot)
       const deferred = background && assembly
-      const r = await this.call<BuildReport>("rebuild", [tree, { interferences: cached?.interferences, deferChecks: deferred }])
-      if (process.env.TURNERY_PROFILE) process.stderr.write(`REBUILD ${slot} ${Math.round(r.ms)} ms\n`)
+      const r = await this.call<BuildReport>("rebuild", [tree, { interferences: cached?.interferences, deferChecks: deferred }], gen)
+      if (process.env.TURNERY_PROFILE) process.stderr.write(`REBUILD ${slot} ${Math.round(r.ms)} ms${r.kept ? ` (${r.kept}/${tree.features.length} steps from the store)` : ""}\n`)
       this.cur.lastTree = tree
       if (key && this.preview && !r.paramError && r.features.every((f) => f.state !== "error" && f.state !== "skipped")) {
         const directory = await this.pool.directory
@@ -331,6 +462,14 @@ export class ThreadKernel implements KernelHost {
   }
 
   async dispose() {
+    if (this.persistTimer) clearTimeout(this.persistTimer)
+    this.persistTimer = null
+    // What was built and not kept yet (a CLI command that ends at once): kept now, for a while at most.
+    if (this.worker && this.unkept && !this.pending.size) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([this.keepBuilt(Infinity, true).catch(() => 0), new Promise((r) => (timer = setTimeout(r, 5000)))])
+      clearTimeout(timer)
+    }
     this.closed = true
     await Promise.all(this.writes)
     await Promise.all([...this.diagnosticWorkers.values()].map((w) => w.terminate()))

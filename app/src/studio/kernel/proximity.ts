@@ -109,11 +109,14 @@ function mayBeNarrow(g: Geo, h: Geo, reach: number): boolean {
  * space, or closer than THIN across material. Only planes and cylinders are looked at, screened by their
  * exact surfaces before OpenCascade measures the bounded faces, so it stays cheap. Faces that meet and
  * faces at an angle (the two sides of a small fillet) don't count. `group[i]`: which solid face i is on
- * (parts are apart on purpose).
+ * (parts are apart on purpose). `boxes`: each face's box when the caller has one (they only pick which
+ * pairs to measure), else measured here, for the pairs whose surfaces could be that close.
  */
-export function narrowSpot(faces: FaceLike[], isNew: boolean[], group: number[], maxPairs = 60): Narrow | null {
+export function narrowSpot(faces: FaceLike[], isNew: boolean[], group: number[], maxPairs = 60, boxes?: ([V3, V3] | null)[]): Narrow | null {
   const reach = Math.max(SLIT, THIN)
-  const boxes = faces.map((f) => f.boundingBox.bounds as [V3, V3])
+  const box = (f: FaceLike, i: number) => boxes?.[i] ?? (f.boundingBox.bounds as [V3, V3])
+  const known: ([V3, V3] | undefined)[] = []
+  const boxOf = (i: number) => (known[i] ??= box(faces[i], i))
   const near = (a: [V3, V3], b: [V3, V3]) => [0, 1, 2].every((k) => a[0][k] <= b[1][k] + reach && b[0][k] <= a[1][k] + reach)
   const geo = faces.map(geoOf)
   let best: Narrow | null = null
@@ -121,7 +124,7 @@ export function narrowSpot(faces: FaceLike[], isNew: boolean[], group: number[],
   for (let i = 0; i < faces.length; i++) {
     if (!isNew[i] || !geo[i]) continue
     for (let j = 0; j < faces.length; j++) {
-      if (j === i || (isNew[j] && j < i) || group[i] !== group[j] || !near(boxes[i], boxes[j]) || !mayBeNarrow(geo[i], geo[j], reach)) continue
+      if (j === i || (isNew[j] && j < i) || group[i] !== group[j] || !mayBeNarrow(geo[i], geo[j], reach) || !near(boxOf(i), boxOf(j))) continue
       if (++pairs > maxPairs) return best
       const c = closest(faces[i] as unknown as AnyShape, faces[j] as unknown as AnyShape)
       if (!c || c.d <= TOUCH || c.d >= reach || (best && c.d >= best.d)) continue

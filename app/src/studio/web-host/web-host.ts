@@ -489,6 +489,7 @@ export function webBridge(host: WebHost): TurneryBridge {
     subscribe: (cb) => engine.on(cb),
     call: (command, input, part) => host.call(command, input, part),
     kernel: (path, call) => engine.kernelCall(path, call),
+    cancelLoad: () => engine.cancelLoading(),
     onLook: (render) => host.onLook(render),
     saveFigure: async (figure) => host.saveFigure(figure),
     answerPick: async (id, answer) => engine.answerPick(id, answer),

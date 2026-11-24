@@ -53,6 +53,12 @@ export function meshBody(shape: AnyShape): { mesh: Mesh; edges: EdgeMesh } {
   return { mesh: meshShape(shape), edges: meshEdges(shape) }
 }
 
+/** The faces of meshBody's mesh, without the edges: what faces' signatures are measured on. */
+export function meshFaces(shape: AnyShape): Mesh {
+  const coarse = meshShape(shape, 0.05, COARSE_ANGLE)
+  return coarse.triangles.length / 3 > FINE_LIMIT ? coarse : meshShape(shape)
+}
+
 export function meshEdges(shape: AnyShape, tolerance = 0.05, angularTolerance = 0.2): EdgeMesh {
   const oc: OC = getOC()
   const raw = oc.ReplicadEdgeMeshExtractor.extract(shape.wrapped, tolerance, angularTolerance)
@@ -81,13 +87,16 @@ const ANALYTIC = new Set(["PLANE", "CYLINDRE", "CONE", "SPHERE", "TORUS"])
 /**
  * Geometric signature of every face (type, area, centroid) plus one interior
  * sample point: the centroid of the face's biggest triangle, snapped onto the
- * exact surface.
+ * exact surface. `known`: the signature a face already has (it is the same face as one of the step
+ * before), so it isn't measured again.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function faceSignatures(faces: any[], mesh: Mesh): FaceSig[] {
+export function faceSignatures(faces: any[], mesh: Mesh, known?: (index: number) => FaceSig | null): FaceSig[] {
   const oc: OC = getOC()
   const groupByHash = new Map(mesh.faceGroups.map((g) => [g.faceId, g]))
-  return faces.map((f) => {
+  return faces.map((f, index) => {
+    const had = known?.(index)
+    if (had) return had
     const { area, center } = faceProps(f)
     const sig: FaceSig = { type: f.geomType, area, center, sample: null, box: null }
     const g = groupByHash.get(f.hashCode)
@@ -168,11 +177,16 @@ export function classifyFaces(
   prevSigs: FaceSig[] | null,
   curSigs: FaceSig[],
   tol = 1e-4,
+  /** Per current face: the previous face it is (the same B-rep face), else -1. Those are kept as they are. */
+  same: number[] | null = null,
 ): { status: FaceStatus; match: number }[] {
   if (!prevFaces || !prevSigs) return curSigs.map(() => ({ status: "new", match: -1 }))
   const oc: OC = getOC()
-  const surfaces = prevFaces.map((f) => oc.BRep_Tool.Surface(f.wrapped))
-  const out = curSigs.map((s) => {
+  // Surfaces are fetched only when a face has to be projected (most faces of a big body are kept).
+  const surfaces: unknown[] = []
+  const surface = (i: number) => (surfaces[i] ??= oc.BRep_Tool.Surface(prevFaces[i].wrapped))
+  const out = curSigs.map((s, index) => {
+    if (same && same[index] >= 0) return { status: "kept" as const, match: same[index] }
     const kept = prevSigs.findIndex(
       (p) => p.type === s.type && Math.abs(p.area - s.area) <= 1e-6 * Math.max(1, s.area) + 1e-6 && dist(p.center, s.center) <= tol * 10,
     )
@@ -187,7 +201,7 @@ export function classifyFaces(
       // hundreds of glyph walls made it 1.7 GB. Only try the ones near the point.
       if (!ANALYTIC.has(s.type) && !near(prevSigs[i].box, s.sample, Math.max(1e-3, tol * 10))) continue
       const pnt = new oc.gp_Pnt(s.sample[0], s.sample[1], s.sample[2])
-      const proj = new oc.GeomAPI_ProjectPointOnSurf(pnt, surfaces[i])
+      const proj = new oc.GeomAPI_ProjectPointOnSurf(pnt, surface(i))
       const d = proj.NbPoints() > 0 ? proj.LowerDistance() : Infinity
       proj.delete()
       pnt.delete()
@@ -195,6 +209,7 @@ export function classifyFaces(
     }
     return { status: "new" as const, match: -1 }
   })
-  surfaces.forEach((s) => s.delete?.())
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  surfaces.forEach((s: any) => s?.delete?.())
   return out
 }
