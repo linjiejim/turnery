@@ -4,6 +4,12 @@ English · [简体中文](CHANGELOG.zh-CN.md)
 
 What changed in each version of Turnery, the desktop app. The first time you open Turnery after an update, “See what’s new” shows the same notes.
 
+## 0.14.1 · 2026-11-25
+
+### Fixed
+
+- Turnery’s cache no longer grows without limit. Folders that older versions left behind are cleared once they haven’t been used for two weeks, and the cache of assemblies’ parts stays under 1 GB.
+
 ## 0.14.0 · 2026-11-25
 
 ### Heads-up
