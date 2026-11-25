@@ -4,7 +4,7 @@ import path from "node:path"
 import { serialize, deserialize } from "node:v8"
 import type { BuildReport, DisplayData } from "../../../app/src/studio/kernel/build"
 import { contentKey } from "./content-key"
-import { ComponentCache } from "./component-pool"
+import { ComponentCache, touch } from "./component-pool"
 
 export type AssemblySnapshot = { display: DisplayData; interferences: BuildReport["interferences"] }
 const hash = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex")
@@ -17,12 +17,14 @@ export class AssemblyCache {
   constructor(private readonly dir: string) {}
   async get(key: string): Promise<AssemblySnapshot | null> {
     try {
-      const data = await readFile(path.join(this.dir, `${key}.json`))
+      const file = path.join(this.dir, `${key}.json`)
+      const data = await readFile(file)
       const checksum = data.subarray(0, 64).toString()
       const payload = data.subarray(64)
       if (hash(payload) !== checksum) return null
       const value = deserialize(payload) as AssemblySnapshot
       if (!value.display || !(value.display.mesh?.vertices instanceof Float32Array) || !(value.display.mesh.triangles instanceof Uint32Array)) return null
+      touch(file)
       return value
     } catch { return null }
   }

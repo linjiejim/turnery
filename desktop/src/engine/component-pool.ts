@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto"
 import { availableParallelism } from "node:os"
 import path from "node:path"
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { serialize, deserialize } from "node:v8"
 import { Worker } from "node:worker_threads"
 import type { ComponentSource, CompiledComponent } from "../../../app/src/studio/kernel/build"
@@ -12,8 +12,24 @@ import type { KernelReply, KernelRequest } from "./kernel-thread"
 import { contentKey } from "./content-key"
 import { HOME } from "./home"
 import { agentLang, ta } from "../../../app/src/lib/agent-lang"
+import { DAY_MS, trimCacheRoot, type CacheLimits } from "./cache-trim"
 
 const hash = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex")
+
+/**
+ * Every build's components and assembly previews together (one folder per build, each also held to 128
+ * entries and 256 MB of each kind by `ComponentCache.trim`): an update or a build from source leaves its
+ * folder behind, so the folders of builds no longer run go first.
+ */
+export const COMPONENT_LIMITS: CacheLimits = { bytes: 1024 * 1024 * 1024, files: 2_000, staleMs: 14 * DAY_MS }
+/** After launch, once the window is up: the folders of old builds go in the background. */
+const LAUNCH_TRIM_MS = 10_000
+
+/** A cache entry was just used: the last to go when its folder or the root is trimmed. */
+export const touch = (file: string) => {
+  const now = new Date()
+  void utimes(file, now, now).catch(() => {})
+}
 /** What a worker builds from a source: its colours and finishes never change the shapes. */
 const geometryOf = (s: ComponentSource): ComponentSource => ({ ...s, ...(s.tree ? { tree: withoutLooks(s.tree) } : {}), ...(s.components ? { components: s.components.map(geometryOf) } : {}) })
 export const sourceKey = (s: ComponentSource) => contentKey(geometryOf(s))
@@ -23,11 +39,14 @@ export class ComponentCache {
   constructor(private readonly dir: string) {}
   async get(key: string): Promise<CompiledComponent | null> {
     try {
-      const raw = await readFile(path.join(this.dir, `${key}.json`))
+      const file = path.join(this.dir, `${key}.json`)
+      const raw = await readFile(file)
       const payload = raw.subarray(64)
       if (hash(payload) !== raw.subarray(0, 64).toString()) return null
       const data = deserialize(payload) as CompiledComponent
-      return Array.isArray(data.parts) && data.parts.every((p) => typeof p.brep === "string" && (p.name === null || typeof p.name === "string")) && Number.isInteger(data.failed) ? data : null
+      if (!(Array.isArray(data.parts) && data.parts.every((p) => typeof p.brep === "string" && (p.name === null || typeof p.name === "string")) && Number.isInteger(data.failed))) return null
+      touch(file)
+      return data
     } catch { return null }
   }
   async put(key: string, value: CompiledComponent) {
@@ -65,15 +84,33 @@ export class ComponentPool {
   private closed = false
   /** Bumped by `abort`: a preparation under way stops starting components. */
   private round = 0
+  private trimmedAll = 0
+  private trimmingAll: Promise<void> | null = null
 
-  constructor(private readonly file: URL) {
+  /** `root`: where every build keeps its folder (tests give their own). */
+  constructor(private readonly file: URL, root = path.join(HOME, "cache", "components")) {
     // The bundle includes the kernel and replicad. Include the external WASM too,
     // so even a replaceable OpenCascade binary invalidates old geometry.
     this.directory = Promise.all([
       readFile(file),
       readFile(new URL("../vendor/opencascade/replicad_single.wasm", file)),
-    ]).then(([js, wasm]) => path.join(HOME, "cache", "components", hash(Buffer.concat([js, wasm])))).catch(() => null)
+    ]).then(([js, wasm]) => path.join(root, hash(Buffer.concat([js, wasm])))).catch(() => null)
     this.cache = this.directory.then((dir) => dir ? new ComponentCache(dir) : null)
+    // Not before the window is up, and never keeping a CLI command from ending.
+    void this.directory.then((dir) => dir && setTimeout(() => void this.trimAll(), LAUNCH_TRIM_MS).unref())
+  }
+
+  /**
+   * Keep every build's folder under COMPONENT_LIMITS, at most once a minute. In the background: callers
+   * don't wait for it (the promise is for tests).
+   */
+  trimAll(): Promise<void> {
+    if (this.trimmingAll) return this.trimmingAll
+    if (Date.now() - this.trimmedAll < 60_000) return Promise.resolve()
+    this.trimmedAll = Date.now()
+    const job = this.directory.then((dir) => (dir ? trimCacheRoot(path.dirname(dir), path.basename(dir), COMPONENT_LIMITS) : undefined))
+    this.trimmingAll = job.finally(() => (this.trimmingAll = null))
+    return this.trimmingAll
   }
 
   private runner(index: number): Runner {
@@ -159,6 +196,7 @@ export class ComponentPool {
     // their exact shapes are now in the main kernel and the content cache.
     await Promise.all(this.runners.splice(0).map((r) => r.worker.terminate()))
     await cache?.trim()
+    void this.trimAll()
     return output
   }
 
